@@ -422,8 +422,14 @@ export function classifyAddressMessage(message: string): LiveUnverified | LiveBl
   return null;
 }
 
+/** 統合した MCP のツールが、入力から選んだ経路（応答の mode）。REST の応答には無いので、共通の検査器ではなく MCP 側だけで確かめる。 */
+function expectMode(raw: unknown, mode: string, tool: string): void {
+  const got = (raw as { mode?: unknown } | null)?.mode;
+  if (got !== mode) throw new LiveFail(`${tool} chose mode ${JSON.stringify(got)} (expected "${mode}")`);
+}
+
 /** 住所系ツールを呼ぶ。機能が返した取得中・取得失敗のエラー文は、契約違反ではなく外部の状態として分類する。 */
-async function callAddressTool(ctx: CaseContext, tool: string, args: Record<string, unknown>): Promise<unknown> {
+async function callAddressTool(ctx: CaseContext, tool: string, args: Record<string, unknown>, mode: string): Promise<unknown> {
   let text: string;
   try {
     ({ text } = await mcpJson(ctx, tool, args, 60000));
@@ -431,7 +437,9 @@ async function callAddressTool(ctx: CaseContext, tool: string, args: Record<stri
     if (error instanceof LiveFail) throw classifyAddressMessage(error.message) ?? error;
     throw error;
   }
-  return toolPayload(text, tool);
+  const raw = toolPayload(text, tool);
+  expectMode(raw, mode, tool);
+  return raw;
 }
 
 /** データが揃う前の答え（incomplete）を分類する。内容の検査に進むと、取得中なだけの応答を契約違反にしてしまう。 */
@@ -857,14 +865,14 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   // 初回の呼び出しは取得元（ABR・日本郵便）からデータを取ってくるので、外部に依存する。
   toolCase('geo.lookup_address.postal', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'lookup_address', { zipcode: '100-0014' });
+    const raw = await callAddressTool(ctx, 'lookup_address', { zipcode: '100-0014' }, 'postal');
     const observation = checkPostalCodeResult(raw, 'lookup_address (postal)');
     const rest = await ctx.rest.call('GET', '/geo/postal-code?zipcode=100-0014', undefined, 60000);
     checkPostalCodeResult(rest.json, 'GET /geo/postal-code');
     return observation;
   }),
   toolCase('geo.lookup_address.normalize', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'lookup_address', { address: NAGATACHO_ADDRESS });
+    const raw = await callAddressTool(ctx, 'lookup_address', { address: NAGATACHO_ADDRESS }, 'normalize');
     const observation = checkNormalizedAddressResult(raw, 'lookup_address (normalize)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(NAGATACHO_ADDRESS), undefined, 60000);
     checkNormalizedAddressResult(rest.json, 'GET /geo/address/normalize');
@@ -872,7 +880,7 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   toolCase('geo.lookup_address.normalize.mlit', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '港区芝大門1-10-18-3F';
-    const raw = await callAddressTool(ctx, 'lookup_address', { address });
+    const raw = await callAddressTool(ctx, 'lookup_address', { address }, 'normalize');
     const observation = checkMlitAddressResult(raw, 'lookup_address (normalize, mlit)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkMlitAddressResult(rest.json, 'GET /geo/address/normalize (mlit)');
@@ -880,7 +888,7 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   toolCase('geo.lookup_address.normalize.zipcode', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
     const body = { address: '千駄ヶ谷2-34-8テラス外苑204', zipcode: '1510051' };
-    const raw = await callAddressTool(ctx, 'lookup_address', body);
+    const raw = await callAddressTool(ctx, 'lookup_address', body, 'normalize');
     const observation = checkZipcodeFilledAddressResult(raw, 'lookup_address (normalize, zipcode)');
     const rest = await ctx.rest.call('POST', '/geo/address/normalize', body, 60000);
     checkZipcodeFilledAddressResult(rest.json, 'POST /geo/address/normalize (zipcode)');
@@ -888,14 +896,14 @@ export const TOOL_CASES: HealthCase[] = [
   }),
   toolCase('geo.lookup_address.normalize.parcel_point', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '山形県天童市大字山口4559-4';
-    const raw = await callAddressTool(ctx, 'lookup_address', { address });
+    const raw = await callAddressTool(ctx, 'lookup_address', { address }, 'normalize');
     const observation = checkParcelPointResult(raw, 'lookup_address (normalize, parcel point)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkParcelPointResult(rest.json, 'GET /geo/address/normalize (parcel point)');
     return observation;
   }),
   toolCase('geo.lookup_address.reverse', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'lookup_address', NAGATACHO_POINT);
+    const raw = await callAddressTool(ctx, 'lookup_address', NAGATACHO_POINT, 'reverse');
     const observation = checkReverseGeocodeResult(raw, 'lookup_address (reverse)');
     const rest = await ctx.rest.call('GET', `/geo/reverse?lat=${NAGATACHO_POINT.lat}&lon=${NAGATACHO_POINT.lon}`, undefined, 60000);
     checkReverseGeocodeResult(rest.json, 'GET /geo/reverse');
@@ -996,12 +1004,14 @@ export const TOOL_CASES: HealthCase[] = [
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { htsCode: '9503.00.0073', description: 'toy' }, 60000);
     const raw = toolPayload(rawJsonText, 'lookup_hts (verify)');
+    expectMode(raw, 'verify', 'lookup_hts');
     return mustContain(raw, ['9503'], 'usitc-verify');
   }),
   toolCase('trade.predict', ['lookup_hts'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { productName: 'Green Tea' }, 80000);
     const raw = toolPayload(rawJsonText, 'lookup_hts (predict)');
+    expectMode(raw, 'predict', 'lookup_hts');
     // 緑茶は 0902（茶）か 2101（茶の抽出物）。USITC の全件データと CBP 判例の構造（evidence）まで確かめる
     const parsed = parseFirstJson(textOf(raw), 'lookup_hts (predict)') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
     if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('lookup_hts (predict) classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));

@@ -70,17 +70,18 @@ describe('live geocoding checks', () => {
 const ABR = '出典: デジタル庁「アドレス・ベース・レジストリ」（公共データ利用規約 第1.0版）を加工して作成（加工: Sora）。郵便番号: 日本郵便株式会社「郵便番号データ」を加工して作成。';
 const nagatachoKeys = { prefCode: '13', lgCode: '131016', machiazaId: '0005001', blk: '5', rsdt: '1' };
 const nagatachoZips = [{ zipcode: '1000014', town: '永田町', townRaw: '永田町（次のビルを除く）', exact: true, fallback: false }];
+// lookup_address（MCP）の応答は、選んだ経路の mode を持つ。REST の応答には無いが、REST の検査は余計な欄を見ないので同じ値を使う
 const zip = {
-  zipcode: '1000014', count: 1, attribution: ABR,
+  mode: 'postal', zipcode: '1000014', count: 1, attribution: ABR,
   candidates: [{ kind: 'general', prefecture: '東京都', city: '千代田区', town: '永田町', townRaw: '永田町（次のビルを除く）', lgCode: '131016', lat: 35.675473, lon: 139.743767, locationLevel: 3 }],
 };
 const normalized = {
-  input: '東京都千代田区永田町1-5-1', pref: '東京都', city: '千代田区', town: '永田町一丁目', addr: '5-1', other: '',
+  mode: 'normalize', input: '東京都千代田区永田町1-5-1', pref: '東京都', city: '千代田区', town: '永田町一丁目', addr: '5-1', other: '',
   normalized: '東京都千代田区永田町一丁目5-1', level: 8, numberSource: 'rsdt', keys: nagatachoKeys,
   point: { lat: 35.673766, lon: 139.746379, level: 8 }, postalCodes: nagatachoZips, attribution: ABR,
 };
 const reversed = {
-  lat: 35.673766, lon: 139.746379, found: true, level: 8, numberSource: 'rsdt', approximate: true,
+  mode: 'reverse', lat: 35.673766, lon: 139.746379, found: true, level: 8, numberSource: 'rsdt', approximate: true,
   normalized: '東京都千代田区永田町一丁目5-1', distanceMeters: 0.4, point: { lat: 35.673766, lon: 139.746379, level: 8 },
   keys: nagatachoKeys, postalCodes: nagatachoZips, alternatives: [], attribution: ABR,
 };
@@ -94,6 +95,9 @@ describe('live address checks', () => {
   test('postal code: 100-0014 must resolve to 永田町 in Chiyoda, over both MCP and REST', async () => {
     const check = addressCase('geo.lookup_address.postal');
     await expect(check.run(context(zip))).resolves.toHaveProperty('sources');
+    // MCP の lookup_address が、郵便番号だけの入力を別の経路で読んだ
+    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toThrow('mode');
+    await expect(check.run(context({ ...zip, mode: undefined }))).rejects.toThrow('mode');
     await expect(check.run(context({ ...zip, zipcode: '1000001' }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, count: 0, candidates: [] }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, candidates: [{ ...zip.candidates[0], city: '新宿区' }] }))).rejects.toBeInstanceOf(LiveFail);
@@ -159,18 +163,18 @@ describe('live address checks', () => {
 // 街区データ（国土交通省）で補った住所、zipcode で市区町村を補った住所、座標の無い地番の補完。
 const MLIT_ATTRIBUTION = '街区符号の点: 出典「位置参照情報ダウンロードサービス（国土交通省）」（https://nlftp.mlit.go.jp/isj/index.html）を加工して作成';
 const shiba = {
-  input: '港区芝大門1-10-18-3F', pref: '東京都', city: '港区', town: '芝大門一丁目', addr: '10', other: '18-3F',
+  mode: 'normalize', input: '港区芝大門1-10-18-3F', pref: '東京都', city: '港区', town: '芝大門一丁目', addr: '10', other: '18-3F',
   normalized: '東京都港区芝大門一丁目10', level: 8, numberSource: 'mlit', keys: { prefCode: '13', lgCode: '131032', machiazaId: '0006001', prc: ['10'] },
   point: { lat: 35.658751, lon: 139.752938, level: 7 }, postalCodes: [{ zipcode: '1050012' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
 };
 const sendagaya = {
-  input: '千駄ヶ谷2-34-8テラス外苑204', pref: '東京都', city: '渋谷区', town: '千駄ヶ谷二丁目', addr: '34-8', other: 'テラス外苑204',
+  mode: 'normalize', input: '千駄ヶ谷2-34-8テラス外苑204', pref: '東京都', city: '渋谷区', town: '千駄ヶ谷二丁目', addr: '34-8', other: 'テラス外苑204',
   normalized: '東京都渋谷区千駄ヶ谷二丁目34-8', level: 8, numberSource: 'rsdt', keys: { prefCode: '13', lgCode: '131130', machiazaId: '0000002' },
   point: { lat: 35.676, lon: 139.711, level: 8 }, postalCodes: [{ zipcode: '1510051' }],
   checks: { zipcode: { status: 'match', zipcode: '1510051', expected: [{ zipcode: '1510051' }], reason: '町域の番号に含まれます' } }, attribution: ABR,
 };
 const tendo = {
-  input: '山形県天童市大字山口4559-4', pref: '山形県', city: '天童市', town: '大字山口', addr: '4559-4', other: '',
+  mode: 'normalize', input: '山形県天童市大字山口4559-4', pref: '山形県', city: '天童市', town: '大字山口', addr: '4559-4', other: '',
   normalized: '山形県天童市大字山口4559-4', level: 8, numberSource: 'chiban', keys: { prefCode: '06', lgCode: '062103', machiazaId: '0040000', prc: ['4559', '4'] },
   point: { lat: 38.380088, lon: 140.414751, level: 7 }, pointSource: 'mlit', postalCodes: [{ zipcode: '9940101' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
 };
