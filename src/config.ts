@@ -264,7 +264,7 @@ export const SETTINGS = {
   // --- X ---
   SORA_X_DETAIL_PROVIDER: {
     area: 'x', kind: 'bool', default: true,
-    doc: '`off` で FxTwitter/FxEmbed による X の投稿の詳細の補完を無効化します（失敗しても検索は続きます）',
+    doc: '`off` で FxTwitter/FxEmbed による X の投稿の詳細の補完を無効化します（失敗しても検索は続きます）。起動のときに読みます',
   },
   SORA_X_DETAIL_BASE_URL: {
     area: 'x', kind: 'url', default: 'https://api.fxtwitter.com', legacy: ['FXTWITTER_API_BASE'], legacyOnly: 'error',
