@@ -663,9 +663,6 @@ describe('lookup_address: address は正規化、lat・lon だけは逆引き、
 
   test('機能の入力の誤りは、旧ツールと同じエラーの文', async () => {
     useData();
-    const normalize = await call({ address: '東京都千代田区永田町1-7-1', lat: 35.6 });
-    expect(normalize.isError).toBe(true);
-    expect(textOf(normalize)).toBe('Address normalize error: lat と lon は組で指定してください');
     const postal = await call({ zipcode: '12' });
     expect(postal.isError).toBe(true);
     expect(textOf(postal)).toStartWith('Postal code error: ');
@@ -687,6 +684,7 @@ describe('lookup_address: address は正規化、lat・lon だけは逆引き、
     ['何も無い', {}, ['address・zipcode・lat と lon のどれかを指定してください']],
     ['lat だけ', { lat: 35.6 }, ['lat と lon は組で指定してください']],
     ['lon と zipcode', { lon: 139.7, zipcode: '1000014' }, ['lat と lon は組で指定してください']],
+    ['address と lat だけ', { address: '東京都千代田区永田町1-7-1', lat: 35.6 }, ['lat と lon は組で指定してください']],
     ['lat・lon と zipcode', { ...point, zipcode: '1000014' }, [`zipcode は ${ADDRESS} か ${ZIP}だけ指定できます（いま: ${POINT}）`]],
     ['address と maxDistanceMeters: 100（既定値の 300 と違う）', { address: '東京都千代田区', maxDistanceMeters: 100 }, [`maxDistanceMeters は ${POINT}だけ指定できます（いま: ${ADDRESS}）`]],
     ['zipcode と maxDistanceMeters: 100', { zipcode: '1000014', maxDistanceMeters: 100 }, [`maxDistanceMeters は ${POINT}だけ指定できます（いま: ${ZIP}）`]],

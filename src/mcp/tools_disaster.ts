@@ -196,10 +196,11 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       },
       async (args) => {
         const { address, zipcode, lat, lon, level, compareAddress, maxDistanceMeters } = args;
+        // どの入力でも、lat と lon は組（address と一緒でも、サービスまで進めない）
+        if ((lat === undefined) !== (lon === undefined)) return usageError(`lat と lon は組で指定してください。${ADDRESS_USAGE}`);
         // 空の address・zipcode は、指定しなかったのと同じ
-        const mode = address ? WITH_ADDRESS : lat !== undefined || lon !== undefined ? WITH_POINT : zipcode ? ZIPCODE_ONLY : undefined;
+        const mode = address ? WITH_ADDRESS : lat !== undefined ? WITH_POINT : zipcode ? ZIPCODE_ONLY : undefined;
         if (!mode) return usageError(`address・zipcode・lat と lon のどれかを指定してください。${ADDRESS_USAGE}`);
-        if (mode === WITH_POINT && (lat === undefined || lon === undefined)) return usageError(`lat と lon は組で指定してください。${ADDRESS_USAGE}`);
         const invalid = onlyForMode(mode, [WITH_ADDRESS, ZIPCODE_ONLY], args, ['zipcode'], ADDRESS_USAGE)
           ?? onlyForMode(mode, [WITH_ADDRESS], args, ['level', 'compareAddress'], ADDRESS_USAGE, { level: LEVEL_DEFAULT })
           ?? onlyForMode(mode, [WITH_POINT], args, ['maxDistanceMeters'], ADDRESS_USAGE, { maxDistanceMeters: MAX_DISTANCE_DEFAULT });
