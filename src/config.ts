@@ -7,6 +7,7 @@
  * - README §4.3 の表は renderEnvTable() で作る（この登録簿が正本）。
  */
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
+import { normalizeHost, normalizeOrigin } from './security/host_origin.js';
 
 export type Env = Record<string, string | undefined>;
 
@@ -89,27 +90,6 @@ const moduleName = (value: string) => {
   return m === '*' ? 'all' : (MODULE_NAMES as readonly string[]).includes(m) ? m : undefined;
 };
 
-/** Host ヘッダーの値（src/security/mcp_origin.ts の normalizeHost と同じ決まり）。 */
-function host(value: string): string | undefined {
-  const h = value.toLowerCase();
-  if (/[\s/?#@]/.test(h)) return undefined;
-  if (h.startsWith('[')) return /^\[[^\]]*\](:\d+)?$/.test(h) ? h : undefined;
-  const colon = h.lastIndexOf(':');
-  return colon < 0 || /^\d+$/.test(h.slice(colon + 1)) ? h : undefined;
-}
-
-/** ブラウザの Origin（src/security/mcp_origin.ts の normalizeOrigin と同じ決まり）。 */
-function origin(value: string): string | undefined {
-  if (value === 'null') return undefined;
-  try {
-    const u = new URL(value);
-    const bare = u.pathname === '/' && !u.search && !u.hash && !u.username && !u.password;
-    return (u.protocol === 'http:' || u.protocol === 'https:') && bare ? u.origin : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 const prefecture = (value: string) => (/^\d{1,2}$/.test(value) && Number(value) >= 1 && Number(value) <= 47 ? value.padStart(2, '0') : undefined);
 const providerId = (value: string) => (/^[a-z0-9_-]+$/.test(value) ? value : undefined);
 const did = (value: string) => (/^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/.test(value) ? value : undefined);
@@ -149,13 +129,13 @@ export const SETTINGS = {
     doc: '利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。荷物ごとの表示ページの `pageUrl` の組み立てに使います',
   },
   SORA_ALLOWED_HOSTS: {
-    area: 'core', kind: 'list', item: host,
+    area: 'core', kind: 'list', item: normalizeHost,
     form: 'カンマ区切りの Host（例: `sora.example.com,localhost:3016`。scheme やパスは付けない）',
     defaultDoc: '*(未設定 = `localhost`・`127.0.0.1`・`[::1]` をポート不問)*',
     doc: 'MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません',
   },
   SORA_ALLOWED_ORIGINS: {
-    area: 'core', kind: 'list', item: origin,
+    area: 'core', kind: 'list', item: normalizeOrigin,
     form: 'カンマ区切りの Origin（例: `http://localhost:3016`。http・https で、パスは付けない）',
     defaultDoc: '`localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き）',
     doc: 'MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます',
