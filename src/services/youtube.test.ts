@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
+import { parseYouTubeChannelRef, parseYouTubeUrl } from '../html_parser.js';
 import { YoutubeTranscriptRequestSchema, YoutubeTranscriptResultSchema } from '../types.js';
 import { attachVideoTranscripts, classifyYoutubeUrl, getYoutubeExcerpt, getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
 
@@ -548,7 +549,11 @@ describe('classifyYoutubeUrl: get_youtube の url が動画か、チャンネル
       'https://music.youtube.com/watch?v=Ab-_0123456&list=PL1',
       'www.youtube.com/watch?v=Ab-_0123456',
       ' Ab-_0123456 ',
-    ]) expect(classifyYoutubeUrl(input), input).toBe('video');
+    ]) {
+      expect(classifyYoutubeUrl(input), input).toBe('video');
+      // classifyYoutubeUrl は動画の解釈を先に試す。チャンネルの解釈と重なると、チャンネルが読めなくなる
+      expect(parseYouTubeChannelRef(input), `${input}（動画の形は、チャンネルとしては読めない）`).toBeUndefined();
+    }
   });
 
   test('旧 get_youtube_channel がチャンネルとして読んだ形は、どれも channel', () => {
@@ -562,7 +567,10 @@ describe('classifyYoutubeUrl: get_youtube の url が動画か、チャンネル
       'https://m.youtube.com/@YouTube/videos',
       'https://www.youtube.com/c/YouTubeCreators',
       'https://www.youtube.com/user/Google/featured',
-    ]) expect(classifyYoutubeUrl(input), input).toBe('channel');
+    ]) {
+      expect(classifyYoutubeUrl(input), input).toBe('channel');
+      expect(parseYouTubeUrl(input), `${input}（チャンネルの形は、動画としては読めない）`).toBeUndefined();
+    }
   });
 
   test('どちらの旧ツールも読まなかった形は undefined', () => {

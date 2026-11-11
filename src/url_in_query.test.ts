@@ -180,7 +180,8 @@ describe('the video search (search_media type: video) with a URL as the query', 
   test('does not search, and says how to read the URL instead', async () => {
     const r = await yahoo.searchYahooVideo({ query: 'https://www.youtube.com/watch?v=5Jq35KcE8vI' });
     expect(r).toMatchObject({ source: 'video', count: 0, items: [] });
-    expect(r.message).toContain('get_youtube');
+    expect(r.message).toContain('YouTube なら get_youtube、');
+    expect(r.message).not.toContain('get_youtube_transcript');
     expect(r.message).toContain('scrape');
   });
 });
