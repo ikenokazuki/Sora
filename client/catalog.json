@@ -220,47 +220,73 @@
     "name": "get_country_context",
     "fn": "getCountryContext",
     "category": "intel",
-    "description": "【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。返却: CountryContextReport",
+    "description": "【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }",
     "keywords": [
       "国地域",
       "コンテキスト",
       "context",
-      "スナップショット"
+      "スナップショット",
+      "根拠",
+      "evidence",
+      "原文",
+      "詳細",
+      "更新",
+      "差分",
+      "updates",
+      "get_country_context_evidence",
+      "get_country_context_updates"
     ],
     "method": "GET",
     "path": "/intelligence/context/:contextId",
     "file": "servers/sora/get_country_context.ts"
   },
   {
-    "name": "get_country_context_evidence",
+    "name": "get_country_context",
     "fn": "getCountryContextEvidence",
     "category": "intel",
-    "description": "【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }",
+    "description": "【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }",
     "keywords": [
       "国地域",
+      "コンテキスト",
+      "context",
+      "スナップショット",
       "根拠",
       "evidence",
       "原文",
-      "詳細"
+      "詳細",
+      "更新",
+      "差分",
+      "updates",
+      "get_country_context_evidence",
+      "get_country_context_updates"
     ],
     "method": "GET",
     "path": "/intelligence/context/:contextId/evidence",
-    "file": "servers/sora/get_country_context_evidence.ts"
+    "file": "servers/sora/get_country_context.ts"
   },
   {
-    "name": "get_country_context_updates",
+    "name": "get_country_context",
     "fn": "getCountryContextUpdates",
     "category": "intel",
-    "description": "【国地域レポートの差分取得】contextId のレポートについて、前回以降の根拠の追加・訂正・削除・取得障害を取得します。前回の nextCursor を cursor に渡すと続きから取得します。返却: { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }",
+    "description": "【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }",
     "keywords": [
       "国地域",
+      "コンテキスト",
+      "context",
+      "スナップショット",
+      "根拠",
+      "evidence",
+      "原文",
+      "詳細",
       "更新",
       "差分",
-      "updates"
+      "updates",
+      "get_country_context_evidence",
+      "get_country_context_updates"
     ],
     "method": "GET",
     "path": "/intelligence/context/:contextId/updates",
-    "file": "servers/sora/get_country_context_updates.ts"
+    "file": "servers/sora/get_country_context.ts"
   },
   {
     "name": "get_disaster_info",
@@ -390,31 +416,10 @@
     "file": "servers/sora/get_weather.ts"
   },
   {
-    "name": "get_youtube_channel",
-    "fn": "getYoutubeChannel",
-    "category": "youtube",
-    "description": "【YouTube チャンネルの最新動画】チャンネルの URL・@ハンドル・UC… のチャンネル ID から、最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件返します。Yahoo の検索は使いません。動画の中身は、返った videoId を get_youtube_transcript に渡して読みます。チャンネルが無いときは found が false。返却: { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] }",
-    "keywords": [
-      "YouTube",
-      "ユーチューブ",
-      "チャンネル",
-      "channel",
-      "新着",
-      "最新動画",
-      "動画一覧",
-      "投稿",
-      "ハンドル",
-      "RSS"
-    ],
-    "method": "POST",
-    "path": "/youtube/channel",
-    "file": "servers/sora/get_youtube_channel.ts"
-  },
-  {
-    "name": "get_youtube_transcript",
+    "name": "get_youtube",
     "fn": "getYoutubeTranscript",
     "category": "youtube",
-    "description": "【YouTube 動画の字幕・説明文】YouTube の URL か動画 ID から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。返却: { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks }",
+    "description": "【YouTube 動画の字幕・チャンネルの最新動画】url の形で判別します。動画（URL か動画 ID）: 題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。チャンネル（URL・@ハンドル・UC… の ID）: 最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件。Yahoo の検索は使いません。動画の中身は、返った videoId を url に渡して読みます。チャンネルが無いときは found が false。返却: mode（video / channel）と、video は { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks }、channel は { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] }",
     "keywords": [
       "YouTube",
       "ユーチューブ",
@@ -425,11 +430,54 @@
       "要約",
       "transcript",
       "captions",
-      "youtu.be"
+      "youtu.be",
+      "チャンネル",
+      "channel",
+      "新着",
+      "最新動画",
+      "新着動画",
+      "動画一覧",
+      "投稿",
+      "ハンドル",
+      "RSS",
+      "get_youtube_transcript",
+      "get_youtube_channel"
     ],
     "method": "POST",
     "path": "/youtube/transcript",
-    "file": "servers/sora/get_youtube_transcript.ts"
+    "file": "servers/sora/get_youtube.ts"
+  },
+  {
+    "name": "get_youtube",
+    "fn": "getYoutubeChannel",
+    "category": "youtube",
+    "description": "【YouTube 動画の字幕・チャンネルの最新動画】url の形で判別します。動画（URL か動画 ID）: 題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。チャンネル（URL・@ハンドル・UC… の ID）: 最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件。Yahoo の検索は使いません。動画の中身は、返った videoId を url に渡して読みます。チャンネルが無いときは found が false。返却: mode（video / channel）と、video は { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks }、channel は { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] }",
+    "keywords": [
+      "YouTube",
+      "ユーチューブ",
+      "動画",
+      "字幕",
+      "自動字幕",
+      "文字起こし",
+      "要約",
+      "transcript",
+      "captions",
+      "youtu.be",
+      "チャンネル",
+      "channel",
+      "新着",
+      "最新動画",
+      "新着動画",
+      "動画一覧",
+      "投稿",
+      "ハンドル",
+      "RSS",
+      "get_youtube_transcript",
+      "get_youtube_channel"
+    ],
+    "method": "POST",
+    "path": "/youtube/channel",
+    "file": "servers/sora/get_youtube.ts"
   },
   {
     "name": "inspect_image",
@@ -831,7 +879,7 @@
     "name": "search_media",
     "fn": "searchImage",
     "category": "yahoo",
-    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
     "keywords": [
       "画像検索",
       "写真",
@@ -855,7 +903,7 @@
     "name": "search_media",
     "fn": "searchVideo",
     "category": "yahoo",
-    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
     "keywords": [
       "画像検索",
       "写真",
@@ -879,7 +927,7 @@
     "name": "search_media",
     "fn": "searchNews",
     "category": "yahoo",
-    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
+    "description": "【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）",
     "keywords": [
       "画像検索",
       "写真",

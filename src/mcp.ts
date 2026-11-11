@@ -302,7 +302,7 @@ export class McpSessionManager {
 
 /**
  * tools/list の1ツールを整形する。inputSchema は Gemini 互換化、outputSchema は既定で除外。
- * outputSchema は国別インテリジェンス2ツールだけで約160KBあり、ホストがモデルへ丸ごと渡すと
+ * outputSchema は国別インテリジェンス（research_country_context）だけで約74KBあり、ホストがモデルへ丸ごと渡すと
  * プロンプト長とレイテンシを押し上げる。tools/call 側の structuredContent 検証は影響を受けない。
  * 旧挙動が必要なクライアント向けに SORA_TOOL_OUTPUT_SCHEMA=true で復活できる。
  */

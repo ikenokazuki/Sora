@@ -13,8 +13,11 @@ import { createAddressContext, setAddressContextForTest } from './services/addre
 import { createTestAddressData, settleAddressData } from './test_fixtures/address/builders.js';
 import { CHIYODA_LG, replaceTowns, sampleUpstream } from './test_fixtures/address/harness.js';
 import * as yahooCache from './yahoo_search_cache.js';
+import * as youtube from './services/youtube.js';
+import * as intelDb from './services/country_intel/db.js';
+import * as intelReport from './services/country_intel/report.js';
 import { clearCache } from './cache.js';
-import { BatchScrapeRequestSchema, ScrapeRequestSchema } from './types.js';
+import { BatchScrapeRequestSchema, DEFAULT_MAX_CHARS, ScrapeRequestSchema } from './types.js';
 import type { XPostDetailProvider } from './services/x_detail.js';
 
 const restore: Array<() => void> = [];
@@ -23,7 +26,8 @@ afterEach(() => { while (restore.length) restore.pop()!(); });
 // v4.0.0 の MCP の引数（docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 5）。
 // v5.0.0 で scrape に旧 scrape_batch の urls・concurrency・webhookUrl を、crawl_site に旧 map_site の listOnly・limit・since・until を足した。
 // 統合したツールの引数は、旧ツールの引数の和（fetch_social_post は旧 fetch_x_post の statusId、search_media・search_keywords は Yahoo の 5 ツール。
-// lookup_hts は旧 verify_hts_code の productDescription を、旧 predict_hts_code の description にまとめる）
+// lookup_hts は旧 verify_hts_code の productDescription を、旧 predict_hts_code の description にまとめる。
+// get_country_context は旧 get_country_context_evidence・get_country_context_updates の引数に part を、get_youtube は旧 2 ツールの引数の和）
 const expected: Record<string, string[]> = {
   scrape: ['url', 'urls', 'concurrency', 'webhookUrl', 'maxChars', 'mode', 'formats', 'fullPage', 'stripLinks', 'maskPii', 'query', 'onlyMainContent', 'headers', 'verbose', 'keepDataImages', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
   crawl_site: ['url', 'listOnly', 'limit', 'since', 'until', 'maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
@@ -38,6 +42,8 @@ const expected: Record<string, string[]> = {
   watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
   lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'],
   check_regulations: ['htsCode', 'agencies', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact'],
+  get_country_context: ['contextId', 'part', 'evidenceIds', 'cursor', 'limit'],
+  get_youtube: ['url', 'lang', 'fromSec', 'maxChars', 'limit', 'noCache'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -58,7 +64,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info・search_laws・search_music・watch・lookup_hts・check_regulations）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info・search_laws・search_music・watch・lookup_hts・check_regulations・get_country_context・get_youtube）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -1448,6 +1454,223 @@ describe('check_regulations: agencies で CPSC と FDA を選び、機関ごと�
   });
 });
 
+describe('get_country_context: part でレポート・根拠・差分（旧 get_country_context_evidence・get_country_context_updates）', () => {
+  const CONTEXT = 'ctx_fixture';
+  const PAGE = { contextId: CONTEXT, items: [], totalStored: 0, missingIds: ['evd_x'] };
+  const UPDATES = { contextId: CONTEXT, changes: [{ id: 'chg_1', contextId: CONTEXT, observedAt: '2026-11-11T00:00:00.000Z', changeKind: 'added', evidenceId: 'evd_1' }], nextCursor: '2026-11-11T00:00:00.000Z' };
+  /** 3 つのサービスを差し替える（DB を読まない）。保存済みのレポートは無い */
+  const mockAll = () => {
+    const report = spyOn(intelReport, 'getPersistedCountryContext').mockReturnValue(undefined);
+    const evidence = spyOn(intelDb, 'getEvidencePage').mockReturnValue(PAGE as any);
+    const updates = spyOn(intelDb, 'getContextUpdates').mockReturnValue(UPDATES as any);
+    restore.push(() => { report.mockRestore(); evidence.mockRestore(); updates.mockRestore(); });
+    return { report, evidence, updates };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'get_country_context', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+
+  test('part を省くと report: getPersistedCountryContext を呼び、見つからなければ旧 get_country_context と同じエラー', async () => {
+    const { report, evidence, updates } = mockAll();
+    for (const args of [{ contextId: CONTEXT }, { contextId: CONTEXT, part: 'report' }]) {
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      expect(textOf(res)).toBe(`Country context not found: ${CONTEXT}`);
+    }
+    expect(report.mock.calls).toEqual([[CONTEXT], [CONTEXT]]);
+    expect(evidence).not.toHaveBeenCalled();
+    expect(updates).not.toHaveBeenCalled();
+  });
+
+  test('part: evidence は getEvidencePage に ids（evidenceIds）・cursor・limit を渡し、応答は旧 get_country_context_evidence と同じ', async () => {
+    const { report, evidence, updates } = mockAll();
+    const res = await call({ contextId: CONTEXT, part: 'evidence', evidenceIds: ['evd_x'], cursor: 'c1', limit: 10 });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual(PAGE);
+    expect(res.structuredContent).toEqual(PAGE);
+    expect(evidence.mock.calls[0]).toEqual([CONTEXT, { ids: ['evd_x'], cursor: 'c1', limit: 10 }]);
+    await call({ contextId: CONTEXT, part: 'evidence' });
+    expect(evidence.mock.calls[1]).toEqual([CONTEXT, {}]);
+    expect(report).not.toHaveBeenCalled();
+    expect(updates).not.toHaveBeenCalled();
+  });
+
+  test('part: updates は getContextUpdates に contextId・cursor を渡し、応答は旧 get_country_context_updates と同じ', async () => {
+    const { report, evidence, updates } = mockAll();
+    const res = await call({ contextId: CONTEXT, part: 'updates', cursor: '2026-11-10T00:00:00.000Z' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual(UPDATES);
+    expect(res.structuredContent).toEqual(UPDATES);
+    expect(updates.mock.calls[0]).toEqual([CONTEXT, '2026-11-10T00:00:00.000Z']);
+    expect(report).not.toHaveBeenCalled();
+    expect(evidence).not.toHaveBeenCalled();
+  });
+
+  test('失敗は、旧ツールと同じ文（Country intelligence error）', async () => {
+    const { evidence, updates } = mockAll();
+    evidence.mockImplementation(() => { throw new RangeError('Invalid page cursor'); });
+    updates.mockImplementation(() => { throw new RangeError('Invalid updates cursor'); });
+    const bad = await call({ contextId: CONTEXT, part: 'evidence', cursor: 'x' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toBe('Country intelligence error: Invalid page cursor');
+    const down = await call({ contextId: CONTEXT, part: 'updates', cursor: 'x' });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe('Country intelligence error: Invalid updates cursor');
+  });
+
+  test('part の形に合わない応答は返さない（旧ツールの outputSchema と同じ検査）', async () => {
+    const { evidence } = mockAll();
+    evidence.mockReturnValue({ contextId: CONTEXT } as any);
+    const res = await call({ contextId: CONTEXT, part: 'evidence' });
+    expect(res.isError).toBe(true);
+    expect(textOf(res)).toStartWith('Country intelligence error: invalid evidence payload');
+    expect(res.structuredContent).toBeUndefined();
+  });
+
+  // 誤った組み合わせ: DB を読まない
+  const partIs = (part: string) => `part が ${part} のとき`;
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['report（既定）に evidenceIds', { contextId: CONTEXT, evidenceIds: ['evd_1'] }, [`evidenceIds は ${partIs('evidence')}だけ指定できます（いま: ${partIs('report')}）`]],
+    ['report に limit: 10（既定値の 40 と違う）', { contextId: CONTEXT, part: 'report', limit: 10 }, [`limit は ${partIs('evidence')}だけ指定できます（いま: ${partIs('report')}）`]],
+    ['report に cursor', { contextId: CONTEXT, cursor: 'c1' }, [`cursor は ${partIs('evidence')} か ${partIs('updates')}だけ指定できます（いま: ${partIs('report')}）`]],
+    ['updates に evidenceIds・limit', { contextId: CONTEXT, part: 'updates', evidenceIds: ['evd_1'], limit: 5 }, [`evidenceIds, limit は ${partIs('evidence')}だけ指定できます（いま: ${partIs('updates')}）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（part の値と、それぞれの引数）を添える
+      expect(text).toContain('使い方');
+      for (const key of ['contextId', 'part', 'report', 'evidence', 'updates', 'evidenceIds', 'cursor', 'limit']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('空の cursor・evidenceIds は、指定しなかったのと同じ（report でも断らない）', async () => {
+    const { report } = mockAll();
+    const res = await call({ contextId: CONTEXT, cursor: '', evidenceIds: [] });
+    expect(textOf(res)).toBe(`Country context not found: ${CONTEXT}`);
+    expect(report).toHaveBeenCalledTimes(1);
+  });
+
+  test('スキーマ: contextId だけが必須、part の既定値は report、limit の既定値は 40 で、その値をそのまま入れても通る', async () => {
+    const { report, updates } = mockAll();
+    await withClient(async (client) => {
+      const schema = (await client.listTools()).tools.find((t) => t.name === 'get_country_context')!.inputSchema as any;
+      expect(schema.required).toEqual(['contextId']);
+      expect(schema.properties.part.default).toBe('report');
+      expect(schema.properties.part.enum).toEqual(['report', 'evidence', 'updates']);
+      expect(schema.properties.limit.default).toBe(40);
+      // evidence だけの引数に既定値が増えたら、onlyForMode の defaults に足すこと
+      expect(schema.properties.evidenceIds.default).toBeUndefined();
+      expect(schema.properties.cursor.default).toBeUndefined();
+      const asReport: any = await client.callTool({ name: 'get_country_context', arguments: { contextId: CONTEXT, part: schema.properties.part.default, limit: schema.properties.limit.default } });
+      expect(textOf(asReport)).toBe(`Country context not found: ${CONTEXT}`);
+      const asUpdates: any = await client.callTool({ name: 'get_country_context', arguments: { contextId: CONTEXT, part: 'updates', limit: schema.properties.limit.default } });
+      expect(asUpdates.isError, textOf(asUpdates)).toBeFalsy();
+    });
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(updates.mock.calls[0]).toEqual([CONTEXT, undefined]);
+  });
+});
+
+describe('get_youtube: url が動画なら字幕・説明文、チャンネルなら最新の動画（旧 get_youtube_transcript・get_youtube_channel）', () => {
+  const VIDEO = { found: true, videoId: 'Ab-_0123456', title: 'テストの動画', transcript: { status: 'ok', source: 'auto', text: '[0:00] てすと' }, availableTracks: [] };
+  const CHANNEL = { found: true, channelId: 'UC0000000000000000000001', title: 'テストチャンネル', url: 'https://www.youtube.com/channel/UC0000000000000000000001', videos: [] };
+  /** 2 つのサービスを差し替える（YouTube には問い合わせない） */
+  const mockBoth = () => {
+    const transcript = spyOn(youtube, 'getYoutubeTranscript').mockResolvedValue(VIDEO as any);
+    const channel = spyOn(youtube, 'getYoutubeChannel').mockResolvedValue(CHANNEL as any);
+    restore.push(() => { transcript.mockRestore(); channel.mockRestore(); });
+    return { transcript, channel };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'get_youtube', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+
+  test('動画の url: getYoutubeTranscript に旧 get_youtube_transcript の引数だけを渡し、応答は旧ツールと同じに mode: video', async () => {
+    const { transcript, channel } = mockBoth();
+    const res = await call({ url: 'https://youtu.be/Ab-_0123456?t=90', lang: 'en', fromSec: 60, maxChars: 2000, noCache: true });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual({ mode: 'video', ...VIDEO });
+    expect(Object.keys(body(res))[0]).toBe('mode');
+    expect(transcript.mock.calls[0][0]).toEqual({ url: 'https://youtu.be/Ab-_0123456?t=90', lang: 'en', fromSec: 60, maxChars: 2000, noCache: true });
+    await call({ url: 'Ab-_0123456' });
+    expect(transcript.mock.calls[1][0]).toEqual({ url: 'Ab-_0123456' });
+    expect(channel).not.toHaveBeenCalled();
+  });
+
+  test('チャンネルの url: getYoutubeChannel に旧 get_youtube_channel の引数だけを渡し、応答は旧ツールと同じに mode: channel', async () => {
+    const { transcript, channel } = mockBoth();
+    const res = await call({ url: '@YouTube', limit: 5, noCache: true });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res)).toEqual({ mode: 'channel', ...CHANNEL });
+    expect(channel.mock.calls[0][0]).toEqual({ url: '@YouTube', limit: 5, noCache: true });
+    for (const url of ['UC0000000000000000000001', 'https://www.youtube.com/channel/UC0000000000000000000001', 'https://www.youtube.com/c/Example', 'https://www.youtube.com/user/Example']) {
+      expect(body(await call({ url })).mode).toBe('channel');
+    }
+    expect(channel.mock.calls[1][0]).toEqual({ url: 'UC0000000000000000000001' });
+    expect(transcript).not.toHaveBeenCalled();
+  });
+
+  test('失敗は、旧ツールと同じ文（YouTube error）', async () => {
+    const { transcript, channel } = mockBoth();
+    transcript.mockRejectedValue(new Error('YouTube request failed: HTTP 429'));
+    channel.mockRejectedValue(new Error('YouTube request failed: feed HTTP 500'));
+    const bad = await call({ url: 'https://www.youtube.com/watch?v=Ab-_0123456' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toBe('YouTube error: YouTube request failed: HTTP 429');
+    const down = await call({ url: 'https://www.youtube.com/@YouTube' });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe('YouTube error: YouTube request failed: feed HTTP 500');
+  });
+
+  // 誤った組み合わせ・読めない url: YouTube に問い合わせない
+  const isVideo = 'url が動画のとき';
+  const isChannel = 'url がチャンネルのとき';
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['動画でもチャンネルでもない url', { url: 'https://example.com/watch?v=Ab-_0123456' }, ['url が YouTube の動画でもチャンネルでもありません']],
+    ['再生リストの url', { url: 'https://www.youtube.com/playlist?list=PL1234567890' }, ['url が YouTube の動画でもチャンネルでもありません']],
+    ['空白だけの url', { url: '  ' }, ['url が YouTube の動画でもチャンネルでもありません']],
+    ['動画に limit: 5（既定値の 10 と違う）', { url: 'Ab-_0123456', limit: 5 }, [`limit は ${isChannel}だけ指定できます（いま: ${isVideo}）`]],
+    ['チャンネルに lang・fromSec・maxChars', { url: '@YouTube', lang: 'en', fromSec: 30, maxChars: 1000 }, [`lang, fromSec, maxChars は ${isVideo}だけ指定できます（いま: ${isChannel}）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const spies = mockBoth();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（受け付ける url の形と、それぞれの引数）を添える
+      expect(text).toContain('使い方');
+      for (const key of ['watch', 'youtu.be', 'shorts', 'live', 'embed', '11 文字', '@ハンドル', '/channel/UC', '/c/', '/user/', 'lang', 'fromSec', 'maxChars', 'limit']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('スキーマ: url だけが必須、既定値（lang "ja"・fromSec 0・maxChars・limit 10）をほかの形の url にそのまま入れても通り、使われない', async () => {
+    const { transcript, channel } = mockBoth();
+    await withClient(async (client) => {
+      const schema = (await client.listTools()).tools.find((t) => t.name === 'get_youtube')!.inputSchema as any;
+      expect(schema.required).toEqual(['url']);
+      const d = (key: string) => schema.properties[key].default;
+      expect([d('lang'), d('fromSec'), d('maxChars'), d('limit')]).toEqual(['ja', 0, DEFAULT_MAX_CHARS, 10]);
+      const asVideo: any = await client.callTool({ name: 'get_youtube', arguments: { url: 'Ab-_0123456', limit: d('limit') } });
+      expect(asVideo.isError, textOf(asVideo)).toBeFalsy();
+      const asChannel: any = await client.callTool({ name: 'get_youtube', arguments: { url: '@YouTube', lang: d('lang'), fromSec: d('fromSec'), maxChars: d('maxChars') } });
+      expect(asChannel.isError, textOf(asChannel)).toBeFalsy();
+    });
+    expect(transcript.mock.calls[0][0]).toEqual({ url: 'Ab-_0123456' });
+    expect(channel.mock.calls[0][0]).toEqual({ url: '@YouTube' });
+  });
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -1485,6 +1708,15 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['check_fda_regulated', 'check_regulations', 'trade'],
     ['Prior Notice', 'check_regulations', 'trade'],
     ['適合証明書', 'check_regulations', 'trade'],
+    ['get_country_context_evidence', 'get_country_context', 'intel'],
+    ['get_country_context_updates', 'get_country_context', 'intel'],
+    ['根拠', 'get_country_context', 'intel'],
+    ['差分', 'get_country_context', 'intel'],
+    ['get_youtube_transcript', 'get_youtube', 'youtube'],
+    ['get_youtube_channel', 'get_youtube', 'youtube'],
+    ['字幕', 'get_youtube', 'youtube'],
+    ['文字起こし', 'get_youtube', 'youtube'],
+    ['新着動画', 'get_youtube', 'youtube'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

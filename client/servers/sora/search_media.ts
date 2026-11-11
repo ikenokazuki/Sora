@@ -68,7 +68,7 @@ export type SearchImageOutput = {
   }[];
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
 export function searchImage(input: SearchImageInput): Promise<SearchImageOutput> {
   return callSora<SearchImageOutput>({ method: 'POST', path: '/search/image' }, input);
 }
@@ -133,7 +133,7 @@ export type SearchVideoOutput = {
     transcript?: {
       /** "ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行) */
       status: "ok" | "none" | "unavailable";
-      /** status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画) */
+      /** status が ok 以外の理由 (get_youtube の動画と同じ。"video-unavailable" は再生できない動画) */
       reason?: "no-captions" | "live-now" | "language-mismatch" | "blocked" | "request-failed" | "video-unavailable";
       /** status が ok 以外のときの説明 (話の中身を推測で補わないよう求める) */
       message?: string;
@@ -145,7 +145,7 @@ export type SearchVideoOutput = {
       note?: string;
       /** "relevant"(検索語を含む段落), "head"(検索語を含む段落が無いので先頭から) */
       excerpt?: "relevant" | "head";
-      /** 選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube_transcript で読む */
+      /** 選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube で読む */
       text?: string;
       /** text の文字数 */
       chars?: number;
@@ -157,7 +157,7 @@ export type SearchVideoOutput = {
   message?: string;
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
 export function searchVideo(input: SearchVideoInput): Promise<SearchVideoOutput> {
   return callSora<SearchVideoOutput>({ method: 'POST', path: '/search/video' }, input);
 }
@@ -199,7 +199,7 @@ export type SearchNewsOutput = {
   }[];
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube_transcript）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
 export function searchNews(input: SearchNewsInput): Promise<SearchNewsOutput> {
   return callSora<SearchNewsOutput>({ method: 'POST', path: '/search/news' }, input);
 }

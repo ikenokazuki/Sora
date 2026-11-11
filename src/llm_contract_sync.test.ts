@@ -485,7 +485,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Regression guards with healthy safety margin
       expect(toolChars).toBeLessThan(30000);
       // 2026-10-25 に YouTube の指示（10 番目）を足して 8,443 → 8,706 字になり、上限を 8,500 から 8,800 に上げた
-      // v4.0.0 で get_youtube_channel の案内を 10 番目に足して 8,756 → 8,881 字になり、上限を 8,800 から 9,000 に上げた（instructions の見直しは別の PR）
+      // v4.0.0 で YouTube のチャンネルのツール（v5.0.0 からは get_youtube）の案内を 10 番目に足して 8,756 → 8,881 字になり、上限を 8,800 から 9,000 に上げた（instructions の見直しは別の PR）
       expect(instructionChars).toBeLessThan(9000);
       expect(estimatedTokens).toBeLessThan(10000);
 

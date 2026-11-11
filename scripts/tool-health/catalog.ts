@@ -52,8 +52,8 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'watch',
   'search_music', 'search_laws', 'search_diet_minutes',
   'check_regulations', 'lookup_hts',
-  'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
-  'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
+  'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube', 'recognize_song', 'research_country_context', 'get_country_context',
+  'search_tools',
 ];
 
 
@@ -130,13 +130,17 @@ export const REST_MAP: RestMap = {
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   generate_gcc_certificate: { method: 'POST', path: '/trade/gcc-generate' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
-  get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
-  get_youtube_channel: { method: 'POST', path: '/youtube/channel' },
+  get_youtube: [
+    { method: 'POST', path: '/youtube/transcript', fn: 'getYoutubeTranscript' },
+    { method: 'POST', path: '/youtube/channel', fn: 'getYoutubeChannel' },
+  ],
   recognize_song: { method: 'POST', path: '/music/recognize' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
-  get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
-  get_country_context_evidence: { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
-  get_country_context_updates: { method: 'GET', path: '/intelligence/context/:contextId/updates' },
+  get_country_context: [
+    { method: 'GET', path: '/intelligence/context/:contextId' },
+    { method: 'GET', path: '/intelligence/context/:contextId/evidence', fn: 'getCountryContextEvidence' },
+    { method: 'GET', path: '/intelligence/context/:contextId/updates', fn: 'getCountryContextUpdates' },
+  ],
   search_tools: null,
 };
 
@@ -1035,27 +1039,29 @@ export const TOOL_CASES: HealthCase[] = [
     if (!img?.data || !img.mimeType?.startsWith('image/')) throw new LiveFail('inspect_image returned no image payload');
     return { sources: [{ source: 'image-bytes', format: img.mimeType, upstreamStatus: 'unknown' }] };
   }),
-  toolCase('youtube.transcript', ['get_youtube_transcript'], ['youtube'], true, 90000, async (ctx) => {
+  toolCase('youtube.transcript', ['get_youtube'], ['youtube'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'YouTube 字幕', 30000);
     // YouTube 最初の動画（2005 年、手動の字幕あり）。消えにくい
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_transcript', { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', maxChars: 2000 }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_youtube_transcript') as { found?: boolean; transcript?: { status?: string; reason?: string; message?: string; text?: string } };
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube', { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', maxChars: 2000 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube (video)') as { mode?: string; found?: boolean; transcript?: { status?: string; reason?: string; message?: string; text?: string } };
+    if (raw.mode !== 'video') throw new LiveFail('get_youtube did not read the video URL as a video: ' + textOf(raw).slice(0, 200));
     const t = raw.transcript;
     if (t?.status === 'unavailable') {
-      const detail = `get_youtube_transcript ${t.reason}: ${t.message ?? ''}`;
+      const detail = `get_youtube (video) ${t.reason}: ${t.message ?? ''}`;
       throw t.reason === 'blocked' ? new LiveBlocked(detail) : new LiveUnavailable(detail);
     }
-    if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube_transcript returned no transcript: ' + textOf(raw).slice(0, 200));
+    if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube (video) returned no transcript: ' + textOf(raw).slice(0, 200));
     mustContain(raw, ['Me at the zoo'], 'youtube-player');
     return { sources: [{ source: 'youtube-timedtext', count: t.text.length, format: 'json3', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('youtube.channel', ['get_youtube_channel'], ['youtube'], true, 90000, async (ctx) => {
+  toolCase('youtube.channel', ['get_youtube'], ['youtube'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'YouTube チャンネル', 30000);
     // YouTube 公式のチャンネル。消えにくく、最新の動画がある。フィードとページの形は実機で未確認のため、上流の失敗（同意の画面・ブロック・形の変化）は止めずに unavailable にする
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_channel', { url: 'https://www.youtube.com/@YouTube', limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_youtube_channel') as { found?: boolean; reason?: string; message?: string };
-    if (raw.found !== true) throw new LiveUnavailable(`get_youtube_channel ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
-    const { items } = mustHaveItems(raw, 'get_youtube_channel', ['videoId', 'title', 'publishedAt']);
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube', { url: 'https://www.youtube.com/@YouTube', limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube (channel)') as { mode?: string; found?: boolean; reason?: string; message?: string };
+    if (raw.mode !== 'channel') throw new LiveFail('get_youtube did not read the @handle as a channel: ' + textOf(raw).slice(0, 200));
+    if (raw.found !== true) throw new LiveUnavailable(`get_youtube (channel) ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
+    const { items } = mustHaveItems(raw, 'get_youtube (channel)', ['videoId', 'title', 'publishedAt']);
     return { sources: [{ source: 'youtube-feed', count: items.length, format: 'atom', upstreamStatus: 'unknown' }] };
   }),
   toolCase('shazam.recognize', ['recognize_song'], ['shazam', 'itunes'], true, 120000, async (ctx) => {
@@ -1074,7 +1080,7 @@ export const TOOL_CASES: HealthCase[] = [
     mustContain(raw, ['YOASOBI'], 'shazam');
     return { sources: [{ source: 'shazam-tag', count: 1, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
+  toolCase('country.lifecycle', ['research_country_context', 'get_country_context'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'research_country_context', { region: 'Japan', query: 'economy', noCache: true }, 110000);
     const raw = toolPayload(rawJsonText, 'research_country_context');
@@ -1083,10 +1089,10 @@ export const TOOL_CASES: HealthCase[] = [
     if (!Array.isArray(report.evidence) || report.evidence.length === 0) throw new LiveFail('research returned no evidence');
     const { text: cText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId }, 30000);
     mustContain(toolPayload(cText, 'get_country_context'), [report.contextId], 'intel-get');
-    const { text: eText } = await mcpJson(ctx, 'get_country_context_evidence', { contextId: report.contextId, limit: 2 }, 30000);
-    mustContain(toolPayload(eText, 'get_country_context_evidence'), [report.contextId], 'intel-evidence');
-    const { text: uText } = await mcpJson(ctx, 'get_country_context_updates', { contextId: report.contextId }, 30000);
-    mustContain(toolPayload(uText, 'get_country_context_updates'), [report.contextId], 'intel-updates');
+    const { text: eText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId, part: 'evidence', limit: 2 }, 30000);
+    mustContain(toolPayload(eText, 'get_country_context (evidence)'), [report.contextId], 'intel-evidence');
+    const { text: uText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId, part: 'updates' }, 30000);
+    mustContain(toolPayload(uText, 'get_country_context (updates)'), [report.contextId], 'intel-updates');
     return { sources: [{ source: 'intel-runtime', count: (report.evidence as unknown[]).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('tools.discovery', ['search_tools'], [], false, 30000, async (ctx) => {

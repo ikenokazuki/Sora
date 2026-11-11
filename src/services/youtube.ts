@@ -36,6 +36,15 @@ export interface YoutubeDeps {
 /** URL でも動画 ID でもない入力。REST は 400 にする。 */
 export class YoutubeInputError extends Error {}
 
+/**
+ * get_youtube の url が動画か、チャンネルか。読み方は字幕（parseYouTubeUrl）とチャンネル（parseYouTubeChannelRef）のままで、
+ * 2 つの読み方は重ならない（動画は watch・youtu.be・shorts・live・embed・v と 11 文字の ID、チャンネルは @・channel・c・user と UC… の ID）。
+ * どちらでもなければ undefined。
+ */
+export function classifyYoutubeUrl(input: string): 'video' | 'channel' | undefined {
+  return parseYouTubeUrl(input) ? 'video' : parseYouTubeChannelRef(input) ? 'channel' : undefined;
+}
+
 const PLAYER_URL = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false';
 // ponytail: クライアントの版は固定。YouTube に拒否されたら youtube-transcript-api / yt-dlp に合わせて上げる
 const ANDROID_CLIENT = { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 34 };
@@ -579,8 +588,8 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean; 
     } else {
       // scrape は maxChars で切ってから段落を選ぶので、長い字幕は切る前に、検索語に関係する段落を選んで載せる（無ければ先頭から）
       const note = (relevant: boolean) => relevant
-        ? `（字幕は全体で ${all.length} 字あり、長いので、検索語に関係する段落だけを時刻順に載せています。全体は get_youtube_transcript で読めます。）`
-        : `（字幕は全体で ${all.length} 字あり、長いので先頭から載せています。続きは get_youtube_transcript の fromSec で読めます。）`;
+        ? `（字幕は全体で ${all.length} 字あり、長いので、検索語に関係する段落だけを時刻順に載せています。全体は get_youtube で読めます。）`
+        : `（字幕は全体で ${all.length} 字あり、長いので先頭から載せています。続きは get_youtube の fromSec で読めます。）`;
       const chapterHeadings = chapters.reduce((n, c) => n + c.title.length + 16, 0); // 選んだ段落のチャプターの見出しの分を、多めに取っておく
       const budget = maxChars - head.length - heading.length - note(true).length - chapterHeadings - 8;
       const { indices, relevant } = rankParagraphs(paragraphs, options.query ?? '', budget, (i) => block(paragraphs[i]).length, 2, chapters);
@@ -607,7 +616,7 @@ export async function getYoutubePage(url: string, options: { noCache?: boolean; 
   };
 }
 
-// ---- チャンネルの最新動画（get_youtube_channel） ----
+// ---- チャンネルの最新動画（get_youtube のチャンネル） ----
 // 公開の Atom フィード（最新 15 件）を読む。ハンドルからのチャンネル ID は、チャンネルのページの HTML から読む。
 // 字幕は付けない（動画を選んだあとに getYoutubeTranscript）。形式は公知の仕様からの想定で、実機では未確認（docs/superpowers/specs/2026-10-26-youtube-channel-design.md）。
 

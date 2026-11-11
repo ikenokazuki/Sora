@@ -1496,13 +1496,13 @@ export const ImageSearchResponseSchema = z.object({
 /** 検索結果に付ける、YouTube の字幕のうち検索語に関係する部分（search_media の type: video の transcripts、search_deep の videos）。 */
 export const YoutubeExcerptSchema = z.object({
   status: z.enum(['ok', 'none', 'unavailable']).describe('"ok"(本文あり), "none"(字幕が無い・返さない), "unavailable"(取得できなかった。時間をおいて再試行)'),
-  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube_transcript と同じ。"video-unavailable" は再生できない動画)'),
+  reason: z.enum(['no-captions', 'live-now', 'language-mismatch', 'blocked', 'request-failed', 'video-unavailable']).optional().describe('status が ok 以外の理由 (get_youtube の動画と同じ。"video-unavailable" は再生できない動画)'),
   message: z.string().optional().describe('status が ok 以外のときの説明 (話の中身を推測で補わないよう求める)'),
   source: z.enum(['manual', 'auto']).optional().describe('字幕の種類: "manual"(手動の字幕), "auto"(YouTube の自動字幕)'),
   language: z.string().optional().describe('字幕の言語コード'),
   note: z.string().optional().describe('自動字幕の注意 (音声認識なので聞き間違いを含み、固有名詞や句読点が正しくないことがある)'),
   excerpt: z.enum(['relevant', 'head']).optional().describe('"relevant"(検索語を含む段落), "head"(検索語を含む段落が無いので先頭から)'),
-  text: z.string().optional().describe('選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube_transcript で読む'),
+  text: z.string().optional().describe('選んだ段落を時刻順に並べた本文。各行の先頭に [m:ss]。全文は get_youtube で読む'),
   chars: z.number().optional().describe('text の文字数'),
   totalChars: z.number().optional().describe('動画全体の字幕の文字数'),
 });

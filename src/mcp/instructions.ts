@@ -109,7 +109,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   }
   if (hasIntel) {
     tier1Directives.push(
-      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report by its contextId with get_country_context, get_country_context_evidence, get_country_context_updates. Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
+      "8. Country & Region Intelligence (evidence-backed country context, calendars, polls, Japan projection; no sentiment or risk scores): Use 'research_country_context'; reopen a saved report, its evidence or its updates by contextId with get_country_context (part). Discovery keywords: '国地域', 'research_country_context'. Follow section 2 only when its definition is missing.",
     );
   }
 
@@ -123,7 +123,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
     // 動画を探すとき・調べものでは、検索の側の指定（既定は 0）を使うよう、有効なモジュールのぶんだけ案内する
     const viaSearch = [hasYahoo && 'to find videos use search_media type:video transcripts:3', hasWeb && 'for research add search_deep videos:2'].filter(Boolean).join('; ');
     tier1Directives.push(
-      `10. YouTube Videos (what a video says, summaries, quotes): get_youtube_transcript with the URL; never guess from the title. A channel's latest videos: get_youtube_channel (URL, @handle or UC id), then get_youtube_transcript with a returned videoId.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
+      `10. YouTube Videos (what a video says, summaries, quotes): get_youtube with the URL; never guess from the title. A channel's latest videos: get_youtube with its URL, @handle or UC id, then with a returned videoId.${viaSearch ? ` ${viaSearch[0].toUpperCase()}${viaSearch.slice(1)}.` : ''} Auto captions have errors; if transcript.status is not 'ok', use only the title and description.`,
     );
   }
 

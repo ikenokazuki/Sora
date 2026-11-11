@@ -3628,8 +3628,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(36);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(23);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(33);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(20);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4094,7 +4094,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 36 tools and enable 13 core hybrid tools by default', () => {
+  it('MCP server should register all 33 tools and enable 13 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4133,10 +4133,10 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('fetch_social_post');
     expect(enabledToolsAll).toContain('search_poi');
     expect(enabledToolsAll).toContain('lookup_address');
-    expect(enabledToolsAll).toContain('get_youtube_transcript');
-    expect(enabledToolsAll).toContain('get_youtube_channel');
+    expect(enabledToolsAll).toContain('get_youtube');
+    expect(enabledToolsAll).toContain('get_country_context');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(36);
+    expect(enabledToolsAll.length).toBe(33);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
