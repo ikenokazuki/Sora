@@ -3,7 +3,7 @@
  * - OpenAPI の各操作に operationId・タグ・認証・エラー応答を足す（finalizeOpenApi）。
  * - GET /tools（言語に依存しない、操作の一覧と 1 つ分の定義）の元になる（listRestTools・describeRestTool）。
  *
- * 名前（id）はいまの MCP のツール名と同じ。MCP のツールを統合する v5.0.0 のあとも、REST は変えない決定なので、
+ * 名前（id）は v4 までの MCP のツール名と同じ。MCP のツールを統合した v5.0.0 のあとも、REST は変えない決定なので、
  * この名前はそのまま使う（docs/superpowers/specs/2026-11-11-tool-consolidation-design.md の「REST と client」）。
  * 一覧に載せるのは「正本」の操作だけ。別名・GET で呼ぶ形・進行状況の SSE・システムの経路は、正本の定義の
  * alternatives に載せる（GET /tools/<name>）か、一覧に出さない。

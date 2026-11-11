@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { REST_MAP } from '../scripts/tool-health/catalog.js';
 import { createMcpServer, toolCatalogOf } from './mcp.js';
+import { EXPLICIT_ONLY_MODULES } from './mcp/registry.js';
 import {
   describeRestTool,
   finalizeOpenApi,
@@ -50,7 +51,7 @@ describe('台帳（REST_TOOLS・OTHER_OPERATIONS）', () => {
   const keyOf = (route: Route) => operationKey(route.method, route.path.replace(/:(\w+)/g, '{$1}'));
 
   test('REST_MAP のすべての経路が台帳にあり、MCP のツールのカテゴリは、最初の経路のカテゴリと同じ', () => {
-    const catalog = toolCatalogOf(createMcpServer({ deferTools: false, modules: ['all', 'lyrics', 'shazam', 'hts-archive'] }));
+    const catalog = toolCatalogOf(createMcpServer({ deferTools: false, modules: ['all', ...EXPLICIT_ONLY_MODULES] }));
     const byKey = new Map(REST_TOOLS.map((tool) => [operationKey(tool.method, tool.path), tool]));
     for (const [name, value] of Object.entries(REST_MAP)) {
       const routes = routesOf(value);
