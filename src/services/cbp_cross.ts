@@ -1,8 +1,9 @@
 // 米国税関（CBP）の分類判例（CROSS）。分類判例は「普段の言葉」と法令の用語をつなぐ手がかりになる。
-// 照会先は CROSS_SOURCE で選ぶ。既定の local は手元の判例の索引（cross_index.ts）、api は CBP の検索 API（rulings.cbp.gov）。
+// 照会先は SORA_HTS_CROSS_SOURCE で選ぶ。既定の local は手元の判例の索引（cross_index.ts）、api は CBP の検索 API（rulings.cbp.gov）。
 // CBP の API は 2026 年 11 月からボット対策の後ろにあり、プログラムからは 403 になる（避けることはしない）。
 // どちらでも、失敗しても推測は止めない（呼び出し側は HTS の全文検索だけで答える）。API が連続で失敗したときは 60 秒、照会を控える。
 import { getFromCache, setToCache } from '../cache.js';
+import { envEnum } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { CROSS_RULING_URL, crossIndexPendingNote, searchCrossIndex } from './cross_index.js';
 
@@ -18,9 +19,9 @@ const PAGE_SIZE = 10;
 const MAX_TOTAL_HITS_API = 2000;
 const MAX_TOTAL_HITS_LOCAL = 250;
 
-/** 照会先。CROSS_SOURCE=api のときだけ CBP の API を引く。 */
+/** 照会先。SORA_HTS_CROSS_SOURCE=api のときだけ CBP の API を引く。 */
 export function crossSource(): 'local' | 'api' {
-  return process.env.CROSS_SOURCE === 'api' ? 'api' : 'local';
+  return envEnum('SORA_HTS_CROSS_SOURCE');
 }
 
 export interface CrossRuling {
