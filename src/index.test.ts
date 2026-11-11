@@ -3631,8 +3631,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(53);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(39);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(51);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(37);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4097,7 +4097,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 53 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 51 tools and enable 14 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
@@ -4144,7 +4144,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(53);
+    expect(enabledToolsAll.length).toBe(51);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4939,7 +4939,7 @@ describe('Sora REST & MCP Endpoints', () => {
       }
 
       // 万能Web検索・スクレイプ系ツール：イベント・スケジュール等の万能調査を明記し、かつLLMネイティブ機能を阻害する強制ディレクティブを持たないこと
-      const webTools = ['scrape', 'scrape_batch', 'search_web', 'search_deep'];
+      const webTools = ['scrape', 'search_web', 'search_deep'];
       for (const toolName of webTools) {
         const tool = registeredTools[toolName];
         expect(tool).toBeDefined();

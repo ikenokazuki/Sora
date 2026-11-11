@@ -301,22 +301,22 @@ export type IntegratedSearchResponseMode = z.infer<
   typeof IntegratedSearchResponseModeSchema
 >;
 
-/** scrape・scrape_batch・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
+/** scrape・crawl_site 共通の responseMode（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_RESPONSE_MODE_FIELD = IntegratedSearchResponseModeSchema.optional().describe('返却モード (デフォルト: "full")。"evidence": query に合うハイライトがあれば、content をハイライトに置き換える。本文に合う節が無いときは、ページの説明文を補完の証拠として返す').meta({ default: 'full' });
 
-/** scrape・scrape_batch・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
+/** scrape・crawl_site 共通の includeMedia（search_deep は説明が違うので別に持つ） */
 export const SCRAPE_INCLUDE_MEDIA_FIELD = z.boolean().optional().describe('画像・動画の URL（本文中の画像、ogImage と media）を応答に含めるか (デフォルト: true)。false で省き、本文の画像は [画像: alt] にする。formats に images を指定したときの images は省かない。formats の rawHtml の <img> は消さない。html は、記事以外のページ（rs-trafilatura の本文を使うページ）では false のとき画像が入らず、記事（Readability の本文）では残る').meta({ default: true });
 
-/** scrape・scrape_batch 共通の mode */
+/** scrape（url・urls）共通の mode */
 export const SCRAPE_MODE_FIELD = z.enum(['auto', 'fast', 'browser']).optional().describe('動作モード: "auto" (デフォルト。JS 必須・確認画面・取得拒否のページと、formats に screenshot があるときだけブラウザ), "fast" (静的取得のみ。screenshot は撮れず warnings が付く), "browser" (常にブラウザ)').meta({ default: 'auto' });
 
-/** scrape・scrape_batch 共通の headers */
+/** scrape（url・urls）共通の headers */
 export const SCRAPE_HEADERS_FIELD = z.record(z.string(), z.string()).optional().describe('リクエスト時に送信するカスタム HTTP ヘッダー連想配列 (例: {"Accept-Language": "ja", "User-Agent": "..."})。User-Agent はブラウザでは送らない');
 
-/** scrape・scrape_batch 共通の maskPii */
+/** scrape（url・urls）共通の maskPii */
 export const SCRAPE_MASK_PII_FIELD = z.boolean().optional().describe('メール・電話番号・クレジットカード番号等の個人情報・機密情報を自動マスキングするか (デフォルト: false)').meta({ default: false });
 
-/** scrape・scrape_batch・crawl_site・search_deep 共通の annotateTemporal */
+/** scrape・crawl_site・search_deep 共通の annotateTemporal */
 export const ANNOTATE_TEMPORAL_FIELD = z.boolean().optional().describe('相対日付（明日・N 日後・来週金曜・来月など。「来週」だけは対象外）に絶対日付 [YYYY-MM-DD] を注記するか。基準は公開日時、無ければ今日 (デフォルト: false)').meta({ default: false });
 
 export const ScrapeRequestSchema = z.object({
@@ -436,7 +436,7 @@ export const CrawlRequestSchema = z.object({
   noCache: z.boolean().optional().describe('キャッシュをバイパスするか').meta({ default: false }),
 });
 
-/** map_site・REST の /map 共通の since / until */
+/** crawl_site の listOnly・REST の /map 共通の since / until */
 export const MAP_SINCE_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以降の URL に絞る (例: "2026-08-01", "2026-01-01T00:00:00Z")。lastmod の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない';
 export const MAP_UNTIL_DESCRIPTION = 'サイトマップの lastmod がこの日付・日時以前の URL に絞る。lastmod の無い URL は常に残り、リンクをたどる切り替えのときは効かない';
 

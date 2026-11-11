@@ -85,7 +85,7 @@
     "name": "crawl_site",
     "fn": "crawlSite",
     "category": "web",
-    "description": "【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }",
+    "description": "【同一サイト内再帰巡回・URL一覧】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。listOnly: true なら本文を取らず、サイトマップ (sitemap.xml) またはページ内リンクからサイト内の URL 一覧だけを高速抽出します。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }。listOnly は { url, links, count, source }",
     "keywords": [
       "クロール",
       "サイト巡回",
@@ -93,10 +93,38 @@
       "全ページ取得",
       "まとめ読み",
       "ドメイン探索",
-      "一括収集"
+      "一括収集",
+      "map_site",
+      "サイトマップ",
+      "URL一覧",
+      "サイト構造",
+      "リンク収集"
     ],
     "method": "POST",
     "path": "/crawl",
+    "file": "servers/sora/crawl_site.ts"
+  },
+  {
+    "name": "crawl_site",
+    "fn": "mapSite",
+    "category": "web",
+    "description": "【同一サイト内再帰巡回・URL一覧】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。listOnly: true なら本文を取らず、サイトマップ (sitemap.xml) またはページ内リンクからサイト内の URL 一覧だけを高速抽出します。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }。listOnly は { url, links, count, source }",
+    "keywords": [
+      "クロール",
+      "サイト巡回",
+      "再帰巡回",
+      "全ページ取得",
+      "まとめ読み",
+      "ドメイン探索",
+      "一括収集",
+      "map_site",
+      "サイトマップ",
+      "URL一覧",
+      "サイト構造",
+      "リンク収集"
+    ],
+    "method": "POST",
+    "path": "/map",
     "file": "servers/sora/crawl_site.ts"
   },
   {
@@ -338,21 +366,6 @@
     "file": "servers/sora/inspect_image.ts"
   },
   {
-    "name": "map_site",
-    "fn": "mapSite",
-    "category": "web",
-    "description": "【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。本文が必要なら crawl_site / scrape_batch。返却: { url, links, count, source }",
-    "keywords": [
-      "サイトマップ",
-      "URL一覧",
-      "サイト構造",
-      "リンク収集"
-    ],
-    "method": "POST",
-    "path": "/map",
-    "file": "servers/sora/map_site.ts"
-  },
-  {
     "name": "normalize_address",
     "fn": "normalizeAddress",
     "category": "disaster",
@@ -433,25 +446,38 @@
     "name": "scrape",
     "fn": "scrape",
     "category": "web",
-    "description": "【単一URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }",
+    "description": "【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }。urls は { total, successful, failed, results, errors }",
     "keywords": [
       "スクレイプ",
       "Web抽出",
       "URL",
       "Markdown",
       "PDF",
-      "記事本文"
+      "記事本文",
+      "scrape_batch",
+      "一括スクレイプ",
+      "一括取得",
+      "複数URL",
+      "並行取得",
+      "バッチ"
     ],
     "method": "POST",
     "path": "/scrape",
     "file": "servers/sora/scrape.ts"
   },
   {
-    "name": "scrape_batch",
+    "name": "scrape",
     "fn": "scrapeBatch",
     "category": "web",
-    "description": "【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }。results は入力の順ではなく、取得が終わった順",
+    "description": "【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }。urls は { total, successful, failed, results, errors }",
     "keywords": [
+      "スクレイプ",
+      "Web抽出",
+      "URL",
+      "Markdown",
+      "PDF",
+      "記事本文",
+      "scrape_batch",
       "一括スクレイプ",
       "一括取得",
       "複数URL",
@@ -460,7 +486,7 @@
     ],
     "method": "POST",
     "path": "/scrape/batch",
-    "file": "servers/sora/scrape_batch.ts"
+    "file": "servers/sora/scrape.ts"
   },
   {
     "name": "search_artist",

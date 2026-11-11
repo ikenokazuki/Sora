@@ -7,7 +7,7 @@ import { scrapeBatchUrls, scrapeUrl } from './scraper.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
 
-// 手元のサーバーで、scrape・scrape_batch の入力が取得の経路ごとにどう効くかを確かめる（外へは出ない）
+// 手元のサーバーで、scrape（url・urls）の入力が取得の経路ごとにどう効くかを確かめる（外へは出ない）
 const filler = '静的に取れる、十分に長い本文の文です。'.repeat(20);
 const mail = 'contact@example.com';
 const phone = '03-1234-5678';
@@ -36,7 +36,7 @@ function minimalPdf(text: string): string {
 }
 const PNG_1X1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
-describe('scrape・scrape_batch の入力の経路（手元のサーバー）', () => {
+describe('scrape（url・urls）の入力の経路（手元のサーバー）', () => {
   let server: ReturnType<typeof Bun.serve>;
   let other: ReturnType<typeof Bun.serve>;
   const seen: Array<{ path: string; headers: Headers }> = [];
@@ -156,7 +156,7 @@ describe('scrape・scrape_batch の入力の経路（手元のサーバー）', 
       expect(result.warnings).toBeUndefined();
     }, 60_000);
 
-    browserTest('scrape_batch も同じ', async () => {
+    browserTest('urls（scrapeBatchUrls）も同じ', async () => {
       const batch = await scrapeBatchUrls({ urls: [`${base()}/shot-batch`], formats: ['screenshot'], noCache: true });
       expect(batch.results[0].screenshot?.length).toBeGreaterThan(100);
     }, 60_000);

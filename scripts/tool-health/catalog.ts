@@ -43,7 +43,7 @@ export interface RestRoute {
 }
 
 export const CANONICAL_TOOLS: readonly string[] = [
-  'scrape', 'scrape_batch', 'search_deep', 'map_site', 'crawl_site', 'search_web',
+  'scrape', 'search_deep', 'crawl_site', 'search_web',
   'search_social_posts', 'fetch_social_post', 'browser_action', 'search_image', 'search_video',
   'search_news', 'search_chiebukuro', 'suggest_keywords', 'search_realtime', 'search_trend',
   'fetch_x_post', 'search_route', 'get_weather', 'get_flight_status', 'track_package',
@@ -75,11 +75,9 @@ export function restRoutesOf(tool: string, map: RestMap = REST_MAP): RestRoute[]
 }
 
 export const REST_MAP: RestMap = {
-  scrape: { method: 'POST', path: '/scrape' },
-  scrape_batch: { method: 'POST', path: '/scrape/batch' },
+  scrape: [{ method: 'POST', path: '/scrape' }, { method: 'POST', path: '/scrape/batch', fn: 'scrapeBatch' }],
   search_deep: { method: 'POST', path: '/search/deep' },
-  map_site: { method: 'POST', path: '/map' },
-  crawl_site: { method: 'POST', path: '/crawl' },
+  crawl_site: [{ method: 'POST', path: '/crawl' }, { method: 'POST', path: '/map', fn: 'mapSite' }],
   search_web: { method: 'POST', path: '/search/web' },
   search_social_posts: { method: 'POST', path: '/social/search' },
   fetch_social_post: { method: 'POST', path: '/social/fetch' },
@@ -651,9 +649,9 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'scrape');
     return mustContain(raw, ['Example Domain'], 'example.com');
   }),
-  toolCase('scrape.batch', ['scrape_batch'], ['web:example'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'scrape_batch', { urls: ['https://example.com/', 'https://example.org/'], noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'scrape_batch');
+  toolCase('scrape.batch', ['scrape'], ['web:example'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'scrape', { urls: ['https://example.com/', 'https://example.org/'], noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'scrape');
     return mustContain(raw, ['Example Domain'], 'example.com+example.org');
   }),
   toolCase('search.deep', ['search_deep'], ['yahoo:web', 'yahoo:realtime'], true, 90000, async (ctx) => {
@@ -662,9 +660,9 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_deep', ['url', 'title']);
     return mustContain(raw, ['東京'], 'yahoo-deep');
   }),
-  toolCase('map.site', ['map_site'], ['web:sitemap'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'map_site', { url: 'https://example.com/', limit: 5 }, 60000);
-    const raw = toolPayload(rawJsonText, 'map_site');
+  toolCase('crawl.list', ['crawl_site'], ['web:sitemap'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'crawl_site', { url: 'https://example.com/', listOnly: true, limit: 5 }, 60000);
+    const raw = toolPayload(rawJsonText, 'crawl_site');
     return mustContain(raw, ['https://example.com'], 'example.com-map');
   }),
   toolCase('crawl.site', ['crawl_site'], ['web:example'], true, 90000, async (ctx) => {

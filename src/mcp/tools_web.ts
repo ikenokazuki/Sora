@@ -3,33 +3,38 @@ import { crawlSiteUrl, integratedSearch, mapSiteUrl, scrapeBatchUrls, scrapeUrl 
 import { formatCompactScrapeResult } from '../response_cleaner.js';
 import { SEARCH_WEB_INPUT_SHAPE, searchWebWithFormats } from '../search_web_formats.js';
 import { serializeIntegratedSearchMcpResponse } from '../integrated_search_host_response.js';
-import { ANNOTATE_TEMPORAL_FIELD, INTEGRATED_SEARCH_INPUT_SHAPE, MAP_SINCE_DESCRIPTION, MAP_UNTIL_DESCRIPTION, SCRAPE_BATCH_INPUT_SHAPE, SCRAPE_HEADERS_FIELD, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_MASK_PII_FIELD, SCRAPE_MODE_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
+import { ANNOTATE_TEMPORAL_FIELD, INTEGRATED_SEARCH_INPUT_SHAPE, MAP_SINCE_DESCRIPTION, MAP_UNTIL_DESCRIPTION, SCRAPE_HEADERS_FIELD, SCRAPE_INCLUDE_MEDIA_FIELD, SCRAPE_MASK_PII_FIELD, SCRAPE_MODE_FIELD, SCRAPE_RESPONSE_MODE_FIELD, ScrapeFormatSchema } from '../types.js';
 import { SocialPlatformSchema } from '../services/country_intel/types.js';
 import { errorMessage } from '../errors.js';
 import { registerTool, toolJson } from './registry.js';
+import { exactlyOne, onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
 /** 🌐 Category 1: Core Web & Crawling (モジュール: 'web') */
 export function registerWebTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId } = context;
-  // Tool 1: scrape (単一 URL / PDF スクレイプ) - CORE (defaultEnabled: true)
+  // Tool 1: scrape (URL / PDF スクレイプ。urls で一括並行) - CORE (defaultEnabled: true)
+  const SCRAPE_USAGE = '使い方: 1 ページは url、複数ページ（最大 20 件）は urls。concurrency・webhookUrl は urls のとき、fullPage・keepDataImages は url のときだけ。';
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'scrape',
     'web',
-    '【単一URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
+    '【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }。urls は { total, successful, failed, results, errors }',
     {
-      url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
+      url: z.string().url().optional().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")。url か urls のどちらか 1 つ'),
+      urls: z.array(z.string().url()).min(1).max(20).optional().describe('複数ページを一括取得するときの URL 配列 (最大 20 件)。ドメインごとの間隔を守りながら並行取得する。results は入力の順ではなく、取得が終わった順'),
+      concurrency: z.number().int().min(1).max(5).optional().describe('urls の並行フェッチワーカー数 (デフォルト: 3, 最大: 5)').meta({ default: 3 }),
+      webhookUrl: z.string().url().optional().describe('urls の取得完了時に、応答と同じ整形後の結果を 1 回だけ通知する Webhook URL (非同期)'),
       maxChars: z
         .number()
         .int()
         .min(1)
         .max(100_000)
         .optional()
-        .describe('抽出する最大文字数 (デフォルト: 30000)').meta({ default: 30000 }),
+        .describe('抽出する最大文字数 (デフォルト: 30000)。urls のときは 1 ページあたりで、50000 まで').meta({ default: 30000 }),
       mode: SCRAPE_MODE_FIELD,
       formats: z.array(ScrapeFormatSchema)
         .optional()
@@ -37,8 +42,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       fullPage: z
         .boolean()
         .optional()
-        .default(true)
-        .describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)'),
+        .describe('スクリーンショット撮影時にページ最下部までフルページ撮影するか (デフォルト: true)。url のときだけ').meta({ default: true }),
       responseMode: SCRAPE_RESPONSE_MODE_FIELD,
       stripLinks: z
         .boolean()
@@ -61,7 +65,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       keepDataImages: z
         .boolean()
         .optional()
-        .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)').meta({ default: false }),
+        .describe('base64 インライン画像を Markdown 内で置換せず保持するか (デフォルト: false, [画像: alt] に軽量化)。url のときだけ').meta({ default: false }),
       includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
       annotateTemporal: ANNOTATE_TEMPORAL_FIELD,
       highlightMaxCount: z
@@ -72,57 +76,34 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .optional()
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
     },
-    async ({ url, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount }) => {
+    async (args) => {
+      // 引数の mode（auto・fast・browser）とは別。url か urls かで決まる
+      const toolMode = args.urls ? 'batch' : 'single';
+      const invalid = exactlyOne(args, ['url', 'urls'], SCRAPE_USAGE)
+        ?? onlyForMode(toolMode, ['batch'], args, ['concurrency', 'webhookUrl'], SCRAPE_USAGE)
+        ?? onlyForMode(toolMode, ['single'], args, ['fullPage', 'keepDataImages'], SCRAPE_USAGE)
+        ?? (toolMode === 'batch' && (args.maxChars ?? 0) > 50_000 ? `urls のときの maxChars は 50000 までです（いま: ${args.maxChars}）。${SCRAPE_USAGE}` : undefined);
+      if (invalid) return usageError(invalid);
+      const { url, urls, concurrency, webhookUrl, fullPage, keepDataImages, ...common } = args;
+      const { verbose } = common;
+      if (urls) {
+        try {
+          const result = await scrapeBatchUrls({ ...common, urls, tenantId: serverTenantId, concurrency, webhookUrl });
+          const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
+          return { content: [{ type: 'text', text: toolJson({ ...result, results: formattedResults }, verbose) }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Batch scrape error: ${errorMessage(err) || err}` }] };
+        }
+      }
       try {
-        const result = await scrapeUrl({ url, tenantId: serverTenantId, maxChars, mode, formats, fullPage, responseMode, stripLinks, maskPii, query, onlyMainContent, headers, verbose, keepDataImages, includeMedia, annotateTemporal, highlightMaxCount });
+        const result = await scrapeUrl({ ...common, url: url!, tenantId: serverTenantId, fullPage: fullPage ?? true, keepDataImages });
         const formatted = formatCompactScrapeResult(result, { verbose });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: toolJson(formatted, verbose),
-            },
-          ],
-        };
+        return { content: [{ type: 'text', text: toolJson(formatted, verbose) }] };
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Scrape error: ${errorMessage(err) || err}` }],
-        };
+        return { isError: true, content: [{ type: 'text', text: `Scrape error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: true, keywords: ['スクレイプ', 'Web抽出', 'URL', 'Markdown', 'PDF', '記事本文'] },
-  );
-
-  // Tool 1.5: scrape_batch (複数 URL 一括並行スクレイプ) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'scrape_batch',
-    'web',
-    '【複数 URL 一括並行スクレイプ】複数の既知 URL を、ドメインごとの間隔を守りながら並行スクレイプし、各ページの本文を Markdown で一括取得します。1件だけなら scrape、同一サイトの巡回は crawl_site。返却: { total, successful, failed, results: [{ url, title, content }], errors: [{ url, error }] }。results は入力の順ではなく、取得が終わった順',
-    SCRAPE_BATCH_INPUT_SHAPE,
-    async ({ urls, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia }) => {
-      try {
-        const result = await scrapeBatchUrls({ urls, tenantId: serverTenantId, concurrency, maxChars, mode, formats, headers, query, responseMode, stripLinks, maskPii, webhookUrl, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, includeMedia });
-        const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
-        return {
-          content: [
-            {
-              type: 'text',
-              text: toolJson({ ...result, results: formattedResults }, verbose),
-            },
-          ],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Batch scrape error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['一括スクレイプ', '一括取得', '複数URL', '並行取得', 'バッチ'] },
+    { defaultEnabled: true, keywords: ['スクレイプ', 'Web抽出', 'URL', 'Markdown', 'PDF', '記事本文', 'scrape_batch', '一括スクレイプ', '一括取得', '複数URL', '並行取得', 'バッチ'] },
   );
 
   // Tool 2: search_deep (超高精度 統合検索・本文一括取得) - CORE (defaultEnabled: true)
@@ -185,46 +166,21 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     { defaultEnabled: true, keywords: ['深層検索', '統合検索', 'Web検索', '本文取得', 'X速報', 'スケジュール', 'イベント', 'ライブ日程', '発売日', '営業時間', '最新情報', 'deep_search', 'deep-search', 'deep search'] },
   );
 
-  // Tool 3: map_site (サイトマップ探索) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'map_site',
-    'web',
-    '【サイトマップ探索】指定 URL のサイトマップ (sitemap.xml) またはページ内リンクを探索し、サイト内の URL 一覧を高速抽出します。ドメイン全体のページ構成把握に最適です。本文が必要なら crawl_site / scrape_batch。返却: { url, links, count, source }',
-    {
-      url: z.string().url().describe('探索対象の Web サイト URL (例: "https://example.com")'),
-      limit: z.number().int().min(1).max(1000).optional().describe('取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)').meta({ default: 200 }),
-      since: z.string().optional().describe(MAP_SINCE_DESCRIPTION),
-      until: z.string().optional().describe(MAP_UNTIL_DESCRIPTION),
-    },
-    async ({ url, limit, since, until }) => {
-      try {
-        const result = await mapSiteUrl({ url, limit, since, until });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Map site error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['サイトマップ', 'URL一覧', 'サイト構造', 'リンク収集'] },
-  );
-
-  // Tool 4: crawl_site (サイト内再帰クロール) - DEFERRED
+  // Tool 3: crawl_site (サイト内再帰クロール。listOnly で URL 一覧だけ) - DEFERRED
+  const CRAWL_USAGE = '使い方: 本文を巡回するなら listOnly を省く（maxPages・maxChars・includePatterns などが効く）。URL の一覧だけなら listOnly: true（limit・since・until が効く）。';
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'crawl_site',
     'web',
-    '【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }',
+    '【同一サイト内再帰巡回・URL一覧】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。listOnly: true なら本文を取らず、サイトマップ (sitemap.xml) またはページ内リンクからサイト内の URL 一覧だけを高速抽出します。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }。listOnly は { url, links, count, source }',
     {
-      url: z.string().url().describe('クロール開始 URL (例: "https://example.com/docs")'),
+      url: z.string().url().describe('クロール開始 URL、または URL 一覧を探索するサイトの URL (例: "https://example.com/docs")'),
+      listOnly: z.boolean().optional().describe('true なら本文を取らず、サイトマップ (sitemap.xml) かページ内リンクから URL 一覧だけを返す (デフォルト: false)').meta({ default: false }),
+      limit: z.number().int().min(1).max(1000).optional().describe('listOnly のとき、取得する最大 URL 件数 (デフォルト: 200, 最大: 1000)。since・until で絞ってから件数で切る').meta({ default: 200 }),
+      since: z.string().optional().describe(`listOnly のとき: ${MAP_SINCE_DESCRIPTION}`),
+      until: z.string().optional().describe(`listOnly のとき: ${MAP_UNTIL_DESCRIPTION}`),
       maxPages: z.number().int().min(1).max(50).optional().describe('巡回する最大ページ数 (デフォルト: 10, 最大: 50)').meta({ default: 10 }),
       maxChars: z.number().int().min(1).max(50_000).optional().describe('1ページあたりの最大文字数 (デフォルト: 15000)').meta({ default: 15000 }),
       includePatterns: z.array(z.string()).optional().describe('クロール対象を絞り込むワイルドカードパターン一覧 (例: ["/docs/**", "/guide/*"])'),
@@ -242,20 +198,26 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         .describe('ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し（8 件まで）、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで'),
       includeMedia: SCRAPE_INCLUDE_MEDIA_FIELD,
     },
-    async ({ url, maxPages, maxChars, includePatterns, excludePatterns, formats, query, responseMode, annotateTemporal, highlightMaxCount, includeMedia }) => {
+    async (args) => {
+      const mode = args.listOnly === true ? 'list' : 'crawl';
+      const invalid = onlyForMode(mode, ['list'], args, ['limit', 'since', 'until'], CRAWL_USAGE)
+        ?? onlyForMode(mode, ['crawl'], args, ['maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'responseMode', 'annotateTemporal', 'highlightMaxCount', 'includeMedia'], CRAWL_USAGE);
+      if (invalid) return usageError(invalid);
+      const { url, listOnly, limit, since, until, ...crawl } = args;
+      if (listOnly) {
+        try {
+          return { content: [{ type: 'text', text: toolJson(await mapSiteUrl({ url, limit, since, until })) }] };
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `Crawl site (listOnly) error: ${errorMessage(err) || err}` }] };
+        }
+      }
       try {
-        const result = await crawlSiteUrl({ url, tenantId: serverTenantId, maxPages, maxChars, includePatterns, excludePatterns, formats, query, responseMode, annotateTemporal, highlightMaxCount, includeMedia });
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
+        return { content: [{ type: 'text', text: toolJson(await crawlSiteUrl({ ...crawl, url, tenantId: serverTenantId })) }] };
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Crawl site error: ${errorMessage(err) || err}` }],
-        };
+        return { isError: true, content: [{ type: 'text', text: `Crawl site error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['クロール', 'サイト巡回', '再帰巡回', '全ページ取得', 'まとめ読み', 'ドメイン探索', '一括収集'] },
+    { defaultEnabled: deferredDefault, keywords: ['クロール', 'サイト巡回', '再帰巡回', '全ページ取得', 'まとめ読み', 'ドメイン探索', '一括収集', 'map_site', 'サイトマップ', 'URL一覧', 'サイト構造', 'リンク収集'] },
   );
 
   // Tool 5: search_web (基本 Web 検索 + optional requested-format extraction) - CORE

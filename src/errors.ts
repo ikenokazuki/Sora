@@ -10,5 +10,5 @@ export function errorCode(err: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
-/** scrape・scrape_batch の入力の誤り（REST では 400 の INVALID_INPUT）。取得の前に見つけたものに使う */
+/** scrape（url・urls）と REST の /scrape・/scrape/batch の入力の誤り（REST では 400 の INVALID_INPUT）。取得の前に見つけたものに使う */
 export class ScrapeInputError extends Error {}

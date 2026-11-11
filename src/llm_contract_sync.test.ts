@@ -192,9 +192,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('C. no highlight algorithm switch', () => {
-    it('MCP scrape, scrape_batch, search_deep, crawl_site no longer take highlightAlgorithm or highlightOverheadTokens', () => {
+    it('MCP scrape, search_deep, crawl_site no longer take highlightAlgorithm or highlightOverheadTokens', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch', 'search_deep', 'crawl_site']) {
+      for (const toolName of ['scrape', 'search_deep', 'crawl_site']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
@@ -216,9 +216,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch・crawl_site・search_deep にも無い', () => {
+    it('MCP の scrape・crawl_site・search_deep にも無い', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch', 'crawl_site', 'search_deep']) {
+      for (const toolName of ['scrape', 'crawl_site', 'search_deep']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
@@ -242,9 +242,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch にも無い', () => {
+    it('MCP の scrape にも無い', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch']) {
+      for (const toolName of ['scrape']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
@@ -273,19 +273,15 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('scrape の REST の形と MCP の入力に、webhookUrl・retries・retryDelayMs が無い', () => {
-      const server = createMcpServer({ deferTools: false });
-      const tool = (server as any)._registeredTools['scrape'];
-      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+    it('scrape の REST の形（/scrape）に webhookUrl・retries・retryDelayMs が無い', () => {
       for (const field of ['webhookUrl', 'retries', 'retryDelayMs']) {
         expect((ScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
-        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
       }
     });
 
-    it('scrape_batch は retries・retryDelayMs が無く、完了の通知先 webhookUrl は残る', () => {
+    it('/scrape/batch と MCP の scrape は retries・retryDelayMs が無く、urls のときの完了の通知先 webhookUrl は残る', () => {
       const server = createMcpServer({ deferTools: false });
-      const tool = (server as any)._registeredTools['scrape_batch'];
+      const tool = (server as any)._registeredTools['scrape'];
       const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
       for (const field of ['retries', 'retryDelayMs']) {
         expect((BatchScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
@@ -303,7 +299,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   describe('C5. onlyHighlights・evidenceMode・extractHighlights は responseMode にまとまった', () => {
     const removed = ['onlyHighlights', 'evidenceMode', 'extractHighlights'];
     // CrawlRequestSchema に evidenceMode は元から無いが、無いことは同じに確かめる
-    const scrapeTools = ['scrape', 'scrape_batch', 'crawl_site'];
+    const scrapeTools = ['scrape', 'crawl_site'];
 
     it('scrape・batch・crawl の REST の形に古い 3 項目が無く、responseMode がある', () => {
       for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
@@ -319,7 +315,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch・crawl_site に古い 3 項目が無く、responseMode がある', () => {
+    it('MCP の scrape・crawl_site に古い 3 項目が無く、responseMode がある', () => {
       const server = createMcpServer({ deferTools: false });
       for (const toolName of scrapeTools) {
         const tool = (server as any)._registeredTools[toolName];

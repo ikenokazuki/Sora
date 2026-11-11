@@ -60,7 +60,7 @@ describe('scrape inputs reach the implementation', () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ responseMode: 'evidence' });
   });
 
-  test('MCP scrape と scrape_batch は verbose を scrapeUrl・scrapeBatchUrls にも渡す（highlightDiagnostics が付く）', async () => {
+  test('MCP scrape は url でも urls でも verbose を scrapeUrl・scrapeBatchUrls にも渡す（highlightDiagnostics が付く）', async () => {
     const scrapeSpy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url: 'https://example.com', title: 't', content: 'c', isTruncated: false, contentType: 'text/html', source: 'web' } as any);
     const batchSpy = spyOn(scraper, 'scrapeBatchUrls').mockResolvedValue({ total: 0, successful: 0, failed: 0, results: [], errors: [] } as any);
     restore.push(() => scrapeSpy.mockRestore(), () => batchSpy.mockRestore());
@@ -71,7 +71,7 @@ describe('scrape inputs reach the implementation', () => {
     await client.connect(ct);
     try {
       await client.callTool({ name: 'scrape', arguments: { url: 'https://example.com', query: '開場時間', verbose: true } });
-      await client.callTool({ name: 'scrape_batch', arguments: { urls: ['https://example.com'], query: '開場時間', verbose: true } });
+      await client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com'], query: '開場時間', verbose: true } });
     } finally {
       await client.close();
       await server.close();
@@ -80,7 +80,7 @@ describe('scrape inputs reach the implementation', () => {
     expect(batchSpy.mock.calls[0][0]).toMatchObject({ verbose: true });
   });
 
-  test('MCP scrape_batch と crawl_site も responseMode を渡す', async () => {
+  test('MCP scrape の urls と crawl_site も responseMode を渡す', async () => {
     const batchSpy = spyOn(scraper, 'scrapeBatchUrls').mockResolvedValue({ total: 0, successful: 0, failed: 0, results: [], errors: [] } as any);
     const crawlSpy = spyOn(scraper, 'crawlSiteUrl').mockResolvedValue({ baseUrl: 'https://example.com', total: 0, results: [], errors: [] } as any);
     restore.push(() => batchSpy.mockRestore(), () => crawlSpy.mockRestore());
@@ -90,7 +90,7 @@ describe('scrape inputs reach the implementation', () => {
     await server.connect(st);
     await client.connect(ct);
     try {
-      await client.callTool({ name: 'scrape_batch', arguments: { urls: ['https://example.com'], query: '開場時間', responseMode: 'evidence' } });
+      await client.callTool({ name: 'scrape', arguments: { urls: ['https://example.com'], query: '開場時間', responseMode: 'evidence' } });
       await client.callTool({ name: 'crawl_site', arguments: { url: 'https://example.com', query: '開場時間', responseMode: 'evidence' } });
     } finally {
       await client.close();

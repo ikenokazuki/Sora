@@ -53,9 +53,9 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
       lines.push(
         '- **`search_web`**: URL / snippet discovery (fast & lightweight candidate search by default) + optional same-call extraction via `formats: ["markdown"]`.',
         '- **`search_deep`**: Universal deep investigation combining Web search + full-article scraping + realtime X + Deep Evidence Rerank.',
-        '- **`scrape` / `scrape_batch`**: Known URL content extraction (single or batch) for deep reading of specific pages/documents.',
+        '- **`scrape`**: Known URL content extraction (`url`, or up to 20 `urls` in parallel) for deep reading of specific pages/documents.',
         '- **`search_social_posts` / `fetch_social_post`**: Public SNS posts (Weibo keyword-latest search; Threads/Instagram/Facebook public-post discovery plus body). For X posts use `search_realtime` / `fetch_x_post`.',
-        '- **`map_site` / `crawl_site`**: Same-site URL listing / multi-page traversal for documentation or full-site knowledge collection.',
+        '- **`crawl_site`**: Same-site multi-page traversal for documentation or full-site knowledge collection (`listOnly: true` for the URL list only).',
       );
     }
     if (hasBrowser) {
