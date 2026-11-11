@@ -11,7 +11,7 @@
 1. **認証の Fail-Open（キー未設定でも使える）は保つ**（README の Quickstart の 1 行起動を保つため）。そのうえで、旧い名前の鍵（`WEB_FETCHER_API_KEY`・`API_KEY`）だけが設定されていて、新しい名前（`SORA_API_KEY`）が無いときは、**起動を拒否する**。名前を変えたときに、黙って認証が外れるのを防ぐ。
 2. 名前の変更は、下の表の案（25 個の改名）。本番の運用者が設定している 8 個のうち、変わるのは `ENABLED_MODULES`→`SORA_MODULES` と `SORA_DEFER_TOOLS`→`SORA_MCP_DEFER_TOOLS` の 2 個。
 3. **旧名を別名として読まない。** 旧名だけが設定されているときは、下の表の「旧名だけのとき」のとおり、起動を拒否する（無視すると動きが黙って変わるもの）か、警告する（置き換え先を示す）。ツール統合の「旧名の別名は残さない」と同じ。
-4. 結果が確定した旗は、動きを固定して消す（`SORA_WEB_NATIVE_RANKING`・`SORA_RRF_ENABLED`・`SORA_REALTIME_ANCHOR`・`SORA_YAHOO_THROTTLE`・`SORA_WEB_RETRY_WAIT_MS`）。採用の評価が無いまま opt-in になっている実験（`SORA_WEB_QUERY_UNION`・`SORA_X_SOURCE_ISOLATION`。後者は `x_source_isolation.ts` の約 330 行）は、コードごと消す。
+4. 結果が確定した旗は、動きを固定して消す（`SORA_WEB_NATIVE_RANKING`・`SORA_RRF_ENABLED`・`SORA_REALTIME_ANCHOR`・`SORA_YAHOO_THROTTLE`・`SORA_WEB_RETRY_WAIT_MS`）。採用の評価が無いまま opt-in になっている実験（`SORA_WEB_QUERY_UNION`・`SORA_X_SOURCE_ISOLATION`。後者は `x_source_isolation.ts` の約 330 行）は、コードごと消す。**ただし、`x_source_isolation.ts` には、実験でない部分（X の URL のホストの一覧 `X_HOSTS` と `parseXDiscoverySeed` など、`fetch_social_post` の X の取得が使うもの）がある。実験の分岐だけを消し、使われている部分は残す**（実装時に、`grep` で、そのファイルの export の使われ方を確かめる）。
 5. Containerfile に `SORA_DB_PATH=/data/sora.db` を足す（いまは DB がボリュームの外にできて揮発する）。
 6. 時期: ツールの統合（`docs/superpowers/specs/2026-11-11-tool-consolidation-design.md`）をマージしたあとの別の PR。同じ v5.0.0 に入れる。テストの環境変数の書き換えが約 460 か所（67 ファイル）あり、統合と大きく重なるため。
 7. **不正な値は、起動時に、変数名と正しい形を示して止める**（`PORT=abc`・`5m`・`1e3` のように、いまは黙って通る値）。
