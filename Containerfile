@@ -8,13 +8,38 @@ RUN bun build ./src/index.ts --target=bun --outfile=server.js
 # 住所データの構築専用の入口。アプリ本体を読み込まないので、子プロセスとして軽く起動できる
 RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js
 
-# Stage 1b: 実行に要る node_modules だけ。builder の node_modules には開発用の Biome（127MB）・TypeScript（23MB）・型定義が入っていて、
+# Stage 1b: wreq-js の native（静的取得の TLS・HTTP の実装）を、ソースからビルドする。
+# npm の wreq-js が持つ native（ビルド済み）は、wreq-js が新しい版を公開しないかぎり古いまま残る（3.2.0 は 2026-08-23 で、それ以降の公開はない）。
+# 同じ版のソース（git のタグ）を、コミットを固定し、上流の Cargo.lock のまま（--locked）ビルドする。依存の版はタグの時点のままなので、
+# npm 版と同じ挙動になる（133 プロファイルの ClientHello が同じで、wreq-js 自身のテストの結果も同じ。2026-11-12 に確認）。
+# 版を上げるときは、package.json の wreq-js の版と、この 2 つの ARG をそろえる（src/containerfile_pins.test.ts が、そろっていなければ落ちる）。
+# JS（npm の wreq-js）と native の版を食い違わせないためで、食い違うと、プロファイルや引数の扱いが合わなくなる。
+FROM docker.io/library/rust:1.99.1-bookworm AS wreq-native
+ARG WREQ_JS_VERSION=3.2.0
+ARG WREQ_JS_REV=0d52d5fa252841aeef34d4d063b1766a59612bf7
+RUN apt-get update && apt-get install -y --no-install-recommends cmake clang libclang-dev perl \
+    && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 --branch "v${WREQ_JS_VERSION}" https://github.com/sqdshguy/wreq-js /src \
+    && cd /src && test "$(git rev-parse HEAD)" = "$WREQ_JS_REV"
+RUN cd /src/rust && cargo build --release --locked \
+    && cp target/release/libwreq_js.so /wreq-js.linux-x64-gnu.node
+
+# Stage 1c: 実行に要る node_modules だけ。builder の node_modules には開発用の Biome（127MB）・TypeScript（23MB）・型定義が入っていて、
 # 実行には使わない。wreq-js の musl 用バイナリ（glibc の distroless では選ばれない）も要らない（約 165MB 減）。
+# wreq-js の native は、npm のビルド済みのもの（@wreq-js/binding-linux-x64-gnu の中のファイル）を、Stage 1b で作ったものに置き換える。
+# server.js は wreq-js の JS を取り込んで（bun build）、native を bare の @wreq-js/binding-<target> から探す（../rust/wreq-js.<target>.node は
+# server.js からの相対になり、見つからない）。だから、このパッケージの中のファイルを置き換える。ファイルが無ければ、ここで落とす
+# （wreq-js のパッケージの構成が変わったとき、黙って npm のものを使い続けないため）。
 FROM docker.io/oven/bun:1 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile --production \
-    && rm -rf node_modules/@wreq-js/binding-*-musl
+    && rm -rf node_modules/@wreq-js/binding-*-musl \
+    && test -f node_modules/@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node
+COPY --from=wreq-native /wreq-js.linux-x64-gnu.node /app/node_modules/@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node
+# 読み込めて、プロファイルが揃っていることを、ビルドの時点で確かめる（distroless の最終段は、シェルが無く、ビルド中に実行して確かめられない。
+# server.js に取り込んだ状態での確認は、イメージを作ったあとの scripts/image-smoke.ts）
+RUN bun -e "const w = await import('wreq-js'); const p = w.getProfiles(); if (p.length < 100 || !p.includes('chrome_149')) { console.error('wreq-js native: unexpected profiles', p.length); process.exit(1); } console.log('wreq-js native ok:', p.length, 'profiles')"
 
 # Stage 2: 本文の取り出しに使う rs-trafilatura（https://github.com/Murrough-Foley/rs-trafilatura、MIT OR Apache-2.0）。
 # 版はコミットで固定する。上流は Cargo.lock を持たない（.gitignore）ので、依存の版は vendor/rs-trafilatura/Cargo.lock で固定する
