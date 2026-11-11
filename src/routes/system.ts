@@ -85,6 +85,7 @@ systemRoutes.get('/', (c) => {
       cacheClear: 'POST /cache/clear',
       ...(isModuleActive('lyrics') ? { lyrics: 'POST /lyrics' } : {}),
       ...(isModuleActive('shazam') ? { musicRecognize: 'POST /music/recognize', musicRecognizeSignature: 'POST /music/recognize/signature' } : {}),
+      ...(isModuleActive('hts-archive') ? { tradeHtsReleases: 'GET /trade/hts/releases, GET /trade/hts/releases/:id' } : {}),
     },
   });
 });
