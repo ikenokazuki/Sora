@@ -22,7 +22,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_media',
     'yahoo',
-    '【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明）',
+    '【Yahoo ニュース・画像・動画検索】type で選ぶ。news: 今日の主要ニュース・最新ニュース速報の見出し（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。返却: { query, count, items }（items の欄は type の説明）',
     {
       type: z.enum(['image', 'video', 'news']).describe('検索の種類。image の items: [{ title, original: { url, width, height }, thumbnail, source_url, source_site }]。video: [{ title, url, duration, thumbnail, upload_date, uploader, platform, transcript }]。news: [{ title, url, publisher, publishedTime, snippet }]（応答に source も付く）'),
       query: z.string().min(1).describe('検索キーワード (例: "富士山", "料理 レシピ 動画", "経済動向")'),

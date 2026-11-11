@@ -55,7 +55,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'check_regulations',
     'trade',
-    '【必須・即時推測厳禁】HTSコードから米国の規制を判定する際は、推測せず必ず本ツールを実行してください。agenciesで機関を選ぶ（既定は両方）。cpsc: CPSC適合証明書（GCC/CPC）要否と2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務、非対象時のACE免責申告コード(Disclaimer)と根拠条文（16 CFR）。fda: FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）。素材・年齢層・食品接触用途が不明な場合は推測で埋めず、未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { agencies, cpsc: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }, fda: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation } }',
+    '【必須・即時推測厳禁】HTSコードの商品が米国のCPSC・FDAの規制の対象になるか（規制の判定）は、推測せず必ず本ツールを実行してください。HTSコードの照合・推測は lookup_hts。agenciesで機関を選ぶ（既定は両方）。cpsc: CPSC適合証明書（GCC/CPC）要否と2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務、非対象時のACE免責申告コード(Disclaimer)と根拠条文（16 CFR）。fda: FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）。素材・年齢層・食品接触用途が不明な場合は推測で埋めず、未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { agencies, cpsc: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }, fda: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation } }',
     {
       htsCode: z.string().min(1).describe('HTSコード（例: "9503.00.0073", "3004.90.0000"）。判定の主軸キー'),
       agencies: z.array(z.string()).optional().describe(`判定する機関 (${AGENCIES.join('・')}。既定 ${JSON.stringify(AGENCIES_DEFAULT)})。cpsc: CPSC適合証明書とeFiling、fda: FDA規制対象とFDフラグ`).meta({ default: AGENCIES_DEFAULT }),
@@ -113,7 +113,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'lookup_hts',
     'trade',
-    '【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation }',
+    '【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く（CPSC・FDAの規制の対象かの判定は check_regulations）。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation }',
     {
       htsCode: z.string().optional().describe('照合するHTSコード（例: "9503.00.0073"）。【推測入力禁止】ユーザーから明示提示されたコードだけを指定すること。コードを推測・特定したいときは省く（商品の説明から推測する）'),
       description: z.string().optional().describe('商品の説明（英語）。htsCode があれば必須で、判定には使わず、根拠の記録として応答の productDescription に返す。省いたときは推測の詳細説明・機能・用途で、事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
