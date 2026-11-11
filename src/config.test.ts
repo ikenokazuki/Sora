@@ -200,6 +200,20 @@ describe('registry', () => {
     expect([port, mode, limit]).toEqual([8000, 'lazy', undefined]);
   });
 
+  test('an unregistered name is a programming error with a clear message', () => {
+    expect(() => envStr('NOT_A_SETTING' as never, {})).toThrow('Unknown setting: NOT_A_SETTING');
+    expect(() => envBool('constructor' as never, {})).toThrow('Unknown setting: constructor');
+    expect(() => envList('API_KEY' as never, {})).toThrow('Unknown setting: API_KEY');
+  });
+
+  test('odd environment objects (non-string values) are read as unset and never throw', () => {
+    const odd = { PORT: 8080, SORA_MODULES: null, SORA_MCP_DEFER_TOOLS: false, SORA_TYPO: 1, LOG_FORMAT: ['json'] } as unknown as Record<string, string>;
+    expect(envInt('PORT', odd)).toBe(8000);
+    expect(envList('SORA_MODULES', odd)).toEqual(['all']);
+    expect(envBool('SORA_MCP_DEFER_TOOLS', odd)).toBe(true);
+    expect(checkEnv(odd)).toEqual({ errors: [], warnings: [] });
+  });
+
   test('modules.ts is the list the MCP registry uses', () => {
     expect(REGISTRY_EXPLICIT_ONLY).toBe(EXPLICIT_ONLY_MODULES);
     expect(MODULE_NAMES).toContain('hts-archive');
@@ -306,8 +320,25 @@ describe('envList', () => {
     expect(envList('SORA_MODULES', { SORA_MODULES: ' All , Lyrics ' })).toEqual(['all', 'lyrics']);
     expect(envList('SORA_MODULES', { SORA_MODULES: '*' })).toEqual(['all']);
     expect(envList('SORA_MODULES', { SORA_MODULES: 'hts-archive' })).toEqual(['hts-archive']);
-    expect(envList('SORA_MODULES', { SORA_MODULES: 'web,weeb' })).toEqual(['all']);
+    expect(envList('SORA_MODULES', { SORA_MODULES: 'web,weeb' })).toEqual(['web']);
+    expect(envList('SORA_MODULES', { SORA_MODULES: 'weeb' })).toEqual(['all']);
     expect(envList('SORA_MODULES', { SORA_MODULES: ',,' })).toEqual(['all']);
+  });
+
+  test('a per-call read keeps the valid elements; with none valid it gives the default (startup still rejects the value)', () => {
+    expect(envList('SORA_ADDRESS_PRELOAD', { SORA_ADDRESS_PRELOAD: '13,abc,14' })).toEqual(['13', '14']);
+    expect(envList('SORA_ALLOWED_HOSTS', { SORA_ALLOWED_HOSTS: 'sora.example.com,https://bad.example.com' })).toEqual(['sora.example.com']);
+    expect(envList('SORA_INTEL_DISABLED', { SORA_INTEL_DISABLED: 'usgs,USGS' })).toEqual(['usgs']);
+    expect(checkEnv({ SORA_MODULES: 'web,weeb' }).errors).toHaveLength(1);
+    expect(checkEnv({ SORA_ADDRESS_PRELOAD: '13,abc,14' }).errors).toHaveLength(1);
+  });
+
+  test('long lists are de-duplicated in linear time', () => {
+    // 2 乗の重複除去（includes）では約 1.4 秒かかる大きさ。線形なら数ミリ秒
+    const ids = Array.from({ length: 20_000 }, (_, i) => `p${i}`);
+    const started = performance.now();
+    expect(envList('SORA_INTEL_DISABLED', { SORA_INTEL_DISABLED: [...ids, ...ids].join(',') })).toHaveLength(20_000);
+    expect(performance.now() - started).toBeLessThan(300);
   });
 
   test('`all` is accepted only where the setting allows it', () => {
@@ -339,6 +370,15 @@ describe('envUrl', () => {
     expect(envUrl('SORA_X_DETAIL_BASE_URL', { SORA_X_DETAIL_BASE_URL: 'http://fxembed.internal.test:8080//' })).toBe('http://fxembed.internal.test:8080');
     expect(envUrl('SORA_PROXY_URL', { SORA_PROXY_URL: 'socks5://proxy.example.test:1080' })).toBe('socks5://proxy.example.test:1080');
     expect(envUrl('SORA_HTS_CROSS_INDEX_URL', { SORA_HTS_CROSS_INDEX_URL: 'file:///srv/cross.jsonl.gz' })).toBe('file:///srv/cross.jsonl.gz');
+  });
+
+  test('trailing slashes are removed in linear time (no backtracking regex)', () => {
+    // /\/+$/ では約 1.2 秒かかる大きさ（斜線の並びのあとに別の文字）。線形なら数ミリ秒
+    const path = `https://sora.example.com${'/'.repeat(40_000)}x`;
+    const started = performance.now();
+    expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: path })).toBe(path);
+    expect(performance.now() - started).toBeLessThan(300);
+    expect(envUrl('SORA_PUBLIC_URL', { SORA_PUBLIC_URL: `https://sora.example.com${'/'.repeat(40_000)}` })).toBe('https://sora.example.com');
   });
 
   test('invalid URLs and schemes give the default (or undefined)', () => {

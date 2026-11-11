@@ -2,7 +2,7 @@
  * Sora が読む環境変数の登録簿と、読み取りの関数（設計: docs/superpowers/specs/2026-11-11-env-vars-design.md）。
  *
  * - 読み取り（envBool など）は、呼び出しのたびに env を読む（覚えない）。空・空白だけの値は未設定とみなし、
- *   不正な値は既定値（無ければ undefined）を返す。例外は投げない。
+ *   不正な値は既定値（無ければ undefined）を返す（列は正しい要素を残す）。例外は投げない。
  * - 不正な値と旧名を止めるのは、起動時の checkEnv だけ。旧名は別名として読まない。
  * - README §4.3 の表は renderEnvTable() で作る（この登録簿が正本）。
  */
@@ -71,7 +71,7 @@ export interface Setting {
 const HTTP = ['http', 'https'] as const;
 const PROXY_SCHEMES = ['http', 'https', 'socks5'] as const;
 
-/** new URL() で読めて、scheme が許されたもの。末尾の `/` は外す。 */
+/** new URL() で読めて、scheme が許されたもの。末尾の `/` は外す（正規表現でなく線形に）。 */
 function url(value: string, schemes: readonly string[]): string | undefined {
   try {
     const u = new URL(value);
@@ -79,7 +79,9 @@ function url(value: string, schemes: readonly string[]): string | undefined {
   } catch {
     return undefined;
   }
-  return value.replace(/\/+$/, '');
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end--;
+  return value.slice(0, end);
 }
 
 const moduleName = (value: string) => {
@@ -449,7 +451,19 @@ const NOT_SETTING_PREFIX = 'SORA_GCC_';
 
 const BOOL = new Map([['true', true], ['1', true], ['on', true], ['yes', true], ['false', false], ['0', false], ['off', false], ['no', false]]);
 
-/** 空でない値を読む。不正なら undefined。 */
+/** 列の要素を検査・正規化する。items は正しい要素（重複なし）、bad は不正な要素。 */
+function listItems(s: Setting, value: string): { items: string[]; bad: string[] } {
+  const items = new Set<string>();
+  const bad: string[] = [];
+  for (const part of value.split(',').map((p) => p.trim()).filter(Boolean)) {
+    const item = part.toLowerCase() === 'all' ? (s.allowAll ? 'all' : undefined) : s.item?.(part);
+    if (item === undefined) bad.push(part);
+    else items.add(item);
+  }
+  return { items: [...items], bad };
+}
+
+/** 空でない値を読む。不正なら undefined（列は、不正な要素が 1 つでもあれば不正）。 */
 function parse(s: Setting, raw: string): unknown {
   const v = raw.trim();
   switch (s.kind) {
@@ -464,13 +478,8 @@ function parse(s: Setting, raw: string): unknown {
     case 'enum':
       return s.values?.find((x) => x.toLowerCase() === v.toLowerCase());
     case 'list': {
-      const out: string[] = [];
-      for (const part of v.split(',').map((p) => p.trim()).filter(Boolean)) {
-        const item = part.toLowerCase() === 'all' ? (s.allowAll ? 'all' : undefined) : s.item?.(part);
-        if (item === undefined) return undefined;
-        if (!out.includes(item)) out.push(item);
-      }
-      return out;
+      const { items, bad } = listItems(s, v);
+      return bad.length > 0 ? undefined : items;
     }
     case 'url':
       return url(v, s.schemes ?? HTTP);
@@ -488,14 +497,27 @@ function parse(s: Setting, raw: string): unknown {
   }
 }
 
-const isBlank = (raw: string | undefined) => raw === undefined || raw.trim() === '';
+/** 未設定（文字列でない値・空・空白だけ）。テストなどが env に文字列でない値を入れても例外にしない。 */
+const isBlank = (raw: unknown) => typeof raw !== 'string' || raw.trim() === '';
 
+/** 登録されていない名前はプログラムの誤り（型で防ぐ。実行時に来たら、分かる文で止める）。 */
+function settingOf(name: string): Setting {
+  if (!Object.hasOwn(TABLE, name)) throw new Error(`Unknown setting: ${name}`);
+  return TABLE[name];
+}
+
+/**
+ * 呼び出しのたびの読み取り。不正な値は既定値（無ければ undefined）。
+ * 列だけは、正しい要素を残す（`web,weeb` は `web`。既定の `all` に戻すと、絞った設定が開くため）。正しい要素が無ければ既定値。
+ */
 function read(name: string, env: Env): unknown {
-  const s = TABLE[name];
+  const s = settingOf(name);
   const raw = env[name];
-  const value = isBlank(raw) ? undefined : parse(s, raw as string);
-  if (value === undefined || (Array.isArray(value) && value.length === 0)) return Array.isArray(s.default) ? [...s.default] : s.default;
-  return value;
+  if (!isBlank(raw)) {
+    const value = s.kind === 'list' ? listItems(s, raw as string).items : parse(s, raw as string);
+    if (value !== undefined && !(Array.isArray(value) && value.length === 0)) return value;
+  }
+  return Array.isArray(s.default) ? [...s.default] : s.default;
 }
 
 /** 真偽値（`true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`、大文字小文字は問わない）。 */
@@ -513,7 +535,7 @@ export function envEnum<N extends NameOf<'enum'>>(name: N, env: Env = process.en
   return read(name, env) as Read<N, Values<N>>;
 }
 
-/** カンマ区切りの列（要素ごとに検査・正規化し、空の要素と重複を除く）。未設定・不正は既定値（無ければ空の配列）。 */
+/** カンマ区切りの列（要素ごとに検査・正規化し、空の要素・不正な要素・重複を除く）。正しい要素が無ければ既定値（無ければ空の配列）。 */
 export function envList(name: NameOf<'list'>, env: Env = process.env): string[] {
   return (read(name, env) as string[] | undefined) ?? [];
 }
