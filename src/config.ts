@@ -550,7 +550,8 @@ export function envJson(name: NameOf<'json'>, env: Env = process.env): unknown {
  * 生の値を受け取って、不正な値を警告の文に出す関数（parseMaxChromeProfile など）に渡すときだけ使う。
  */
 export function envRaw(name: EnvName, env: Env = process.env): string | undefined {
-  settingOf(name);
+  // 秘密の設定の生の値は、警告の文に出してしまわないよう、この関数では返さない
+  if ((settingOf(name) as { secret?: boolean }).secret) throw new Error(`envRaw は秘密の設定を返しません: ${name}`);
   const raw = env[name];
   return isBlank(raw) ? undefined : (raw as string);
 }

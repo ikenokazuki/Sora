@@ -443,6 +443,9 @@ describe('envRaw', () => {
     expect(envRaw('SORA_FETCH_MAX_CHROME_PROFILE', { SORA_FETCH_MAX_CHROME_PROFILE: ' 0x9a ' })).toBe(' 0x9a ');
     for (const raw of [undefined, '', '  ', 150]) expect(envRaw('SORA_FETCH_TRUST_STORE', { SORA_FETCH_TRUST_STORE: raw as string })).toBeUndefined();
     expect(() => envRaw('NOT_A_SETTING' as never, {})).toThrow('Unknown setting: NOT_A_SETTING');
+    // 秘密の設定は返さない（警告の文に出してしまわないため）
+    expect(() => envRaw('SORA_API_KEY', { SORA_API_KEY: 'fake-secret-value' })).toThrow('秘密の設定');
+    expect(() => envRaw('SORA_PROXY_URL', { SORA_PROXY_URL: 'http://user:pw@proxy.example.test:3128' })).toThrow('秘密の設定');
   });
 });
 

@@ -26,6 +26,8 @@ describe('parseMaxChromeProfile（SORA_FETCH_MAX_CHROME_PROFILE）', () => {
       warn.mockClear();
       expect(parseMaxChromeProfile(raw)).toBe(149);
       expect(warn).toHaveBeenCalledTimes(1);
+      // 警告は、変数名と、無視した値を示す
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('SORA_FETCH_MAX_CHROME_PROFILE='));
     }
   });
 });
