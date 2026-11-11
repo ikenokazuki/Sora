@@ -35,7 +35,7 @@
 - [ ] **A. 洗い出し:** 旧いツール名の全参照を `grep -rn` で一覧にする（`src/`・`scripts/`・README・`docs/engines/`・`glama.json`。テスト・`CANONICAL_TOOLS`・`REST_MAP`・`scripts/tool-health/catalog.ts` の検査・`src/mcp/instructions.ts`・`src/llm_contract_sync.test.ts` の名前の検査を含む）。
 - [ ] **B. 新しいツールの検査（テスト）を先に書く:** モードごとの正しい呼び出し、誤った組み合わせ（両方指定・どちらも無し・そのモードに無い引数）が、正しい使い方のエラーになること。旧ツールのテストは、新しいツール名で呼ぶ形に直す（応答の中身の検査は残す）。
 - [ ] **C. 実装:** `tools_*.ts` に新しいツールを登録し（元のサービス関数を呼ぶ）、旧ツールの登録を消す。`keywords` に旧名を入れる。
-- [ ] **D. 周辺の更新:** `CANONICAL_TOOLS`・`REST_MAP`（複数のルート）・`scripts/tool-health/catalog.ts` の検査・`src/mcp/instructions.ts`・README の表と節・`docs/engines/` の記事・`glama.json`・`schema:notation` の許可リスト（`scripts/schema-notation/allowlist.ts`）。
+- [ ] **D. 周辺の更新:** `CANONICAL_TOOLS`・`REST_MAP`（複数のルート）・`scripts/tool-health/catalog.ts` の検査・`src/mcp/instructions.ts`・README の表と節・`docs/engines/` の記事・`glama.json`・`schema:notation` の許可リスト（`scripts/schema-notation/allowlist.ts`）。README のツール数の記述（`grep -n '全 [0-9]* ツール\|遅延' README.md` で全箇所。取りこぼしやすい）を、新しい数にする。
 - [ ] **E. 検査:** 上の「各作業の終わりに」のとおり。`bun run gen:client` で `client/` を作り直す。さらに、**作業の前後で、`grep -h '^export function' client/servers/sora/*.ts | sort` を比べ、関数が 1 つも消えていないこと**を確かめる（`gen:client` の差分の検査は、関数名の変更に気づけない。旧いツールの関数名は、`fn` で保つ）。
 - [ ] **F. コミット:** 作業ごとに、意味のまとまりでコミット（コミットの題は日本語、`feat(mcp)!:` の形。本文に、統合した旧ツールと新ツールの対応を書く）。
 
@@ -105,6 +105,7 @@
   応答は、それぞれ旧ツールと同じ。`mode` 欄（`reverse` `normalize` `postal`）を足す。REST: `POST /geo/reverse`・`POST /geo/address/normalize`（GET も）・`POST /geo/postal-code`（GET も）。
 - 旧 `normalize_address` が、`lat`・`lon` を「座標近傍の判定」に使う（`address` とともに）ことに注意。`lat`＋`lon` だけなら逆引き、`address`＋`lat`＋`lon` なら正規化＋近傍判定。
 
+- **作業の最初に（Task 3 の持ち越し。小さな整理。別コミット `test(mcp):`）:** (a) `src/mcp_tool_params.test.ts` の、ツールごとの引数の一覧を固定する検査（`scrape`・`crawl_site`・`search_deep` がある）に、`fetch_social_post`・`search_media`・`search_keywords` を足す（引数の和を守る）。(b) `search_media` の `type: news` で `page: 1` を指定しても断らない（`page` に既定値は無いが、`news` には `page` が無いので、`1` は何も指定していないのと同じ。`onlyForMode` の `defaults` に `page: 1` を、`news` のときだけ渡す）。違う値（`page: 2`）は断る。(c) `tools_web.ts`・`tools_yahoo.ts` の、同じ数の繰り返し（`commentLimit` の 10、サジェストの上限 20）を、名前付きの定数 1 つにする。
 - [ ] 共通の手順（A〜F）。旧 3 ツールのテスト（正規化の level 8・地番・ローマ字の町名・郵便番号の事業所・逆引きの距離）は、新しい名前で保つ。
 
 ### Task 5: get_place_info（標高）
