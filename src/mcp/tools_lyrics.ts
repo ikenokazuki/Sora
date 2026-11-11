@@ -5,7 +5,7 @@ import { registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
-/** 🎤 Category 12: Lyrics (モジュール: 'lyrics'。ENABLED_MODULES に名前を挙げたときだけ有効な、自己責任の機能) */
+/** 🎤 Category 12: Lyrics (モジュール: 'lyrics'。SORA_MODULES に名前を挙げたときだけ有効な、自己責任の機能) */
 export function registerLyricsTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
   // Tool 51: get_lyrics (歌手・曲名から歌詞全文) - DEFERRED

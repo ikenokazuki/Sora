@@ -16,7 +16,7 @@ let calls: string[] = [];
 let listFails = false;
 const realFetch = globalThis.fetch;
 const savedDir = process.env.SORA_HTS_DIR;
-const savedModules = process.env.ENABLED_MODULES;
+const savedModules = process.env.SORA_MODULES;
 
 beforeAll(() => {
   globalThis.fetch = (async (input: string | URL | Request) => {
@@ -30,8 +30,8 @@ afterAll(() => {
   globalThis.fetch = realFetch;
   if (savedDir === undefined) delete process.env.SORA_HTS_DIR;
   else process.env.SORA_HTS_DIR = savedDir;
-  if (savedModules === undefined) delete process.env.ENABLED_MODULES;
-  else process.env.ENABLED_MODULES = savedModules;
+  if (savedModules === undefined) delete process.env.SORA_MODULES;
+  else process.env.SORA_MODULES = savedModules;
 });
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'sora-hts-archive-'));
@@ -128,9 +128,9 @@ describe('HTS release archive', () => {
   });
 
   it('starts no timer unless the module is named, and checks after the delay when it is', async () => {
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     expect(startHtsArchive({ delayMs: 1 })).toBeNull();
-    process.env.ENABLED_MODULES = 'all,hts-archive';
+    process.env.SORA_MODULES = 'all,hts-archive';
     const handle = startHtsArchive({ delayMs: 1, intervalMs: 60_000 });
     expect(handle).not.toBeNull();
     await Bun.sleep(50);

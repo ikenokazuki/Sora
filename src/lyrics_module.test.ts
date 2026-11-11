@@ -8,27 +8,27 @@ import { isModuleActive } from './mcp/registry.js';
 import { createLyricsRoutes } from './routes/lyrics.js';
 import { generateOpenApiDocument } from './types.js';
 
-const savedModules = process.env.ENABLED_MODULES;
+const savedModules = process.env.SORA_MODULES;
 afterEach(() => {
-  if (savedModules === undefined) delete process.env.ENABLED_MODULES;
-  else process.env.ENABLED_MODULES = savedModules;
+  if (savedModules === undefined) delete process.env.SORA_MODULES;
+  else process.env.SORA_MODULES = savedModules;
 });
 
 describe('lyrics module is explicit opt-in', () => {
   test('all, wildcard and unset do not enable it', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(isModuleActive('lyrics')).toBe(false);
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     expect(isModuleActive('lyrics')).toBe(false);
-    process.env.ENABLED_MODULES = '*';
+    process.env.SORA_MODULES = '*';
     expect(isModuleActive('lyrics')).toBe(false);
     expect(isModuleActive('lyrics', ['all'])).toBe(false);
   });
 
   test('naming it enables it, alone or next to all', () => {
-    process.env.ENABLED_MODULES = 'lyrics';
+    process.env.SORA_MODULES = 'lyrics';
     expect(isModuleActive('lyrics')).toBe(true);
-    process.env.ENABLED_MODULES = ' All , Lyrics ';
+    process.env.SORA_MODULES = ' All , Lyrics ';
     expect(isModuleActive('lyrics')).toBe(true);
     expect(isModuleActive('music')).toBe(true);
     expect(isModuleActive('lyrics', ['all', 'lyrics'])).toBe(true);
@@ -36,9 +36,9 @@ describe('lyrics module is explicit opt-in', () => {
   });
 
   test('the other modules keep their meaning', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(isModuleActive('music')).toBe(true);
-    process.env.ENABLED_MODULES = 'lyrics';
+    process.env.SORA_MODULES = 'lyrics';
     expect(isModuleActive('music')).toBe(false);
     expect(isModuleActive('web', ['all'])).toBe(true);
   });
@@ -52,7 +52,7 @@ const fakeResult = { found: true, track: { title: 'テスト曲', artist: 'テ�
 
 describe('MCP tool', () => {
   test('is absent by default and under all, present when the module is named', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(toolCatalogOf(createMcpServer({ deferTools: false })).has('get_lyrics')).toBe(false);
     expect(toolCatalogOf(createMcpServer({ modules: ['all'], deferTools: false })).has('get_lyrics')).toBe(false);
     const named = toolCatalogOf(createMcpServer({ modules: ['all', 'lyrics'], deferTools: false }));
@@ -113,19 +113,19 @@ describe('MCP tool', () => {
 
 describe('REST /lyrics', () => {
   test('is a 404 MODULE_DISABLED that says how to enable it, by default and under all', async () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     for (const value of [undefined, 'all']) {
-      if (value) process.env.ENABLED_MODULES = value;
+      if (value) process.env.SORA_MODULES = value;
       const res = await post(app, { title: 'x' });
       expect(res.status).toBe(404);
       const json = await res.json() as any;
       expect(json.code).toBe('MODULE_DISABLED');
-      expect(json.error).toContain('ENABLED_MODULES');
+      expect(json.error).toContain('SORA_MODULES');
     }
   });
 
   test('when enabled it validates, answers, and maps a failed lookup to a retryable 502', async () => {
-    process.env.ENABLED_MODULES = 'all,lyrics';
+    process.env.SORA_MODULES = 'all,lyrics';
     const ok = new Hono().route('/', createLyricsRoutes(async () => fakeResult));
     expect(await (await post(ok, { title: 'テスト曲' })).json()).toMatchObject({ found: true, lyrics: 'らら' });
     expect((await post(ok, {})).status).toBe(400);
@@ -139,10 +139,10 @@ describe('REST /lyrics', () => {
 
 describe('documentation follows the module', () => {
   test('OpenAPI and the endpoint list include /lyrics only when it is enabled', async () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(generateOpenApiDocument().paths['/lyrics' as keyof ReturnType<typeof generateOpenApiDocument>['paths']]).toBeUndefined();
     expect(JSON.stringify(await (await app.request('/')).json())).not.toContain('/lyrics');
-    process.env.ENABLED_MODULES = 'all,lyrics';
+    process.env.SORA_MODULES = 'all,lyrics';
     const doc = generateOpenApiDocument() as any;
     expect(doc.paths['/lyrics'].post.requestBody.content['application/json'].schema.required).toEqual(['title']);
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('POST /lyrics');

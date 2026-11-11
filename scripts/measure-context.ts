@@ -8,7 +8,7 @@ import { openMcpSession } from '../src/test_fixtures/mcp_http.js';
 export interface ContextMeasurement {
   /** 既定（遅延読み込み）の tools/list。 */
   defaultToolsList: { tools: number; chars: number };
-  /** 全ツール（SORA_DEFER_TOOLS=false）の tools/list。 */
+  /** 全ツール（SORA_MCP_DEFER_TOOLS=false）の tools/list。 */
   allToolsList: { tools: number; chars: number };
   instructionsChars: number;
   /** search_tools の応答の文字数（詳細度ごと）。 */
@@ -18,9 +18,9 @@ export interface ContextMeasurement {
 export async function measureContext(): Promise<ContextMeasurement> {
   const { app } = await import('../src/index.js');
   const request = (path: string, init?: RequestInit) => app.request(path, init);
-  const previous = process.env.SORA_DEFER_TOOLS;
+  const previous = process.env.SORA_MCP_DEFER_TOOLS;
   try {
-    process.env.SORA_DEFER_TOOLS = 'true';
+    process.env.SORA_MCP_DEFER_TOOLS = 'true';
     const deferred = await openMcpSession(request);
     const defaultList = await deferred.rpc('tools/list');
     const searchTools: Record<string, number> = {};
@@ -28,7 +28,7 @@ export async function measureContext(): Promise<ContextMeasurement> {
       const response = await deferred.rpc('tools/call', { name: 'search_tools', arguments: { query: '住所', ...(detail ? { detail, activate: false } : {}) } });
       searchTools[detail ?? 'default'] = response.chars;
     }
-    process.env.SORA_DEFER_TOOLS = 'false';
+    process.env.SORA_MCP_DEFER_TOOLS = 'false';
     const all = await openMcpSession(request);
     const allList = await all.rpc('tools/list');
     return {
@@ -38,8 +38,8 @@ export async function measureContext(): Promise<ContextMeasurement> {
       searchTools,
     };
   } finally {
-    if (previous === undefined) delete process.env.SORA_DEFER_TOOLS;
-    else process.env.SORA_DEFER_TOOLS = previous;
+    if (previous === undefined) delete process.env.SORA_MCP_DEFER_TOOLS;
+    else process.env.SORA_MCP_DEFER_TOOLS = previous;
   }
 }
 

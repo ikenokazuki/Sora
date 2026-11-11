@@ -5673,7 +5673,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('hello');
     });
 
-    it('sanitizeMcpResponse drops outputSchema from tools/list (JSON and SSE) unless SORA_TOOL_OUTPUT_SCHEMA=true', async () => {
+    it('sanitizeMcpResponse drops outputSchema from tools/list (JSON and SSE) unless SORA_MCP_OUTPUT_SCHEMA=true', async () => {
       const payload = JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -5685,12 +5685,12 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
       expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
 
-      process.env.SORA_TOOL_OUTPUT_SCHEMA = 'true';
+      process.env.SORA_MCP_OUTPUT_SCHEMA = 'true';
       try {
         expect(await (await sanitizeMcpResponse(json())).text()).toContain('outputSchema');
         expect(await (await sanitizeMcpResponse(sse())).text()).toContain('outputSchema');
       } finally {
-        delete process.env.SORA_TOOL_OUTPUT_SCHEMA;
+        delete process.env.SORA_MCP_OUTPUT_SCHEMA;
       }
     });
 

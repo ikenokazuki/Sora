@@ -214,7 +214,7 @@ if (import.meta.main) {
       .catch((error) => console.warn(`[Sora/Address] preload failed to start: ${error instanceof Error ? error.message : String(error)}`));
   }
 
-  // HTS の版の保存は、ENABLED_MODULES に hts-archive を挙げた運用者だけ。挙げなければ何も読み込まず、何も始めない。
+  // HTS の版の保存は、SORA_MODULES に hts-archive を挙げた運用者だけ。挙げなければ何も読み込まず、何も始めない。
   if (isModuleActive('hts-archive')) {
     void import('./services/hts_archive.js')
       .then(({ startHtsArchive }) => startHtsArchive())

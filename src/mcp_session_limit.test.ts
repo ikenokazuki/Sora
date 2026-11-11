@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { DEFAULT_MAX_MCP_SESSIONS, McpSessionManager, resolveMaxMcpSessions } from './mcp.js';
+import { envInt } from './config.js';
+import { McpSessionManager } from './mcp.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 
 // MCP セッションは 1 つあたり数 MB を保持する。以前は上限がなく、initialize を連打するだけでメモリが尽きた。
@@ -49,12 +50,13 @@ async function ping(manager: McpSessionManager, sessionId: string) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe('resolveMaxMcpSessions', () => {
-  test('正の整数はそのまま、未設定や不正な値は既定値', () => {
-    expect(resolveMaxMcpSessions('50')).toBe(50);
-    expect(resolveMaxMcpSessions(' 7 ')).toBe(7);
+describe('SORA_MCP_MAX_SESSIONS', () => {
+  test('正の整数はそのまま、未設定や不正な値は既定値の 100', () => {
+    const read = (raw: string | undefined) => envInt('SORA_MCP_MAX_SESSIONS', { SORA_MCP_MAX_SESSIONS: raw });
+    expect(read('50')).toBe(50);
+    expect(read(' 7 ')).toBe(7);
     for (const raw of [undefined, '', '0', '-3', 'abc', '1.5', 'NaN']) {
-      expect(resolveMaxMcpSessions(raw)).toBe(DEFAULT_MAX_MCP_SESSIONS);
+      expect(read(raw)).toBe(100);
     }
   });
 
