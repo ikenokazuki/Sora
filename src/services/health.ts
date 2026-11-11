@@ -5,7 +5,7 @@ import { sendWebhookNotification } from '../enrichment.js';
 import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
-import { errorMessage, errorMessageWithoutUrls } from '../errors.js';
+import { errorKind, errorMessage } from '../errors.js';
 import { envUrl } from '../config.js';
 
 export interface DependencyStatus {
@@ -131,7 +131,7 @@ export function sendAdminAlert(event: string, details: Record<string, any>): voi
   };
 
   sendWebhookNotification(alertWebhookUrl, payload).catch((err) => {
-    // 宛先の URL は秘密を含む。例外の文の URL は伏せ、文の無い値はそのまま出さない
-    console.warn('[Sora/Alert] Failed to send admin alert:', errorMessageWithoutUrls(err) ?? 'unknown error');
+    // 宛先の URL は秘密を含み、例外の文にも入るので、例外の種類だけを出す
+    console.warn('[Sora/Alert] Failed to send admin alert:', errorKind(err));
   });
 }

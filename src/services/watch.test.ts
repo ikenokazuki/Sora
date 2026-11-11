@@ -266,7 +266,8 @@ describe('webhookSent は送信の成否を表す', () => {
     }
     await checkAllWatchTargets(matchScrape('version one text here') as never);
     const deliver = spyOn(enrichment, 'deliverWebhook').mockImplementation(async (url?: string) => {
-      if (url?.endsWith('/b')) throw new Error('boom');
+      // 例外の文は宛先の URL（秘密を含みうる）を含む。警告には code だけを出す
+      if (url?.endsWith('/b')) throw Object.assign(new Error(`UnexpectedRedirect fetching "${url}?token=secret-token-w"`), { code: 'UnexpectedRedirect' });
       return true;
     });
     try {
@@ -274,7 +275,7 @@ describe('webhookSent は送信の成否を表す', () => {
       expect(results).toHaveLength(3);
       expect(new Map(results.map((r) => [r.url.slice(-1), r.webhookSent]))).toEqual(new Map([['a', true], ['b', false], ['c', true]]));
       expect(results.every((r) => r.changed)).toBe(true);
-      expect(warned()).toEqual([expect.stringContaining('boom')]);
+      expect(warned()).toEqual([`[Sora/Watch] Webhook delivery for watch target ${targets[1]} threw: UnexpectedRedirect`]);
     } finally {
       deliver.mockRestore();
     }

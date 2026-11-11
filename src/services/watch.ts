@@ -10,7 +10,7 @@ import {
   dbInsertWatchHistory,
   type WatchTargetRecord,
 } from '../db.js';
-import { errorCode, errorMessage } from '../errors.js';
+import { errorCode, errorKind, errorMessage } from '../errors.js';
 
 export class WatchSelectorNotFoundError extends Error {
   readonly code = 'WATCH_SELECTOR_NOT_FOUND';
@@ -197,7 +197,8 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
       // 送信が例外を投げても、ほかの対象の結果を失わない (その対象だけ false)
       if (sendWebhook) {
         deliveries.push(limited(sendWebhook).catch((err) => {
-          console.warn(`[Sora/Watch] Webhook delivery for watch target ${t.id} threw:`, errorMessage(err));
+          // 送信の例外の文は宛先の URL（秘密を含みうる）を含むので、例外の種類だけを出す
+          console.warn(`[Sora/Watch] Webhook delivery for watch target ${t.id} threw:`, errorKind(err));
           return false;
         }).then((sent) => { result.webhookSent = sent; }));
       }

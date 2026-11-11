@@ -2818,7 +2818,8 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(await deliverWebhook('https://93.184.216.34/hooks/throws/secret-token-b', {})).toBe(false);
       expect(warned()).toEqual([
         '[web-fetcher/webhook] Failed to send webhook: HTTP 500',
-        '[web-fetcher/webhook] Error sending webhook: connection refused',
+        // 例外は code（無ければ name）だけを出す。文（message）は宛先の URL を含みうるので出さない
+        '[web-fetcher/webhook] Error sending webhook: Error',
       ]);
     });
 
@@ -2828,28 +2829,47 @@ describe('Sora REST & MCP Endpoints', () => {
       { code: 'UnexpectedRedirect' },
     );
 
-    it('送信の例外の文に入った URL も出さない', async () => {
+    it('送信の例外は code だけを出し、例外の文に入った URL を出さない', async () => {
       globalThis.fetch = (async () => { throw redirectError('https://93.184.216.34/hooks/T000/secret-token-b'); }) as unknown as typeof fetch;
       expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-b', {})).toBe(false);
-      expect(warned()).toEqual([
-        '[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect fetching "<url>". For more information, pass `verbose: true` in the second argument to fetch()',
-      ]);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+    });
+
+    it('URL に引用符があっても、秘密の部分を出さない', async () => {
+      const url = "https://93.184.216.34/hooks/T000/it's-secret-token-ZZ9";
+      globalThis.fetch = (async () => { throw redirectError(url); }) as unknown as typeof fetch;
+      expect(await deliverWebhook(url, {})).toBe(false);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+    });
+
+    it('とても長い URL でも、すぐに終わり、どの部分も出さない', async () => {
+      // 例外の文を正規表現でなめると、引用符のあとの長い英数字の並びで 2 乗の時間がかかり、イベントループが止まる
+      const url = `https://93.184.216.34/hooks/T000/'${'a'.repeat(200_000)}`;
+      globalThis.fetch = (async () => { throw redirectError(url); }) as unknown as typeof fetch;
+      const started = performance.now();
+      expect(await deliverWebhook(url, {})).toBe(false);
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+    });
+
+    it('時間切れは name を出す（code が数のとき）', async () => {
+      globalThis.fetch = (async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); }) as unknown as typeof fetch;
+      expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-t', {})).toBe(false);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: TimeoutError']);
     });
 
     it('実際にリダイレクトを返す宛先でも、警告に URL を出さない（redirect: error で例外になる）', async () => {
       globalThis.fetch = realFetch;
       const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(null, { status: 302, headers: { Location: '/elsewhere/' } }) });
+      const port = server.port; // stop のあとは 0 になる
       const restore = setLocalFetch('true');
       try {
-        expect(await deliverWebhook(`http://127.0.0.1:${server.port}/hooks/T000/B000/secret-token-c`, {})).toBe(false);
+        expect(await deliverWebhook(`http://127.0.0.1:${port}/hooks/T000/B000/secret-token-c`, {})).toBe(false);
       } finally {
         restore();
         server.stop(true);
       }
-      expect(warned()).toHaveLength(1);
-      expect(warned()[0]).toStartWith('[web-fetcher/webhook] Error sending webhook:');
-      expect(warned()[0]).not.toContain('secret-token-c');
-      expect(warned()[0]).not.toContain(`127.0.0.1:${server.port}`);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
     });
 
     describe('管理者のアラート（SORA_ALERT_WEBHOOK_URL）', () => {
@@ -2884,9 +2904,7 @@ describe('Sora REST & MCP Endpoints', () => {
         } finally {
           send.mockRestore();
         }
-        expect(warned()).toEqual([
-          '[Sora/Alert] Failed to send admin alert: UnexpectedRedirect fetching "<url>". For more information, pass `verbose: true` in the second argument to fetch()',
-        ]);
+        expect(warned()).toEqual(['[Sora/Alert] Failed to send admin alert: UnexpectedRedirect']);
       });
 
       it('私的な宛先は止め、その警告に URL（秘密の部分を含む）を出さない', async () => {
