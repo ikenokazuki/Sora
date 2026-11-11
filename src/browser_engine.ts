@@ -1,4 +1,5 @@
 import puppeteer, { type Browser, type Page } from 'puppeteer-core';
+import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
@@ -74,19 +75,31 @@ let cachedChromiumMajorVersion: number | undefined | null = null;
  */
 export function getChromiumMajorVersion(): number | undefined {
   if (cachedChromiumMajorVersion !== null) return cachedChromiumMajorVersion;
-  cachedChromiumMajorVersion = undefined;
-  if (CHROME_EXECUTABLE_PATH) {
-    try {
-      const { execSync } = require('child_process');
-      const out: string = execSync(`"${CHROME_EXECUTABLE_PATH}" --version`, {
-        encoding: 'utf8',
-        timeout: 5000,
-      });
-      const major = out.match(/\b(\d+)\.\d+\.\d+/)?.[1];
-      if (major) cachedChromiumMajorVersion = parseInt(major, 10);
-    } catch {}
-  }
+  cachedChromiumMajorVersion = CHROME_EXECUTABLE_PATH ? readChromiumMajorVersion(CHROME_EXECUTABLE_PATH) : undefined;
   return cachedChromiumMajorVersion;
+}
+
+/**
+ * `chromium --version` の出力（例: "Chromium 156.0.8078.79 built on Debian 12.12"、"Google Chrome 149.0.7827.155"）から、
+ * メジャーバージョンを取り出す。
+ */
+export function parseChromiumMajorVersion(output: string): number | undefined {
+  const major = output.match(/\b(\d+)\.\d+\.\d+/)?.[1];
+  return major ? parseInt(major, 10) : undefined;
+}
+
+/**
+ * 実行ファイルに --version を問い合わせて、メジャーバージョンを返す。取れなければ undefined。
+ * シェルを経由しない（execFileSync）。以前の execSync は /bin/sh を使うので、シェルの無い distroless のイメージでは
+ * 起動できず、版が取れないまま wreq の最大のプロファイルに落ちていた。
+ */
+export function readChromiumMajorVersion(executablePath: string): number | undefined {
+  try {
+    const out = execFileSync(executablePath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    return parseChromiumMajorVersion(out);
+  } catch {
+    return undefined;
+  }
 }
 
 let sharedBrowserInstance: Browser | null = null;
