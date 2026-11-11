@@ -57,7 +57,7 @@
 - 応答は、統合前の応答をそのまま使う（モードごと）。複数の種類を返すときは、種類ごとの節にする（例: `get_disaster_info` の `warnings`・`earthquakes`・`typhoons`）。どのモードで答えたかを `mode` 欄で返す。
 - 引数の検査: 「どれか 1 つ必須」「同時に指定できない」は refine で確かめ、エラーの文面で正しい使い方を示す。
 - 説明文: 先頭に「何をするか」、続けて「どう使い分けるか」。旧名の語（「標高」「郵便番号」「逆ジオコーディング」など）を説明に残し、`registerTool` の `keywords` に旧名（`get_elevation` など）を入れる。
-- 遅延読み込みのツールは、今までどおり `default.<名前>` の別名（LibreChat 用）を持つ。新しい名前でも同じ。
+- 遅延読み込みのツールは、今までどおり `default.<名前>` の別名（`default.` を付けた名前で呼ぶ MCP クライアント用）を持つ。新しい名前でも同じ。
 - モジュール: 統合したツールは、元のツールが属していたモジュールに置く（例: `lookup_address`・`get_place_info` は `disaster`、`lookup_hts`・`check_regulations` は `trade`）。モジュールが無効なら、そのツールは出ない。
 
 ## REST と client

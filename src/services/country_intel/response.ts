@@ -120,7 +120,7 @@ export function compactCountryReport(report: CountryContextReport): CountryConte
     ...(report.enrichment ? { enrichment: { ...report.enrichment, omittedDetails: report.enrichment.omittedDetails + (report.evidenceDetails?.length ?? 0) - selectedDetails.length } } : {}),
     limitations: [...(report.limitations ?? []), {
       code: 'response_sampled', area: 'general',
-      message: `Initial response shows ${evidence.length}/${report.evidence.length} evidence records and ${selectedDetails.length}/${report.evidenceDetails?.length ?? 0} details. Full context: get_country_context or GET /intelligence/context/${report.contextId}; details: get_country_context_evidence or GET /intelligence/context/${report.contextId}/evidence.`,
+      message: `Initial response shows ${evidence.length}/${report.evidence.length} evidence records and ${selectedDetails.length}/${report.evidenceDetails?.length ?? 0} details. Full context: get_country_context or GET /intelligence/context/${report.contextId}; details: get_country_context (part: evidence) or GET /intelligence/context/${report.contextId}/evidence.`,
       evidenceIds: [],
     }],
   };

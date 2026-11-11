@@ -30,7 +30,6 @@ import { lyricsRoutes } from './routes/lyrics.js';
 import { youtubeRoutes } from './routes/youtube.js';
 import { songRecognitionRoutes } from './routes/song_recognition.js';
 import { htsArchiveRoutes } from './routes/hts_archive.js';
-import { clientRoutes } from './routes/client.js';
 import { toolsRoutes } from './routes/tools.js';
 import { createMcpOriginMiddleware } from './security/mcp_origin.js';
 import { createRestOriginPolicy } from './security/rest_origin.js';
@@ -145,7 +144,6 @@ app.route('/', lyricsRoutes);
 app.route('/', youtubeRoutes);
 app.route('/', songRecognitionRoutes);
 app.route('/', htsArchiveRoutes);
-app.route('/', clientRoutes);
 app.route('/', toolsRoutes);
 
 // ==========================================

@@ -3,7 +3,10 @@ import { TOOL_CASES } from './catalog.js';
 import { LiveBlocked, LiveFail, LiveUnavailable, LiveUnverified, type CaseContext } from './types.js';
 
 const OSM = '出典: © OpenStreetMap contributors (ODbL) https://www.openstreetmap.org/copyright';
-const elevation = { lat: 35.669968, lon: 139.709008, elevationMeters: 34, geocodingSource: 'nominatim', geocodingAttribution: OSM };
+const harajuku = { lat: 35.669968, lon: 139.709008, geocodingSource: 'nominatim', geocodingAttribution: OSM };
+/** get_place_info の応答（既定の include: elevation）。location を差し替えて使う */
+const place = (location: Record<string, unknown> = {}, elevation: Record<string, unknown> = { elevationMeters: 34 }) =>
+  ({ location: { ...harajuku, ...location }, elevation, include: ['elevation'] });
 const poi = {
   centerResolved: { input: '原宿', address: '東京都渋谷区神宮前 原宿', lat: 35.669968, lon: 139.709008, source: 'nominatim', attribution: OSM },
   count: 1, pois: [{ name: '原宿のラーメン店', lat: 35.67, lng: 139.709 }],
@@ -21,29 +24,35 @@ function context(result: unknown, restResult: unknown = result): CaseContext {
 describe('live geocoding checks', () => {
   test('elevation rejects numeric coordinates from the wrong city', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
-    await expect(check.run(context({ ...elevation, lat: 43.076111, lon: 141.363617 }))).rejects.toThrow();
+    await expect(check.run(context(place({ lat: 43.076111, lon: 141.363617 })))).rejects.toThrow();
+  });
+
+  test('elevation requires a numeric elevation in the elevation section', async () => {
+    const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
+    await expect(check.run(context(place({}, { elevationMeters: null })))).rejects.toThrow('elevation');
+    // 旧 get_elevation の平らな応答は、もう通らない
+    await expect(check.run(context({ ...harajuku, elevationMeters: 34 }))).rejects.toThrow('elevation');
   });
 
   test('elevation requires the attribution that matches the geocoding source', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.elevation')!;
-    await expect(check.run(context(elevation))).resolves.toHaveProperty('sources');
-    await expect(check.run(context({ ...elevation, geocodingAttribution: undefined }))).rejects.toThrow('attribution');
-    await expect(check.run(context({ ...elevation, geocodingAttribution: '出典: 国土地理院' }))).rejects.toThrow('attribution');
+    await expect(check.run(context(place()))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place({ geocodingAttribution: undefined })))).rejects.toThrow('attribution');
+    await expect(check.run(context(place({ geocodingAttribution: '出典: 国土地理院' })))).rejects.toThrow('attribution');
   });
 
   test('station check requires Shibuya Station resolved by nominatim', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.station')!;
-    const shibuya = { ...elevation, lat: 35.6584716, lon: 139.700401 };
-    await expect(check.run(context(shibuya))).resolves.toHaveProperty('sources');
-    await expect(check.run(context(elevation))).rejects.toThrow('Shibuya');
+    await expect(check.run(context(place({ lat: 35.6584716, lon: 139.700401 })))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place()))).rejects.toThrow('Shibuya');
   });
 
   test('address check accepts the GSI fallback near Nagatacho', async () => {
     const check = TOOL_CASES.find((c) => c.id === 'geo.address')!;
-    const nagatacho = { ...elevation, lat: 35.677414, lon: 139.744385, geocodingSource: 'gsi', geocodingAttribution: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)' };
-    await expect(check.run(context(nagatacho))).resolves.toHaveProperty('sources');
-    await expect(check.run(context({ ...nagatacho, geocodingAttribution: OSM }))).rejects.toThrow('attribution');
-    await expect(check.run(context({ ...nagatacho, lat: 35.669968, lon: 139.709008 }))).rejects.toThrow('Nagatacho');
+    const nagatacho = { lat: 35.677414, lon: 139.744385, geocodingSource: 'gsi', geocodingAttribution: '出典: 国土地理院 (https://msearch.gsi.go.jp/address-search/AddressSearch)' };
+    await expect(check.run(context(place(nagatacho)))).resolves.toHaveProperty('sources');
+    await expect(check.run(context(place({ ...nagatacho, geocodingAttribution: OSM })))).rejects.toThrow('attribution');
+    await expect(check.run(context(place({ ...nagatacho, lat: 35.669968, lon: 139.709008 })))).rejects.toThrow('Nagatacho');
   });
 
   test('POI checks the center source, expected region, and each returned point', async () => {
@@ -61,17 +70,18 @@ describe('live geocoding checks', () => {
 const ABR = '出典: デジタル庁「アドレス・ベース・レジストリ」（公共データ利用規約 第1.0版）を加工して作成（加工: Sora）。郵便番号: 日本郵便株式会社「郵便番号データ」を加工して作成。';
 const nagatachoKeys = { prefCode: '13', lgCode: '131016', machiazaId: '0005001', blk: '5', rsdt: '1' };
 const nagatachoZips = [{ zipcode: '1000014', town: '永田町', townRaw: '永田町（次のビルを除く）', exact: true, fallback: false }];
+// lookup_address（MCP）の応答は、選んだ経路の mode を持つ。REST の応答には無いが、REST の検査は余計な欄を見ないので同じ値を使う
 const zip = {
-  zipcode: '1000014', count: 1, attribution: ABR,
+  mode: 'postal', zipcode: '1000014', count: 1, attribution: ABR,
   candidates: [{ kind: 'general', prefecture: '東京都', city: '千代田区', town: '永田町', townRaw: '永田町（次のビルを除く）', lgCode: '131016', lat: 35.675473, lon: 139.743767, locationLevel: 3 }],
 };
 const normalized = {
-  input: '東京都千代田区永田町1-5-1', pref: '東京都', city: '千代田区', town: '永田町一丁目', addr: '5-1', other: '',
+  mode: 'normalize', input: '東京都千代田区永田町1-5-1', pref: '東京都', city: '千代田区', town: '永田町一丁目', addr: '5-1', other: '',
   normalized: '東京都千代田区永田町一丁目5-1', level: 8, numberSource: 'rsdt', keys: nagatachoKeys,
   point: { lat: 35.673766, lon: 139.746379, level: 8 }, postalCodes: nagatachoZips, attribution: ABR,
 };
 const reversed = {
-  lat: 35.673766, lon: 139.746379, found: true, level: 8, numberSource: 'rsdt', approximate: true,
+  mode: 'reverse', lat: 35.673766, lon: 139.746379, found: true, level: 8, numberSource: 'rsdt', approximate: true,
   normalized: '東京都千代田区永田町一丁目5-1', distanceMeters: 0.4, point: { lat: 35.673766, lon: 139.746379, level: 8 },
   keys: nagatachoKeys, postalCodes: nagatachoZips, alternatives: [], attribution: ABR,
 };
@@ -79,12 +89,16 @@ const addressCase = (id: string) => TOOL_CASES.find((c) => c.id === id)!;
 
 describe('live address checks', () => {
   test('the address cases retry once, because a cold start downloads the data from outside', () => {
-    for (const id of ['geo.postal_code', 'geo.normalize_address', 'geo.reverse_geocode']) expect(addressCase(id).externalRequired).toBe(true);
+    for (const id of ['geo.lookup_address.postal', 'geo.lookup_address.normalize', 'geo.lookup_address.reverse']) expect(addressCase(id).externalRequired).toBe(true);
   });
 
   test('postal code: 100-0014 must resolve to 永田町 in Chiyoda, over both MCP and REST', async () => {
-    const check = addressCase('geo.postal_code');
+    const check = addressCase('geo.lookup_address.postal');
     await expect(check.run(context(zip))).resolves.toHaveProperty('sources');
+    // MCP の lookup_address が、郵便番号だけの入力を別の経路で読んだ
+    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toThrow('lookup_address chose mode "normalize" (expected "postal")');
+    await expect(check.run(context({ ...zip, mode: undefined }))).rejects.toThrow('lookup_address chose mode undefined (expected "postal")');
     await expect(check.run(context({ ...zip, zipcode: '1000001' }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, count: 0, candidates: [] }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, candidates: [{ ...zip.candidates[0], city: '新宿区' }] }))).rejects.toBeInstanceOf(LiveFail);
@@ -95,7 +109,7 @@ describe('live address checks', () => {
   });
 
   test('normalize: the sample address must reach the residential number with its keys, point and zip code', async () => {
-    const check = addressCase('geo.normalize_address');
+    const check = addressCase('geo.lookup_address.normalize');
     await expect(check.run(context(normalized))).resolves.toHaveProperty('sources');
     // 番地・号に届かず町字で止まっている（段B を読めていない）
     await expect(check.run(context({ ...normalized, level: 3, numberSource: null, normalized: '東京都千代田区永田町一丁目', other: '5-1' }))).rejects.toBeInstanceOf(LiveFail);
@@ -108,7 +122,7 @@ describe('live address checks', () => {
   });
 
   test('reverse geocode: the point of the sample address must come back as that address', async () => {
-    const check = addressCase('geo.reverse_geocode');
+    const check = addressCase('geo.lookup_address.reverse');
     await expect(check.run(context(reversed))).resolves.toHaveProperty('sources');
     await expect(check.run(context({ ...reversed, found: false, reason: '付近に町字がありません' }))).rejects.toBeInstanceOf(LiveFail);
     // 近くの番地の点を引けていない（level 3 の町字止まり）
@@ -120,7 +134,7 @@ describe('live address checks', () => {
   });
 
   test('an answer given before the data was ready is classified, never passed or failed on content', async () => {
-    const check = addressCase('geo.normalize_address');
+    const check = addressCase('geo.lookup_address.normalize');
     const early = { ...normalized, level: 3, numberSource: null, normalized: '東京都千代田区永田町一丁目', other: '5-1' };
     await expect(check.run(context({ ...early, incomplete: true, pending: ['num:131016'] }))).rejects.toBeInstanceOf(LiveUnverified);
     await expect(check.run(context({ ...early, incomplete: true, pending: ['num:131016'] }))).rejects.toThrow('num:131016');
@@ -136,7 +150,7 @@ describe('live address checks', () => {
       ...context({}),
       mcp: { callTool: async () => ({ isError: true, content: [{ type: 'text', text }] }), listTools: async () => [] },
     });
-    const check = addressCase('geo.reverse_geocode');
+    const check = addressCase('geo.lookup_address.reverse');
     await expect(check.run(failing('Reverse geocode error: address data pending: index（データを取得中です。しばらくして再実行してください）'))).rejects.toBeInstanceOf(LiveUnverified);
     await expect(check.run(failing('Reverse geocode error: https://data.address-br.digital.go.jp/mt_town/city/mt_town_city131016.csv.zip: HTTP 403（国外 IP からの接続は拒否されます）'))).rejects.toBeInstanceOf(LiveBlocked);
     await expect(check.run(failing('Reverse geocode error: city:131016 の構築が 120 秒以内に終わりませんでした'))).rejects.toBeInstanceOf(LiveUnavailable);
@@ -150,25 +164,25 @@ describe('live address checks', () => {
 // 街区データ（国土交通省）で補った住所、zipcode で市区町村を補った住所、座標の無い地番の補完。
 const MLIT_ATTRIBUTION = '街区符号の点: 出典「位置参照情報ダウンロードサービス（国土交通省）」（https://nlftp.mlit.go.jp/isj/index.html）を加工して作成';
 const shiba = {
-  input: '港区芝大門1-10-18-3F', pref: '東京都', city: '港区', town: '芝大門一丁目', addr: '10', other: '18-3F',
+  mode: 'normalize', input: '港区芝大門1-10-18-3F', pref: '東京都', city: '港区', town: '芝大門一丁目', addr: '10', other: '18-3F',
   normalized: '東京都港区芝大門一丁目10', level: 8, numberSource: 'mlit', keys: { prefCode: '13', lgCode: '131032', machiazaId: '0006001', prc: ['10'] },
   point: { lat: 35.658751, lon: 139.752938, level: 7 }, postalCodes: [{ zipcode: '1050012' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
 };
 const sendagaya = {
-  input: '千駄ヶ谷2-34-8テラス外苑204', pref: '東京都', city: '渋谷区', town: '千駄ヶ谷二丁目', addr: '34-8', other: 'テラス外苑204',
+  mode: 'normalize', input: '千駄ヶ谷2-34-8テラス外苑204', pref: '東京都', city: '渋谷区', town: '千駄ヶ谷二丁目', addr: '34-8', other: 'テラス外苑204',
   normalized: '東京都渋谷区千駄ヶ谷二丁目34-8', level: 8, numberSource: 'rsdt', keys: { prefCode: '13', lgCode: '131130', machiazaId: '0000002' },
   point: { lat: 35.676, lon: 139.711, level: 8 }, postalCodes: [{ zipcode: '1510051' }],
   checks: { zipcode: { status: 'match', zipcode: '1510051', expected: [{ zipcode: '1510051' }], reason: '町域の番号に含まれます' } }, attribution: ABR,
 };
 const tendo = {
-  input: '山形県天童市大字山口4559-4', pref: '山形県', city: '天童市', town: '大字山口', addr: '4559-4', other: '',
+  mode: 'normalize', input: '山形県天童市大字山口4559-4', pref: '山形県', city: '天童市', town: '大字山口', addr: '4559-4', other: '',
   normalized: '山形県天童市大字山口4559-4', level: 8, numberSource: 'chiban', keys: { prefCode: '06', lgCode: '062103', machiazaId: '0040000', prc: ['4559', '4'] },
   point: { lat: 38.380088, lon: 140.414751, level: 7 }, pointSource: 'mlit', postalCodes: [{ zipcode: '9940101' }], attribution: `${ABR} ${MLIT_ATTRIBUTION}`,
 };
 
 describe('live address checks（街区データ・zipcode・座標の補完）', () => {
   test('MLIT: 街区符号までの照合は numberSource mlit、level 8、point.level 7、国土交通省の出典', async () => {
-    const check = addressCase('geo.normalize_address.mlit');
+    const check = addressCase('geo.lookup_address.normalize.mlit');
     await expect(check.run(context(shiba))).resolves.toHaveProperty('sources');
     await expect(check.run(context({ ...shiba, numberSource: 'rsdt' }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...shiba, level: 3, numberSource: null }))).rejects.toBeInstanceOf(LiveFail);
@@ -181,7 +195,7 @@ describe('live address checks（街区データ・zipcode・座標の補完）',
   });
 
   test('zipcode: 市区町村の無い住所が zipcode で解決され、zipcode の突き合わせが match', async () => {
-    const check = addressCase('geo.normalize_address.zipcode');
+    const check = addressCase('geo.lookup_address.normalize.zipcode');
     await expect(check.run(context(sendagaya))).resolves.toHaveProperty('sources');
     await expect(check.run(context({ ...sendagaya, level: 0, numberSource: null, normalized: '' }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...sendagaya, normalized: '東京都新宿区千駄ヶ谷二丁目34-8' }))).rejects.toBeInstanceOf(LiveFail);
@@ -190,7 +204,7 @@ describe('live address checks（街区データ・zipcode・座標の補完）',
   });
 
   test('座標の無い地番: 地番で照合でき、点は街区の点（7）か番地の点（8）。7 のときは mlit の印と出典', async () => {
-    const check = addressCase('geo.normalize_address.parcel_point');
+    const check = addressCase('geo.lookup_address.normalize.parcel_point');
     await expect(check.run(context(tendo))).resolves.toHaveProperty('sources');
     // ABR が位置参照を足して、番地の点（8）になっても合格
     const exact = { ...tendo, point: { ...tendo.point, level: 8 }, pointSource: undefined, attribution: ABR };

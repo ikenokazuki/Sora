@@ -304,7 +304,46 @@ export type CrawlSiteOutput = {
   }[];
 };
 
-/** 【同一サイト内再帰巡回】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] } */
+/** 再帰的サブページクロール */
 export function crawlSite(input: CrawlSiteInput): Promise<CrawlSiteOutput> {
   return callSora<CrawlSiteOutput>({ method: 'POST', path: '/crawl' }, input);
+}
+
+export type MapSiteInput = {
+  /** サイトマップ探索対象のベース URL (例: "https://example.com") */
+  url: string;
+  /** 取得する最大 URL 件数 (デフォルト: 200, 最大: 1000) */
+  limit?: number;
+  /** サブドメインも含めるか (デフォルト: false)。サイトマップが無く、ページ内のリンクをたどる切り替えのときだけ効く */
+  includeSubdomains?: boolean;
+  /** サイトマップの lastmod がこの日付・日時以降の URL に絞る (例: "2026-08-01", "2026-01-01T00:00:00Z")。lastmod の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない */
+  since?: string;
+  /** サイトマップの lastmod がこの日付・日時以前の URL に絞る。lastmod の無い URL は常に残り、リンクをたどる切り替えのときは効かない */
+  until?: string;
+  /** リンクをたどる切り替えのときの取得のタイムアウト (ミリ秒, デフォルト: 15000)。サイトマップ・robots.txt の取得は固定の 10 秒・5 秒 */
+  timeoutMs?: number;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type MapSiteOutput = {
+  /** 対象サイトのベース URL */
+  url: string;
+  /** 発見されたサイトマップまたは巡回 URL リスト */
+  links: string[];
+  /** 取得 URL 総件数 */
+  count: number;
+  /** 検出ソース (sitemap.xml または HTML リンク解析) */
+  source: "sitemap" | "links";
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** サイトマップ & URL マッピング */
+export function mapSite(input: MapSiteInput): Promise<MapSiteOutput> {
+  return callSora<MapSiteOutput>({ method: 'POST', path: '/map' }, input);
 }

@@ -4,7 +4,7 @@
 
 ## 使うツール
 
-- 注記: `scrape`・`scrape_batch`・`crawl_site`・`search_deep` の `annotateTemporal: true`。REST では `POST /scrape`・`/scrape/batch`・`/crawl`・`/search` の同じ引数です。既定は false です。
+- 注記: `scrape`（`url`・`urls`）・`crawl_site`・`search_deep` の `annotateTemporal: true`。REST では `POST /scrape`・`/scrape/batch`・`/crawl`・`/search` の同じ引数です。既定は false です。
 - 予定のまとめ: `search_deep` の応答の `schedule`（`verbose: true` のときはまとめず、ページごとの `events` のままです）
 - 問いの日付の扱い: `search_deep` と `scrape` のハイライト選び（`query` に日付や「明日」があるとき）
 

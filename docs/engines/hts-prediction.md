@@ -2,13 +2,13 @@
 
 米国へ輸出する商品には、10 桁の HTS コード（Harmonized Tariff Schedule。米国の関税率表の番号）が要ります。先頭の 6 桁は国際共通の HS コードで、残りは米国の細分です。商品名で関税率表を検索するだけでは、"wallet" や "wristwatch" のような普段の言葉と、表の用語が離れているので外します。
 
-Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁のコード・一般関税率・関連する規制の候補を決めます。公式の関税率表の全文検索と、米国税関（CBP）の分類判例（CROSS。手元の判例の索引から引きます）の二つを、6 桁の単位で合わせます。決めきれないときは、公式の階層の分かれ目を選択肢にした質問を返します。
+Sora の `lookup_hts` は、`htsCode` を省くと、英語の商品名・説明から、10 桁のコード・一般関税率・関連する規制の候補を決めます。公式の関税率表の全文検索と、米国税関（CBP）の分類判例（CROSS。手元の判例の索引から引きます）の二つを、6 桁の単位で合わせます。決めきれないときは、公式の階層の分かれ目を選択肢にした質問を返します。
 
-同じ関税率表を使う `verify_hts_code`（渡されたコードが表に実在するかの確認）も、このページで説明します。
+同じ関税率表を使う照合（`lookup_hts` に `htsCode` を渡したとき。渡されたコードが表に実在するかの確認）も、このページで説明します。
 
 ## 使うツール
 
-- MCP: `predict_hts_code`、`verify_hts_code`（どちらもモジュール `trade` の遅延ツールです。`search_tools` で有効化します）。
+- MCP: `lookup_hts`（モジュール `trade` の遅延ツールです。`search_tools` で有効化します）。`htsCode` を省くと推測、渡すと照合で、応答の `mode` が `predict`・`verify` です。照合の `description` は、REST の `productDescription` に当たります。推測だけの引数（`productName`・`material` など）を `htsCode` と一緒に渡すと、入力の誤りです。
 - REST: `POST /trade/hts-predict`、`POST /trade/hts-verify`。
 - `check_product_compliance`（`POST /trade/compliance`）も、内部でこの二つを使います（[product-compliance.md](product-compliance.md)）。
 
@@ -25,7 +25,7 @@ Sora の `predict_hts_code` は、英語の商品名・説明から、10 桁の�
 CBP の分類判例は、手元の判例の索引から引きます（既定。`CROSS_SOURCE=local`）。
 
 - CBP の判例検索（rulings.cbp.gov の API）は、2026 年 11 月の時点でボット対策の後ろにあり、プログラムからの要求は 403 になります（本文は `Security parameters are missing from this request context.`）。Sora はこれを避けません。そこで、公開されている判例のデータから作った索引を、Sora の GitHub のリリースに置いて使います。
-- 索引は、`predict_hts_code` が初めて呼ばれたときに取得します（gzip で約 6MB）。SHA-256 を確かめてから、SQLite の全文検索（FTS5）の表にして、HTS と同じ場所（`SORA_HTS_DIR`）に `cross.sqlite` として保存します。起動時の取得や常駐の処理はありません。用意ができるまでの呼び出しは、HTS の全文検索だけで答え、`evidence.crossNote` に「判例の索引を準備中」と残します。取得に失敗したら、1 時間は取り直しません。
+- 索引は、推測が初めて呼ばれたときに取得します（gzip で約 6MB）。SHA-256 を確かめてから、SQLite の全文検索（FTS5）の表にして、HTS と同じ場所（`SORA_HTS_DIR`）に `cross.sqlite` として保存します。起動時の取得や常駐の処理はありません。用意ができるまでの呼び出しは、HTS の全文検索だけで答え、`evidence.crossNote` に「判例の索引を準備中」と残します。取得に失敗したら、1 時間は取り直しません。
 - 照会は CBP の検索と同じく AND 条件です（照会語の全ての語を、判例の品名か説明に含む判例）。品名を説明の 2 倍の重みにした BM25 で並べ、上位 10 件を見ます。
 - 判例を使ったときは、`evidence.attribution` に出典を表示します。判例番号のある判例は `evidence.rulings` に rulings.cbp.gov への URL つきで出します。判例番号の無い判例（下の ATLAS の分）は票だけに使い、`evidence.rulings` には出しません。
 - `CROSS_SOURCE=api` にすると、これまでどおり CBP の API に問い合わせます（1 回 5 秒で時間切れ、24 時間キャッシュ、失敗したら 60 秒は問い合わせない、分類の判例だけで取り消された判例は除く）。今は 403 で `unavailable` になります。
@@ -45,7 +45,7 @@ CBP の分類判例は、手元の判例の索引から引きます（既定。`
 
 ## 決め方
 
-`predict_hts_code` の手順です。
+推測（`htsCode` を省いたとき）の手順です。
 
 1. 入力を確かめます。`productName` と、`description`・`productCategory`・`material` をつないだ文に、英語の語が 1 つも無ければ、REST では 400（`INVALID_INPUT`）、MCP では `isError` の応答です。HTS も判例も英語だからです。
 2. 否定された語（"not ceramic"、"without battery"、"non-..."）は検索語から外します。`hasBattery` が `true` のときだけ、検索語に `battery` を足します。
@@ -71,11 +71,11 @@ CBP の分類判例は、手元の判例の索引から引きます（既定。`
 11. 候補（6 桁ごとの代表の行、最大 5 件）を作ります。確度が `high` でなければ、分岐点の質問も作ります。候補の行が公式の階層で最初に分かれる位置を探し、その位置の公式の説明文を選択肢（最大 6 個、各 160 字まで）にします。6 桁が競っている（2 位が 1 位の 0.6 倍以上）ときは 6 桁の代表どうしを、そうでなければ最有力の 6 桁の下の全ての行を比べます。商品の語を含まない行も選択肢になります（自転車用ヘルメットは "Athletic, recreational and sporting headgear" で、"helmet" の語を含みません）。
 12. 最有力のコードで、CPSC と FDA の判定を呼び、足りない情報を質問にまとめます（[cpsc-certificate.md](cpsc-certificate.md)、[fda-regulated.md](fda-regulated.md)）。
 
-`verify_hts_code` の手順です。
+照合（`htsCode` を渡したとき）の手順です。
 
 1. コードから点を除きます。8 桁以上で、表に行があれば `matchLevel: exact` です。公式の説明・階層での位置・率（継承した率を含む）を返します。8 桁の行にこれより細かい 10 桁の行があるときは、細かい行（30 件まで）を `nearbyCandidates` に入れ、10 桁を確かめる質問を返します。
 2. 行がなくても、先頭 6 桁の下に行があれば `6-digit-category`（`verified: false`）です。近い行を返し、10 桁を確かめる質問を返します。
-3. どちらもなければ `unmatched` です。`productDescription` は必須ですが、判定には使わず、根拠の記録として応答に返します。
+3. どちらもなければ `unmatched` です。商品の説明（MCP の `description`、REST の `productDescription`）は必須ですが、判定には使わず、根拠の記録として応答に返します。
 
 ## 決められないとき
 

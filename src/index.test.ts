@@ -995,7 +995,7 @@ describe('Sora REST & MCP Endpoints', () => {
     ]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 14 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 13 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1037,12 +1037,11 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('search_chiebukuro');
     expect(toolNames).toContain('search_realtime');
-    expect(toolNames).toContain('search_disaster_warnings');
-    expect(toolNames).toContain('search_earthquake');
+    expect(toolNames).toContain('get_disaster_info');
     expect(toolNames).toContain('search_laws');
     expect(toolNames).toContain('search_social_posts');
     expect(toolNames).toContain('fetch_social_post');
-    expect(toolNames.length).toBe(14);
+    expect(toolNames.length).toBe(13);
   });
 
   it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
@@ -1092,7 +1091,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     await manager.handleRequest(notifyReq);
 
-    // 2. Initial tools/list (should be 11 core tools)
+    // 2. Initial tools/list (should be 13 core tools)
     const listReq1 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1108,14 +1107,14 @@ describe('Sora REST & MCP Endpoints', () => {
     const names1 = listBody1.result.tools.map((t: any) => t.name);
     expect(names1).toContain('search_social_posts');
     expect(names1).toContain('fetch_social_post');
-    expect(names1.length).toBe(14);
+    expect(names1.length).toBe(13);
     expect(names1).toContain('scrape');
     expect(names1).toContain('search_deep');
     expect(names1).toContain('search_web');
     expect(names1).toContain('check_product_compliance');
     expect(names1).toContain('search_tools');
 
-    // 3. Attempting to call standby tool (search_song) directly should fail
+    // 3. Attempting to call standby tool (search_music) directly should fail
     const callDisabledReq = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1128,7 +1127,7 @@ describe('Sora REST & MCP Endpoints', () => {
         jsonrpc: '2.0',
         id: 3,
         method: 'tools/call',
-        params: { name: 'search_song', arguments: { title: 'アイドル' } },
+        params: { name: 'search_music', arguments: { query: 'アイドル' } },
       }),
     });
     const callDisabledRes = await manager.handleRequest(callDisabledReq);
@@ -1154,7 +1153,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     const searchRes = await manager.handleRequest(searchReq);
     const searchBody: any = await parseRes(searchRes);
-    expect(searchBody.result?.content?.[0]?.text).toContain('search_song');
+    expect(searchBody.result?.content?.[0]?.text).toContain('search_music');
 
     // 5. tools/list now includes activated tools and their compatibility aliases.
     const listReq2 = new Request('http://localhost/mcp', {
@@ -1170,12 +1169,9 @@ describe('Sora REST & MCP Endpoints', () => {
     const listRes2 = await manager.handleRequest(listReq2);
     const listBody2: any = await parseRes(listRes2);
     const names2 = listBody2.result.tools.map((t: any) => t.name);
-    // クエリ「楽曲」は search_song（"楽曲タイトル"）と search_music（"楽曲・アルバム"）の
-    // 両方の description に部分一致し、正式名2件と互換名2件が公開される。
-    expect(names2.length).toBe(names1.length + 4);
-    expect(names2).toContain('search_song');
+    // クエリ「楽曲」は search_music の keywords に一致し、正式名と互換名の 2 件が公開される。
+    expect(names2.length).toBe(names1.length + 2);
     expect(names2).toContain('search_music');
-    expect(names2).toContain('default.search_song');
     expect(names2).toContain('default.search_music');
 
     // 6. Search for non-existent tool returns helpful message
@@ -3434,7 +3430,8 @@ describe('Sora REST & MCP Endpoints', () => {
     const tradeServer = createMcpServer({ modules: ['trade'] });
     expect(tradeServer).toBeDefined();
     const tradeTools = Object.keys((tradeServer as any)._registeredTools);
-    expect(tradeTools).toContain('check_cpsc_certificate');
+    expect(tradeTools).toContain('check_regulations');
+    expect(tradeTools).toContain('lookup_hts');
   });
 
   it('detectSpaOrBotPage should flag a JavaScript-disabled notice page', () => {
@@ -3631,8 +3628,8 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(53);
-    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(39);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(33);
+    expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(20);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
     const assertGeminiCompatible = (schema: any, toolName: string, path: string = '') => {
@@ -4097,12 +4094,12 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 53 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 33 tools and enable 13 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    // Core 12 tools are enabled by default for seamless 1-hop autonomous invocation
+    // Core 13 tools are enabled by default for seamless 1-hop autonomous invocation
     expect(enabledTools).toContain('scrape');
     expect(enabledTools).toContain('search_web');
     expect(enabledTools).toContain('search_deep');
@@ -4112,39 +4109,34 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledTools).toContain('search_route');
     expect(enabledTools).toContain('search_chiebukuro');
     expect(enabledTools).toContain('search_realtime');
-    expect(enabledTools).toContain('search_disaster_warnings');
-    expect(enabledTools).toContain('search_earthquake');
+    expect(enabledTools).toContain('get_disaster_info');
     expect(enabledTools).toContain('search_laws');
     expect(enabledTools).toContain('search_social_posts');
     expect(enabledTools).toContain('fetch_social_post');
-    expect(enabledTools.length).toBe(14);
+    expect(enabledTools.length).toBe(13);
 
     const serverAll = createMcpServer({ deferTools: false });
     const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
     expect(enabledToolsAll).toContain('search_diet_minutes');
-    expect(enabledToolsAll).toContain('get_elevation');
+    expect(enabledToolsAll).toContain('get_place_info');
     expect(enabledToolsAll).toContain('get_flight_status');
-    expect(enabledToolsAll).toContain('check_cpsc_certificate');
-    expect(enabledToolsAll).toContain('check_fda_regulated');
-    expect(enabledToolsAll).toContain('verify_hts_code');
-    expect(enabledToolsAll).toContain('predict_hts_code');
+    expect(enabledToolsAll).toContain('check_regulations');
+    expect(enabledToolsAll).toContain('lookup_hts');
     expect(enabledToolsAll).toContain('check_product_compliance');
     expect(enabledToolsAll).toContain('inspect_image');
-    expect(enabledToolsAll).toContain('watch_delete');
+    expect(enabledToolsAll).toContain('watch');
     expect(enabledToolsAll).toContain('track_package');
     expect(enabledToolsAll).toContain('research_country_context');
     expect(enabledToolsAll).toContain('search_social_posts');
     expect(enabledToolsAll).toContain('fetch_social_post');
     expect(enabledToolsAll).toContain('search_poi');
-    expect(enabledToolsAll).toContain('search_postal_code');
-    expect(enabledToolsAll).toContain('normalize_address');
-    expect(enabledToolsAll).toContain('reverse_geocode');
-    expect(enabledToolsAll).toContain('get_youtube_transcript');
-    expect(enabledToolsAll).toContain('get_youtube_channel');
+    expect(enabledToolsAll).toContain('lookup_address');
+    expect(enabledToolsAll).toContain('get_youtube');
+    expect(enabledToolsAll).toContain('get_country_context');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(53);
+    expect(enabledToolsAll.length).toBe(33);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4900,29 +4892,22 @@ describe('Sora REST & MCP Endpoints', () => {
 
       // 独自機能ツール群：推測禁止ディレクティブと返却注記を持つこと
       const uniqueToolsWithDirectives = [
-        'predict_hts_code',
-        'check_cpsc_certificate',
-        'check_fda_regulated',
-        'verify_hts_code',
+        'lookup_hts',
+        'check_regulations',
         'check_product_compliance',
         'generate_gcc_certificate',
         'search_laws',
-        'get_law_text',
         'search_diet_minutes',
         'get_weather',
-        'search_disaster_warnings',
-        'search_earthquake',
+        'get_disaster_info',
         'search_road_traffic',
         'search_route',
         'get_flight_status',
-        'get_elevation',
+        'get_place_info',
         'search_realtime',
-        'search_trend',
+        'search_keywords',
         'search_chiebukuro',
-        'suggest_keywords',
-        'search_news',
-        'search_song',
-        'search_artist',
+        'search_media',
         'search_music',
       ];
 
@@ -4939,7 +4924,7 @@ describe('Sora REST & MCP Endpoints', () => {
       }
 
       // 万能Web検索・スクレイプ系ツール：イベント・スケジュール等の万能調査を明記し、かつLLMネイティブ機能を阻害する強制ディレクティブを持たないこと
-      const webTools = ['scrape', 'scrape_batch', 'search_web', 'search_deep'];
+      const webTools = ['scrape', 'search_web', 'search_deep'];
       for (const toolName of webTools) {
         const tool = registeredTools[toolName];
         expect(tool).toBeDefined();
@@ -4952,7 +4937,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(registeredTools['search_deep'].description).toContain('ライブ・公演日程');
       expect(registeredTools['search_deep'].description).toContain('新製品・発売日');
       expect(registeredTools['search_web'].description).toContain('イベント日程');
-      expect(registeredTools['search_artist'].description).toContain('ライブ・公演日程');
+      expect(registeredTools['search_music'].description).toContain('ライブ・公演日程');
     });
 
     it('waitForDomStable should resolve promptly via DOM Quiescence when mutations settle', async () => {
@@ -5519,7 +5504,7 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   describe('OpenAPI 3.0 Document and Zod Response Schemas', () => {
-    it('should generate OpenAPI 3.0 document with all 84 operations having rich 200 response schemas', () => {
+    it('should generate OpenAPI 3.0 document with all 82 operations having rich 200 response schemas', () => {
       const doc = generateOpenApiDocument();
       expect(doc.openapi).toBe('3.0.0');
       expect(doc.info.title).toContain('Sora');
@@ -5551,8 +5536,18 @@ describe('Sora REST & MCP Endpoints', () => {
         }
       }
 
-      expect(operationCount).toBe(84);
-      expect(withContentCount).toBe(84);
+      expect(operationCount).toBe(82);
+      expect(withContentCount).toBe(82);
+    });
+
+    it('GET /client と GET /client/<path> は v5.0.0 で廃止した（404。OpenAPI と操作の台帳にも載らない）', async () => {
+      const doc = generateOpenApiDocument();
+      expect(Object.keys(doc.paths).filter((path) => path.startsWith('/client'))).toEqual([]);
+      for (const path of ['/client', '/client/manifest.json', '/client/catalog.json', '/client/servers/sora/search_web.ts']) {
+        expect((await app.request(path)).status, path).toBe(404);
+      }
+      const { OTHER_OPERATIONS } = await import('./rest_operations.js');
+      expect(Object.keys(OTHER_OPERATIONS).filter((key) => key.includes('/client'))).toEqual([]);
     });
 
     it('POST /traffic/flight 200 response schema should expose properties with Japanese descriptions', () => {

@@ -32,77 +32,115 @@ import { createSocialPostsProvider } from '../../src/services/country_intel/prov
 import { createWorldBankProvider } from '../../src/services/country_intel/providers/worldbank.js';
 import { createNagerProvider } from '../../src/services/country_intel/providers/nager.js';
 
-export interface RestRoute { method: string; path: string; }
+export interface RestRoute {
+  method: string;
+  path: string;
+  /**
+   * 型つきクライアント（client/）で、このルートの関数に付ける名前（camelCase）。
+   * 統合したツールのルートが、旧いツールの関数名（例: `scrapeBatch`）を保つために使う。
+   */
+  fn?: string;
+}
 
 export const CANONICAL_TOOLS: readonly string[] = [
-  'scrape', 'scrape_batch', 'search_deep', 'map_site', 'crawl_site', 'search_web',
-  'search_social_posts', 'fetch_social_post', 'browser_action', 'search_image', 'search_video',
-  'search_news', 'search_chiebukuro', 'suggest_keywords', 'search_realtime', 'search_trend',
-  'fetch_x_post', 'search_route', 'get_weather', 'get_flight_status', 'track_package',
-  'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
-  'get_elevation', 'search_poi', 'search_postal_code', 'normalize_address', 'reverse_geocode',
-  'watch_register', 'watch_check', 'watch_list', 'watch_delete',
-  'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
-  'check_cpsc_certificate', 'check_fda_regulated', 'verify_hts_code', 'predict_hts_code',
-  'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube_transcript', 'get_youtube_channel', 'recognize_song', 'research_country_context', 'get_country_context',
-  'get_country_context_evidence', 'get_country_context_updates', 'search_tools',
+  'scrape', 'search_deep', 'crawl_site', 'search_web',
+  'search_social_posts', 'fetch_social_post', 'browser_action', 'search_media',
+  'search_chiebukuro', 'search_keywords', 'search_realtime',
+  'search_route', 'get_weather', 'get_flight_status', 'track_package',
+  'search_road_traffic', 'get_disaster_info',
+  'get_place_info', 'search_poi', 'lookup_address',
+  'watch',
+  'search_music', 'search_laws', 'search_diet_minutes',
+  'check_regulations', 'lookup_hts',
+  'check_product_compliance', 'generate_gcc_certificate', 'inspect_image', 'get_youtube', 'recognize_song', 'research_country_context', 'get_country_context',
+  'search_tools',
 ];
 
 
-export const REST_MAP: Record<string, RestRoute | null> = {
-  scrape: { method: 'POST', path: '/scrape' },
-  scrape_batch: { method: 'POST', path: '/scrape/batch' },
+/**
+ * ツール → REST のルート。配列は、モードごとに複数のルートを持つツール。null は REST の無いツール。
+ *
+ * 配列の順序には意味がある。
+ * - `pair_mismatch`（schema:notation）は、MCP の引数を、同じ名前の引数を持つ最初のルートと比べる。
+ * - 型つきクライアントでは、1 つ目のルートの関数名が `camel(ツール名)` になる（ルートが増えても変わらない）。
+ *   2 つ目以降は `fn`、無ければメソッドとパスから決まる（`POST /gov/law-text` → `postGovLawText`）。
+ *   `fn` はどのルートにも付けられ、あればそれが優先する。関数名はツールをまたいでも重ならない（重なると生成が失敗する）。
+ */
+export type RestMap = Record<string, RestRoute | RestRoute[] | null>;
+
+/** ツールの REST ルートの一覧（null は []、1 つは 1 要素の配列）。 */
+export function restRoutesOf(tool: string, map: RestMap = REST_MAP): RestRoute[] {
+  const route = map[tool];
+  return !route ? [] : Array.isArray(route) ? route : [route];
+}
+
+export const REST_MAP: RestMap = {
+  scrape: [{ method: 'POST', path: '/scrape' }, { method: 'POST', path: '/scrape/batch', fn: 'scrapeBatch' }],
   search_deep: { method: 'POST', path: '/search/deep' },
-  map_site: { method: 'POST', path: '/map' },
-  crawl_site: { method: 'POST', path: '/crawl' },
+  crawl_site: [{ method: 'POST', path: '/crawl' }, { method: 'POST', path: '/map', fn: 'mapSite' }],
   search_web: { method: 'POST', path: '/search/web' },
   search_social_posts: { method: 'POST', path: '/social/search' },
-  fetch_social_post: { method: 'POST', path: '/social/fetch' },
+  fetch_social_post: [{ method: 'POST', path: '/social/fetch' }, { method: 'POST', path: '/realtime/post', fn: 'fetchXPost' }],
   browser_action: { method: 'POST', path: '/browser/action' },
-  search_image: { method: 'POST', path: '/search/image' },
-  search_video: { method: 'POST', path: '/search/video' },
-  search_news: { method: 'POST', path: '/search/news' },
+  search_media: [
+    { method: 'POST', path: '/search/image', fn: 'searchImage' },
+    { method: 'POST', path: '/search/video', fn: 'searchVideo' },
+    { method: 'POST', path: '/search/news', fn: 'searchNews' },
+  ],
   search_chiebukuro: { method: 'POST', path: '/search/chiebukuro' },
-  suggest_keywords: { method: 'POST', path: '/search/suggest' },
+  search_keywords: [{ method: 'POST', path: '/search/suggest', fn: 'suggestKeywords' }, { method: 'POST', path: '/search/trend', fn: 'searchTrend' }],
   search_realtime: { method: 'POST', path: '/search/realtime' },
-  search_trend: { method: 'POST', path: '/search/trend' },
-  fetch_x_post: { method: 'POST', path: '/realtime/post' },
   search_route: { method: 'POST', path: '/transit/route' },
   get_weather: { method: 'POST', path: '/weather' },
   get_flight_status: { method: 'POST', path: '/traffic/flight' },
   track_package: { method: 'POST', path: '/tracking' },
   search_road_traffic: { method: 'POST', path: '/traffic/road' },
-  search_disaster_warnings: { method: 'POST', path: '/disaster/warnings' },
-  search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
-  get_elevation: { method: 'POST', path: '/geo/elevation' },
+  get_disaster_info: [
+    { method: 'POST', path: '/disaster/warnings', fn: 'searchDisasterWarnings' },
+    { method: 'POST', path: '/disaster/earthquake', fn: 'searchEarthquake' },
+  ],
+  get_place_info: { method: 'POST', path: '/geo/elevation', fn: 'getElevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
-  search_postal_code: { method: 'POST', path: '/geo/postal-code' },
-  normalize_address: { method: 'POST', path: '/geo/address/normalize' },
-  reverse_geocode: { method: 'POST', path: '/geo/reverse' },
-  watch_register: { method: 'POST', path: '/watch/register' },
-  watch_check: { method: 'POST', path: '/watch/check' },
-  watch_list: { method: 'GET', path: '/watch/list' },
-  watch_delete: { method: 'DELETE', path: '/watch/:id' },
-  search_song: { method: 'POST', path: '/search/song' },
-  search_artist: { method: 'POST', path: '/search/artist' },
-  search_music: { method: 'POST', path: '/search/music' },
-  search_laws: { method: 'POST', path: '/gov/laws' },
-  get_law_text: { method: 'POST', path: '/gov/law-text' },
+  lookup_address: [
+    { method: 'POST', path: '/geo/address/normalize', fn: 'normalizeAddress' },
+    { method: 'POST', path: '/geo/reverse', fn: 'reverseGeocode' },
+    { method: 'POST', path: '/geo/postal-code', fn: 'searchPostalCode' },
+  ],
+  watch: [
+    { method: 'POST', path: '/watch/register', fn: 'watchRegister' },
+    { method: 'POST', path: '/watch/check', fn: 'watchCheck' },
+    { method: 'GET', path: '/watch/list', fn: 'watchList' },
+    { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' },
+  ],
+  search_music: [
+    { method: 'POST', path: '/search/music' },
+    { method: 'POST', path: '/search/song', fn: 'searchSong' },
+    { method: 'POST', path: '/search/artist', fn: 'searchArtist' },
+  ],
+  search_laws: [{ method: 'POST', path: '/gov/laws' }, { method: 'POST', path: '/gov/law-text', fn: 'getLawText' }],
   search_diet_minutes: { method: 'POST', path: '/gov/diet-minutes' },
-  check_cpsc_certificate: { method: 'POST', path: '/trade/cpsc-check' },
-  check_fda_regulated: { method: 'POST', path: '/trade/fda-check' },
-  verify_hts_code: { method: 'POST', path: '/trade/hts-verify' },
-  predict_hts_code: { method: 'POST', path: '/trade/hts-predict' },
+  check_regulations: [
+    { method: 'POST', path: '/trade/cpsc-check', fn: 'checkCpscCertificate' },
+    { method: 'POST', path: '/trade/fda-check', fn: 'checkFdaRegulated' },
+  ],
+  lookup_hts: [
+    { method: 'POST', path: '/trade/hts-verify', fn: 'verifyHtsCode' },
+    { method: 'POST', path: '/trade/hts-predict', fn: 'predictHtsCode' },
+  ],
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   generate_gcc_certificate: { method: 'POST', path: '/trade/gcc-generate' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
-  get_youtube_transcript: { method: 'POST', path: '/youtube/transcript' },
-  get_youtube_channel: { method: 'POST', path: '/youtube/channel' },
+  get_youtube: [
+    { method: 'POST', path: '/youtube/transcript', fn: 'getYoutubeTranscript' },
+    { method: 'POST', path: '/youtube/channel', fn: 'getYoutubeChannel' },
+  ],
   recognize_song: { method: 'POST', path: '/music/recognize' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
-  get_country_context: { method: 'GET', path: '/intelligence/context/:contextId' },
-  get_country_context_evidence: { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
-  get_country_context_updates: { method: 'GET', path: '/intelligence/context/:contextId/updates' },
+  get_country_context: [
+    { method: 'GET', path: '/intelligence/context/:contextId' },
+    { method: 'GET', path: '/intelligence/context/:contextId/evidence', fn: 'getCountryContextEvidence' },
+    { method: 'GET', path: '/intelligence/context/:contextId/updates', fn: 'getCountryContextUpdates' },
+  ],
   search_tools: null,
 };
 
@@ -310,22 +348,25 @@ function requireGeocodingAttribution(source: string | undefined, attribution: st
   }
 }
 
-// 地名・住所を get_elevation で解決し、期待地域と出典を検査する。
+// 地名・住所を get_place_info（既定の include: elevation）で解決し、期待地域と出典を検査する。
 async function checkGeocodedElevation(ctx: CaseContext, address: string, box: GeoBox, sources: string[]): Promise<CaseObservation> {
-  const { text: rawJsonText } = await mcpJson(ctx, 'get_elevation', { address, noCache: true }, 60000);
-  const raw = toolPayload(rawJsonText, 'get_elevation');
-  const parsed = parseFirstJson(textOf(raw), 'get_elevation') as unknown as {
-    elevationMeters?: number; lat?: number; lon?: number; geocodingSource?: string; geocodingAttribution?: string;
+  const { text: rawJsonText } = await mcpJson(ctx, 'get_place_info', { address, noCache: true }, 60000);
+  const raw = toolPayload(rawJsonText, 'get_place_info');
+  const parsed = parseFirstJson(textOf(raw), 'get_place_info') as unknown as {
+    location?: { lat?: number; lon?: number; geocodingSource?: string; geocodingAttribution?: string };
+    elevation?: { elevationMeters?: number };
   };
-  if (typeof parsed.elevationMeters !== 'number' || !Number.isFinite(parsed.elevationMeters)) {
-    throw new LiveFail(`get_elevation (${address}) missing numeric elevation`);
+  const location = parsed.location ?? {};
+  const label = `get_place_info (${address})`;
+  if (typeof parsed.elevation?.elevationMeters !== 'number' || !Number.isFinite(parsed.elevation.elevationMeters)) {
+    throw new LiveFail(`${label} missing numeric elevation`);
   }
-  if (!parsed.geocodingSource || !sources.includes(parsed.geocodingSource)) {
-    throw new LiveFail(`get_elevation (${address}) resolved by unexpected source ${parsed.geocodingSource}`);
+  if (!location.geocodingSource || !sources.includes(location.geocodingSource)) {
+    throw new LiveFail(`${label} resolved by unexpected source ${location.geocodingSource}`);
   }
-  requireWithin(parsed.lat, parsed.lon, box, `get_elevation (${address})`);
-  requireGeocodingAttribution(parsed.geocodingSource, parsed.geocodingAttribution, `get_elevation (${address})`);
-  return { sources: [...new Set([parsed.geocodingSource, 'gsi'])].map((source) =>
+  requireWithin(location.lat, location.lon, box, label);
+  requireGeocodingAttribution(location.geocodingSource, location.geocodingAttribution, label);
+  return { sources: [...new Set([location.geocodingSource, 'gsi'])].map((source) =>
     ({ source, format: 'json', upstreamStatus: 'unknown', cached: false })) };
 }
 
@@ -358,7 +399,7 @@ function checkHarajukuPoi(raw: unknown): CaseObservation {
 // ---------- 住所系ツール（デジタル庁 ABR・日本郵便） ----------
 
 // 永田町一丁目5-1 は ABR の住居表示で番地まで照合できる実在の住所。国会議事堂の 永田町1-7-1 は住居番号が無く町字止まりなので、
-// 番地まで届くことの検査には使えない（その座標を get_elevation で解決する geo.address は、町字の点でも箱に入るので使える）。
+// 番地まで届くことの検査には使えない（その座標を get_place_info で解決する geo.address は、町字の点でも箱に入るので使える）。
 // ABR のデータが変わって届かなくなったら、実データで届く住所に差し替える。
 const NAGATACHO_ADDRESS = '東京都千代田区永田町1-5-1';
 const NAGATACHO_NORMALIZED = '東京都千代田区永田町一丁目5-1';
@@ -381,8 +422,14 @@ export function classifyAddressMessage(message: string): LiveUnverified | LiveBl
   return null;
 }
 
+/** 統合した MCP のツールが、入力から選んだ経路（応答の mode）。REST の応答には無いので、共通の検査器ではなく MCP 側だけで確かめる。 */
+function expectMode(raw: unknown, mode: string, tool: string): void {
+  const got = (raw as { mode?: unknown } | null)?.mode;
+  if (got !== mode) throw new LiveFail(`${tool} chose mode ${JSON.stringify(got)} (expected "${mode}")`);
+}
+
 /** 住所系ツールを呼ぶ。機能が返した取得中・取得失敗のエラー文は、契約違反ではなく外部の状態として分類する。 */
-async function callAddressTool(ctx: CaseContext, tool: string, args: Record<string, unknown>): Promise<unknown> {
+async function callAddressTool(ctx: CaseContext, tool: string, args: Record<string, unknown>, mode: string): Promise<unknown> {
   let text: string;
   try {
     ({ text } = await mcpJson(ctx, tool, args, 60000));
@@ -390,7 +437,9 @@ async function callAddressTool(ctx: CaseContext, tool: string, args: Record<stri
     if (error instanceof LiveFail) throw classifyAddressMessage(error.message) ?? error;
     throw error;
   }
-  return toolPayload(text, tool);
+  const raw = toolPayload(text, tool);
+  expectMode(raw, mode, tool);
+  return raw;
 }
 
 /** データが揃う前の答え（incomplete）を分類する。内容の検査に進むと、取得中なだけの応答を契約違反にしてしまう。 */
@@ -626,9 +675,9 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'scrape');
     return mustContain(raw, ['Example Domain'], 'example.com');
   }),
-  toolCase('scrape.batch', ['scrape_batch'], ['web:example'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'scrape_batch', { urls: ['https://example.com/', 'https://example.org/'], noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'scrape_batch');
+  toolCase('scrape.batch', ['scrape'], ['web:example'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'scrape', { urls: ['https://example.com/', 'https://example.org/'], noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'scrape');
     return mustContain(raw, ['Example Domain'], 'example.com+example.org');
   }),
   toolCase('search.deep', ['search_deep'], ['yahoo:web', 'yahoo:realtime'], true, 90000, async (ctx) => {
@@ -637,9 +686,9 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_deep', ['url', 'title']);
     return mustContain(raw, ['東京'], 'yahoo-deep');
   }),
-  toolCase('map.site', ['map_site'], ['web:sitemap'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'map_site', { url: 'https://example.com/', limit: 5 }, 60000);
-    const raw = toolPayload(rawJsonText, 'map_site');
+  toolCase('crawl.list', ['crawl_site'], ['web:sitemap'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'crawl_site', { url: 'https://example.com/', listOnly: true, limit: 5 }, 60000);
+    const raw = toolPayload(rawJsonText, 'crawl_site');
     return mustContain(raw, ['https://example.com'], 'example.com-map');
   }),
   toolCase('crawl.site', ['crawl_site'], ['web:example'], true, 90000, async (ctx) => {
@@ -691,24 +740,24 @@ export const TOOL_CASES: HealthCase[] = [
     }
     return { sources: [{ source: 'chromium', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.image', ['search_image'], ['yahoo:image'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_image', { query: '富士山', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_image') as { items?: Array<Record<string, unknown>> };
-    const first = mustHaveItems(raw, 'search_image').items[0] as Record<string, unknown>;
+  toolCase('search.image', ['search_media'], ['yahoo:image'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'image', query: '富士山', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media') as { items?: Array<Record<string, unknown>> };
+    const first = mustHaveItems(raw, 'search_media').items[0] as Record<string, unknown>;
     const imageUrl = [first.original, first.source_url, first.thumbnail].find((v) => typeof v === 'string' && (v as string).startsWith('http'));
-    if (!imageUrl) throw new LiveFail('search_image first item lacks image URL (original/source_url/thumbnail)');
+    if (!imageUrl) throw new LiveFail('search_media (image) first item lacks image URL (original/source_url/thumbnail)');
     return { sources: [{ source: 'yahoo-image', count: (raw.items ?? []).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.video', ['search_video'], ['yahoo:video'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_video', { query: '料理', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_video');
-    mustHaveItems(raw, 'search_video', 'url');
+  toolCase('search.video', ['search_media'], ['yahoo:video'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'video', query: '料理', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media');
+    mustHaveItems(raw, 'search_media', 'url');
     return { sources: [{ source: 'yahoo-video', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.news', ['search_news'], ['yahoo:news'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_news', { query: '経済', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_news');
-    mustHaveItems(raw, 'search_news', 'url');
+  toolCase('search.news', ['search_media'], ['yahoo:news'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_media', { type: 'news', query: '経済', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_media');
+    mustHaveItems(raw, 'search_media', 'url');
     return { sources: [{ source: 'yahoo-news', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('search.chiebukuro', ['search_chiebukuro'], ['yahoo:chiebukuro'], true, 90000, async (ctx) => {
@@ -717,10 +766,10 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_chiebukuro', ['url', 'title']);
     return { sources: [{ source: 'yahoo-chiebukuro', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('suggest.keywords', ['suggest_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'suggest_keywords', { query: '東京', limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'suggest_keywords');
-    mustHaveItems(raw, 'suggest_keywords');
+  toolCase('suggest.keywords', ['search_keywords'], ['yahoo:suggest'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_keywords', { query: '東京', limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_keywords');
+    mustHaveItems(raw, 'search_keywords');
     return { sources: [{ source: 'yahoo-suggest', format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('search.realtime', ['search_realtime'], ['yahoo:realtime'], true, 90000, async (ctx) => {
@@ -729,19 +778,19 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_realtime', 'url');
     return { sources: [{ source: 'yahoo-realtime', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('search.trend', ['search_trend'], ['yahoo:realtime'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_trend', { limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_trend');
-    mustHaveItems(raw, 'search_trend', 'keyword');
+  toolCase('search.trend', ['search_keywords'], ['yahoo:realtime'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_keywords', { limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_keywords');
+    mustHaveItems(raw, 'search_keywords', 'keyword');
     return { sources: [{ source: 'yahoo-trend', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('fetch.xpost', ['fetch_x_post'], ['fxtwitter'], true, 90000, async (ctx) => {
+  toolCase('fetch.xpost', ['fetch_social_post'], ['fxtwitter'], true, 90000, async (ctx) => {
     const secret = secretOrDefault(ctx, 'x.post', ['url'], { url: DEFAULT_X_POST.url });
-    const { text: rawJsonText } = await mcpJson(ctx, 'fetch_x_post', { url: secret.url }, 60000);
-    const raw = toolPayload(rawJsonText, 'fetch_x_post');
+    const { text: rawJsonText } = await mcpJson(ctx, 'fetch_social_post', { url: secret.url }, 60000);
+    const raw = toolPayload(rawJsonText, 'fetch_social_post');
     const text = textOf(raw);
     if (!text.includes('found') && !text.includes(secret.url.split('/').pop() ?? 'status')) {
-      throw new LiveFail('fetch_x_post missing post evidence');
+      throw new LiveFail('fetch_social_post (X) missing post evidence');
     }
     return { sources: [{ source: 'fxtwitter', format: 'json', upstreamStatus: 'unknown' }] };
   }),
@@ -780,28 +829,29 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'search_road_traffic');
     return mustContain(raw, ['東名'], 'yahoo-traffic');
   }),
-  toolCase('disaster.warnings', ['search_disaster_warnings'], ['jma:warning'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_disaster_warnings', { city: '東京', noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_disaster_warnings');
-    return mustContain(raw, ['東京'], 'jma-warning');
+  toolCase('disaster.warnings', ['get_disaster_info'], ['jma:warning'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_disaster_info', { city: '東京', noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_disaster_info') as { warnings?: unknown };
+    if (!raw.warnings) throw new LiveFail('get_disaster_info returned no warnings section for city');
+    return mustContain(raw.warnings, ['東京'], 'jma-warning');
   }),
-  toolCase('quake.latest', ['search_earthquake'], ['jma:quake'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_earthquake', { limit: 1, noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_earthquake');
-    mustHaveItems(raw, 'search_earthquake');
+  toolCase('quake.latest', ['get_disaster_info'], ['jma:quake'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_disaster_info', { limit: 1, noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_disaster_info') as { earthquake?: { earthquakes?: Array<{ source?: string }> } };
+    if (!raw.earthquake) throw new LiveFail('get_disaster_info returned no earthquake section by default');
+    mustHaveItems(raw.earthquake, 'get_disaster_info');
     // 気象庁の一覧が使えないと P2P地震情報に切り替わって答え続けるので、取得元を確かめて切り替わりを見逃さない
-    const parsed = parseFirstJson(textOf(raw), 'search_earthquake') as unknown as { earthquakes?: Array<{ source?: string }> };
-    const source = parsed.earthquakes?.[0]?.source;
-    if (source !== 'jma') throw new LiveFail(`search_earthquake answered from ${source} instead of the JMA quake feed`);
-    return mustContain(raw, ['20'], 'jma-quake');
+    const source = raw.earthquake.earthquakes?.[0]?.source;
+    if (source !== 'jma') throw new LiveFail(`get_disaster_info answered from ${source} instead of the JMA quake feed`);
+    return mustContain(raw.earthquake, ['20'], 'jma-quake');
   }),
-  toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
+  toolCase('geo.elevation', ['get_place_info'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),
   // geocoding.jp では駅名がヒットしなかったため、駅名の解決を個別に検査する。
-  toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
+  toolCase('geo.station', ['get_place_info'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
   // 番地住所は OSM に無いことが多いので、国土地理院を先に引く（取得元が Nominatim になっても、正しい地点なら合格）。
-  toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi', 'abr'], true, 90000,
+  toolCase('geo.address', ['get_place_info'], ['nominatim', 'gsi', 'abr'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim', 'abr'])),
   // 検索語（ラーメン）を付けると、OpenPOI が半径を無視して名前が一致する遠くの施設（6〜14km 先）を返すようになった（2026-10-14）。
   // 検索語なしなら半径内の施設が返るので、中心の解決と半径内の検査をそのまま保てる。
@@ -814,94 +864,94 @@ export const TOOL_CASES: HealthCase[] = [
     return observation;
   }),
   // 初回の呼び出しは取得元（ABR・日本郵便）からデータを取ってくるので、外部に依存する。
-  toolCase('geo.postal_code', ['search_postal_code'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'search_postal_code', { zipcode: '100-0014' });
-    const observation = checkPostalCodeResult(raw, 'search_postal_code');
+  toolCase('geo.lookup_address.postal', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', { zipcode: '100-0014' }, 'postal');
+    const observation = checkPostalCodeResult(raw, 'lookup_address (postal)');
     const rest = await ctx.rest.call('GET', '/geo/postal-code?zipcode=100-0014', undefined, 60000);
     checkPostalCodeResult(rest.json, 'GET /geo/postal-code');
     return observation;
   }),
-  toolCase('geo.normalize_address', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'normalize_address', { address: NAGATACHO_ADDRESS });
-    const observation = checkNormalizedAddressResult(raw, 'normalize_address');
+  toolCase('geo.lookup_address.normalize', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', { address: NAGATACHO_ADDRESS }, 'normalize');
+    const observation = checkNormalizedAddressResult(raw, 'lookup_address (normalize)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(NAGATACHO_ADDRESS), undefined, 60000);
     checkNormalizedAddressResult(rest.json, 'GET /geo/address/normalize');
     return observation;
   }),
-  toolCase('geo.normalize_address.mlit', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.mlit', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '港区芝大門1-10-18-3F';
-    const raw = await callAddressTool(ctx, 'normalize_address', { address });
-    const observation = checkMlitAddressResult(raw, 'normalize_address (mlit)');
+    const raw = await callAddressTool(ctx, 'lookup_address', { address }, 'normalize');
+    const observation = checkMlitAddressResult(raw, 'lookup_address (normalize, mlit)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkMlitAddressResult(rest.json, 'GET /geo/address/normalize (mlit)');
     return observation;
   }),
-  toolCase('geo.normalize_address.zipcode', ['normalize_address'], ['abr'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.zipcode', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
     const body = { address: '千駄ヶ谷2-34-8テラス外苑204', zipcode: '1510051' };
-    const raw = await callAddressTool(ctx, 'normalize_address', body);
-    const observation = checkZipcodeFilledAddressResult(raw, 'normalize_address (zipcode)');
+    const raw = await callAddressTool(ctx, 'lookup_address', body, 'normalize');
+    const observation = checkZipcodeFilledAddressResult(raw, 'lookup_address (normalize, zipcode)');
     const rest = await ctx.rest.call('POST', '/geo/address/normalize', body, 60000);
     checkZipcodeFilledAddressResult(rest.json, 'POST /geo/address/normalize (zipcode)');
     return observation;
   }),
-  toolCase('geo.normalize_address.parcel_point', ['normalize_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
+  toolCase('geo.lookup_address.normalize.parcel_point', ['lookup_address'], ['abr', 'mlit'], true, 90000, async (ctx) => {
     const address = '山形県天童市大字山口4559-4';
-    const raw = await callAddressTool(ctx, 'normalize_address', { address });
-    const observation = checkParcelPointResult(raw, 'normalize_address (parcel point)');
+    const raw = await callAddressTool(ctx, 'lookup_address', { address }, 'normalize');
+    const observation = checkParcelPointResult(raw, 'lookup_address (normalize, parcel point)');
     const rest = await ctx.rest.call('GET', '/geo/address/normalize?address=' + encodeURIComponent(address), undefined, 60000);
     checkParcelPointResult(rest.json, 'GET /geo/address/normalize (parcel point)');
     return observation;
   }),
-  toolCase('geo.reverse_geocode', ['reverse_geocode'], ['abr'], true, 90000, async (ctx) => {
-    const raw = await callAddressTool(ctx, 'reverse_geocode', NAGATACHO_POINT);
-    const observation = checkReverseGeocodeResult(raw, 'reverse_geocode');
+  toolCase('geo.lookup_address.reverse', ['lookup_address'], ['abr'], true, 90000, async (ctx) => {
+    const raw = await callAddressTool(ctx, 'lookup_address', NAGATACHO_POINT, 'reverse');
+    const observation = checkReverseGeocodeResult(raw, 'lookup_address (reverse)');
     const rest = await ctx.rest.call('GET', `/geo/reverse?lat=${NAGATACHO_POINT.lat}&lon=${NAGATACHO_POINT.lon}`, undefined, 60000);
     checkReverseGeocodeResult(rest.json, 'GET /geo/reverse');
     return observation;
   }),
-  toolCase('watch.register', ['watch_register'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.register', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe' }, 80000);
-    const raw = toolPayload(rawJsonText, 'watch_register');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe' }, 80000);
+    const raw = toolPayload(rawJsonText, 'watch (register)');
     return mustContain(raw, ['example.com'], 'watch-register');
   }),
-  toolCase('watch.check', ['watch_check'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.check', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-check' }, 80000);
-    const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
-    if (!id) throw new LiveFail('watch_register returned no target id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_check', { id }, 80000);
-    const raw = toolPayload(rawJsonText, 'watch_check');
+    const reg = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe-check' }, 80000);
+    const id = (parseFirstJson(reg.text, 'watch (register)') as { target?: { id?: string } }).target?.id;
+    if (!id) throw new LiveFail('watch (register) returned no target id');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'check', id }, 80000);
+    const raw = toolPayload(rawJsonText, 'watch (check)');
     return mustContain(raw, [id], 'watch-check');
   }),
-  toolCase('watch.list', ['watch_list'], ['watch:db'], false, 60000, async (ctx) => {
+  toolCase('watch.list', ['watch'], ['watch:db'], false, 60000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_list', {}, 30000);
-    const raw = toolPayload(rawJsonText, 'watch_list');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'list' }, 30000);
+    const raw = toolPayload(rawJsonText, 'watch (list)');
     if (Array.isArray(raw)) {
       return { sources: [{ source: 'watch-list', count: raw.length, format: 'json', upstreamStatus: 'unknown' }] };
     }
     return mustContain(raw, ['targets'], 'watch-list');
   }),
-  toolCase('watch.delete', ['watch_delete'], ['watch:db'], true, 90000, async (ctx) => {
+  toolCase('watch.delete', ['watch'], ['watch:db'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'Web監視', 30000);
-    const reg = await mcpJson(ctx, 'watch_register', { url: 'https://example.com/', title: 'health-probe-del' }, 80000);
-    const id = (parseFirstJson(reg.text, 'watch_register') as { target?: { id?: string } }).target?.id;
-    if (!id) throw new LiveFail('watch_register returned no target id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'watch_delete', { id }, 30000);
-    const raw = toolPayload(rawJsonText, 'watch_delete');
+    const reg = await mcpJson(ctx, 'watch', { action: 'register', url: 'https://example.com/', title: 'health-probe-del' }, 80000);
+    const id = (parseFirstJson(reg.text, 'watch (register)') as { target?: { id?: string } }).target?.id;
+    if (!id) throw new LiveFail('watch (register) returned no target id');
+    const { text: rawJsonText } = await mcpJson(ctx, 'watch', { action: 'delete', id }, 30000);
+    const raw = toolPayload(rawJsonText, 'watch (delete)');
     return mustContain(raw, ['success'], 'watch-delete');
   }),
-  toolCase('music.song', ['search_song'], ['itunes'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_song', { query: 'アイドル', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_song');
-    mustHaveItems(raw, 'search_song', 'title');
+  toolCase('music.song', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'アイドル', attribute: 'songTerm', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_music (songTerm)');
+    mustHaveItems(raw, 'search_music (songTerm)', 'title');
     return mustContain(raw, ['itunes'], 'itunes-song');
   }),
-  toolCase('music.artist', ['search_artist'], ['itunes'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_artist', { query: 'YOASOBI', limit: 2 }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_artist');
-    mustHaveItems(raw, 'search_artist', ['title']);
+  toolCase('music.artist', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_music', { query: 'YOASOBI', attribute: 'artistTerm', limit: 2 }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_music (artistTerm)');
+    mustHaveItems(raw, 'search_music (artistTerm)', ['title']);
     return mustContain(raw, ['YOASOBI'], 'itunes-artist');
   }),
   toolCase('music.generic', ['search_music'], ['itunes'], true, 90000, async (ctx) => {
@@ -916,17 +966,17 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_laws', ['id', 'title']);
     return mustContain(raw, ['民法'], 'egov');
   }),
-  toolCase('gov.lawtext', ['get_law_text'], ['egov'], true, 90000, async (ctx) => {
+  toolCase('gov.lawtext', ['search_laws'], ['egov'], true, 90000, async (ctx) => {
     const { text: foundText } = await mcpJson(ctx, 'search_laws', { keyword: '民法', limit: 1, noCache: true }, 60000);
     const list = toolPayload(foundText, 'search_laws') as { laws?: Array<{ lawId?: string; id?: string }>; items?: Array<{ lawId?: string; id?: string }> };
     const lawId = list.laws?.[0] ?? list.items?.[0];
     const id = lawId?.lawId ?? lawId?.id;
     if (!id) throw new LiveFail('search_laws returned no law id');
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_law_text', { lawId: id }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_law_text');
+    const { text: rawJsonText } = await mcpJson(ctx, 'search_laws', { lawId: id }, 60000);
+    const raw = toolPayload(rawJsonText, 'search_laws (lawId)');
     const text = textOf(raw);
     if (!text.includes('第一条') && !text.includes('第1条') && !text.includes('articleCount')) {
-      throw new LiveFail('get_law_text missing article evidence');
+      throw new LiveFail('search_laws (lawId) missing article evidence');
     }
     return { sources: [{ source: 'egov-lawtext', format: 'json', upstreamStatus: 'unknown' }] };
   }),
@@ -936,32 +986,36 @@ export const TOOL_CASES: HealthCase[] = [
     mustHaveItems(raw, 'search_diet_minutes', ['speaker', 'speech']);
     return { sources: [{ source: 'kokkai', format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('trade.cpsc', ['check_cpsc_certificate'], [], false, 30000, async (ctx) => {
+  toolCase('trade.cpsc', ['check_regulations'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'check_cpsc_certificate', { htsCode: '9503.00.0073', targetAge: 'child' }, 20000);
-    const raw = toolPayload(rawJsonText, 'check_cpsc_certificate');
-    return mustContain(raw, ['9503'], 'cpsc-rules');
+    const { text: rawJsonText } = await mcpJson(ctx, 'check_regulations', { htsCode: '9503.00.0073', targetAge: 'child', agencies: ['cpsc'] }, 20000);
+    const raw = toolPayload(rawJsonText, 'check_regulations (cpsc)') as { cpsc?: unknown };
+    if (!raw.cpsc) throw new LiveFail('check_regulations returned no cpsc section for agencies: ["cpsc"]');
+    return mustContain(raw.cpsc, ['9503'], 'cpsc-rules');
   }),
-  toolCase('trade.fda', ['check_fda_regulated'], [], false, 30000, async (ctx) => {
+  toolCase('trade.fda', ['check_regulations'], [], false, 30000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'check_fda_regulated', { htsCode: '6912', foodContact: false }, 20000);
-    const raw = toolPayload(rawJsonText, 'check_fda_regulated');
-    return mustContain(raw, ['6912'], 'fda-rules');
+    const { text: rawJsonText } = await mcpJson(ctx, 'check_regulations', { htsCode: '6912', foodContact: false, agencies: ['fda'] }, 20000);
+    const raw = toolPayload(rawJsonText, 'check_regulations (fda)') as { fda?: unknown };
+    if (!raw.fda) throw new LiveFail('check_regulations returned no fda section for agencies: ["fda"]');
+    return mustContain(raw.fda, ['6912'], 'fda-rules');
   }),
-  toolCase('trade.verify', ['verify_hts_code'], ['usitc'], true, 90000, async (ctx) => {
+  toolCase('trade.verify', ['lookup_hts'], ['usitc'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'verify_hts_code', { htsCode: '9503.00.0073', productDescription: 'toy' }, 60000);
-    const raw = toolPayload(rawJsonText, 'verify_hts_code');
+    const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { htsCode: '9503.00.0073', description: 'toy' }, 60000);
+    const raw = toolPayload(rawJsonText, 'lookup_hts (verify)');
+    expectMode(raw, 'verify', 'lookup_hts');
     return mustContain(raw, ['9503'], 'usitc-verify');
   }),
-  toolCase('trade.predict', ['predict_hts_code'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
+  toolCase('trade.predict', ['lookup_hts'], ['usitc', 'cbp-cross'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'trade', 30000);
-    const { text: rawJsonText } = await mcpJson(ctx, 'predict_hts_code', { productName: 'Green Tea' }, 80000);
-    const raw = toolPayload(rawJsonText, 'predict_hts_code');
+    const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { productName: 'Green Tea' }, 80000);
+    const raw = toolPayload(rawJsonText, 'lookup_hts (predict)');
+    expectMode(raw, 'predict', 'lookup_hts');
     // 緑茶は 0902（茶）か 2101（茶の抽出物）。USITC の全件データと CBP 判例の構造（evidence）まで確かめる
-    const parsed = parseFirstJson(textOf(raw), 'predict_hts_code') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
-    if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('predict_hts_code classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
-    if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('predict_hts_code returned no evidence.dataFetchedAt');
+    const parsed = parseFirstJson(textOf(raw), 'lookup_hts (predict)') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
+    if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('lookup_hts (predict) classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
+    if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('lookup_hts (predict) returned no evidence.dataFetchedAt');
     // 判例の照会が失敗（unavailable）でも推測は返る。判例の応答の形が変わったときは no_rulings が続くので、ここでは状態を記録する
     return { sources: [
       { source: 'usitc-export', count: 1, format: 'json', upstreamStatus: 'unknown' },
@@ -995,36 +1049,38 @@ export const TOOL_CASES: HealthCase[] = [
     if (!img?.data || !img.mimeType?.startsWith('image/')) throw new LiveFail('inspect_image returned no image payload');
     return { sources: [{ source: 'image-bytes', format: img.mimeType, upstreamStatus: 'unknown' }] };
   }),
-  toolCase('youtube.transcript', ['get_youtube_transcript'], ['youtube'], true, 90000, async (ctx) => {
+  toolCase('youtube.transcript', ['get_youtube'], ['youtube'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'YouTube 字幕', 30000);
     // YouTube 最初の動画（2005 年、手動の字幕あり）。消えにくい
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_transcript', { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', maxChars: 2000 }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_youtube_transcript') as { found?: boolean; transcript?: { status?: string; reason?: string; message?: string; text?: string } };
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube', { url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', maxChars: 2000 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube (video)') as { mode?: string; found?: boolean; transcript?: { status?: string; reason?: string; message?: string; text?: string } };
+    if (raw.mode !== 'video') throw new LiveFail('get_youtube did not read the video URL as a video: ' + textOf(raw).slice(0, 200));
     const t = raw.transcript;
     if (t?.status === 'unavailable') {
-      const detail = `get_youtube_transcript ${t.reason}: ${t.message ?? ''}`;
+      const detail = `get_youtube (video) ${t.reason}: ${t.message ?? ''}`;
       throw t.reason === 'blocked' ? new LiveBlocked(detail) : new LiveUnavailable(detail);
     }
-    if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube_transcript returned no transcript: ' + textOf(raw).slice(0, 200));
+    if (raw.found !== true || t?.status !== 'ok' || !t.text) throw new LiveFail('get_youtube (video) returned no transcript: ' + textOf(raw).slice(0, 200));
     mustContain(raw, ['Me at the zoo'], 'youtube-player');
     return { sources: [{ source: 'youtube-timedtext', count: t.text.length, format: 'json3', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('youtube.channel', ['get_youtube_channel'], ['youtube'], true, 90000, async (ctx) => {
+  toolCase('youtube.channel', ['get_youtube'], ['youtube'], true, 90000, async (ctx) => {
     await ensureEnabled(ctx, 'YouTube チャンネル', 30000);
     // YouTube 公式のチャンネル。消えにくく、最新の動画がある。フィードとページの形は実機で未確認のため、上流の失敗（同意の画面・ブロック・形の変化）は止めずに unavailable にする
-    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube_channel', { url: 'https://www.youtube.com/@YouTube', limit: 3 }, 60000);
-    const raw = toolPayload(rawJsonText, 'get_youtube_channel') as { found?: boolean; reason?: string; message?: string };
-    if (raw.found !== true) throw new LiveUnavailable(`get_youtube_channel ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
-    const { items } = mustHaveItems(raw, 'get_youtube_channel', ['videoId', 'title', 'publishedAt']);
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_youtube', { url: 'https://www.youtube.com/@YouTube', limit: 3 }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_youtube (channel)') as { mode?: string; found?: boolean; reason?: string; message?: string };
+    if (raw.mode !== 'channel') throw new LiveFail('get_youtube did not read the @handle as a channel: ' + textOf(raw).slice(0, 200));
+    if (raw.found !== true) throw new LiveUnavailable(`get_youtube (channel) ${raw.reason ?? 'found=false'}: ${raw.message ?? ''}`);
+    const { items } = mustHaveItems(raw, 'get_youtube (channel)', ['videoId', 'title', 'publishedAt']);
     return { sources: [{ source: 'youtube-feed', count: items.length, format: 'atom', upstreamStatus: 'unknown' }] };
   }),
   toolCase('shazam.recognize', ['recognize_song'], ['shazam', 'itunes'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '楽曲認識', 30000);
     // iTunes の試聴音源（YOASOBI「アイドル」）の 8 秒目からの 12 秒を、Shazam に 1 回だけ送る。
     // GitHub の実行環境を Shazam が拒否したら、エラーの文（HTTP 403）で blocked になる（soft hold）
-    const { text: songText } = await mcpJson(ctx, 'search_song', { query: 'YOASOBI アイドル', limit: 1 }, 30000);
-    const preview = (toolPayload(songText, 'search_song') as { items?: Array<{ previewUrl?: string }> }).items?.[0]?.previewUrl;
-    if (!preview) throw new LiveUnavailable('search_song returned no preview URL for the recognition sample');
+    const { text: songText } = await mcpJson(ctx, 'search_music', { query: 'YOASOBI アイドル', attribute: 'songTerm', limit: 1 }, 30000);
+    const preview = (toolPayload(songText, 'search_music (songTerm)') as { items?: Array<{ previewUrl?: string }> }).items?.[0]?.previewUrl;
+    if (!preview) throw new LiveUnavailable('search_music (songTerm) returned no preview URL for the recognition sample');
     const { text } = await mcpJson(ctx, 'recognize_song', { url: preview, offsetSec: 8 }, 90000);
     const raw = toolPayload(text, 'recognize_song') as { found?: boolean; reason?: string; message?: string };
     if (raw.found !== true) {
@@ -1034,7 +1090,7 @@ export const TOOL_CASES: HealthCase[] = [
     mustContain(raw, ['YOASOBI'], 'shazam');
     return { sources: [{ source: 'shazam-tag', count: 1, format: 'json', upstreamStatus: 'unknown' }] };
   }),
-  toolCase('country.lifecycle', ['research_country_context', 'get_country_context', 'get_country_context_evidence', 'get_country_context_updates'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
+  toolCase('country.lifecycle', ['research_country_context', 'get_country_context'], ['intel:runtime', 'intel:db'], true, 120000, async (ctx) => {
     await ensureEnabled(ctx, '国地域', 30000);
     const { text: rawJsonText } = await mcpJson(ctx, 'research_country_context', { region: 'Japan', query: 'economy', noCache: true }, 110000);
     const raw = toolPayload(rawJsonText, 'research_country_context');
@@ -1043,10 +1099,10 @@ export const TOOL_CASES: HealthCase[] = [
     if (!Array.isArray(report.evidence) || report.evidence.length === 0) throw new LiveFail('research returned no evidence');
     const { text: cText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId }, 30000);
     mustContain(toolPayload(cText, 'get_country_context'), [report.contextId], 'intel-get');
-    const { text: eText } = await mcpJson(ctx, 'get_country_context_evidence', { contextId: report.contextId, limit: 2 }, 30000);
-    mustContain(toolPayload(eText, 'get_country_context_evidence'), [report.contextId], 'intel-evidence');
-    const { text: uText } = await mcpJson(ctx, 'get_country_context_updates', { contextId: report.contextId }, 30000);
-    mustContain(toolPayload(uText, 'get_country_context_updates'), [report.contextId], 'intel-updates');
+    const { text: eText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId, part: 'evidence', limit: 2 }, 30000);
+    mustContain(toolPayload(eText, 'get_country_context (evidence)'), [report.contextId], 'intel-evidence');
+    const { text: uText } = await mcpJson(ctx, 'get_country_context', { contextId: report.contextId, part: 'updates' }, 30000);
+    mustContain(toolPayload(uText, 'get_country_context (updates)'), [report.contextId], 'intel-updates');
     return { sources: [{ source: 'intel-runtime', count: (report.evidence as unknown[]).length, format: 'json', upstreamStatus: 'unknown' }] };
   }),
   toolCase('tools.discovery', ['search_tools'], [], false, 30000, async (ctx) => {

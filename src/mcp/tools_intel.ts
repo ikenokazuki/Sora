@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { COUNTRY_INTEL_TOPICS, type CountryContextReport, CountryContextReportSchema, IntelSocialInputSchema } from '../services/country_intel/types.js';
 import { ContextUpdatesSchema, EvidencePageSchema } from '../services/country_intel/detail.js';
 import { registerStructuredTool, toolJson } from './registry.js';
+import { onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -41,78 +42,49 @@ export function registerIntelTools(context: ToolRegistrationContext): void {
     },
     { defaultEnabled: deferredDefault, keywords: ['国地域', 'カントリー', 'country', '地域情勢', '海外情勢', 'intel', 'intelligence', 'コンテキスト'] },
   );
+  // Tool: get_country_context (保存したレポート・根拠・差分。part で選ぶ) - DEFERRED
+  // part ごとの取得。応答とエラーの文は、統合前の 3 ツールのまま（REST の 3 ルートと同じサービス）。
+  // 応答の形は part ごとに違うので、SDK の出力の検査は contextId だけにし、part の形はここで確かめる（旧ツールの outputSchema と同じ検査）
+  type PartArgs = { contextId: string; evidenceIds?: string[]; cursor?: string; limit?: number };
+  const PARTS = {
+    report: { schema: CountryContextReportSchema, run: async ({ contextId }: PartArgs) => (await import('../services/country_intel/report.js')).getPersistedCountryContext(contextId) },
+    evidence: { schema: EvidencePageSchema, run: async ({ contextId, evidenceIds, cursor, limit }: PartArgs) => (await import('../services/country_intel/db.js')).getEvidencePage(contextId, { ids: evidenceIds, cursor, limit }) },
+    updates: { schema: ContextUpdatesSchema, run: async ({ contextId, cursor }: PartArgs) => (await import('../services/country_intel/db.js')).getContextUpdates(contextId, cursor) },
+  };
+  const CONTEXT_USAGE = '使い方: contextId（必須）を part で選んで取得する（report（既定）: 保存したレポート。evidence: 根拠をページ単位で。evidenceIds で個別に、省けば cursor・limit で順に。updates: 前回以降の差分。cursor で続きから）。';
+  // onlyForMode に渡す語句。エラーの文にそのまま出る
+  const partIs = (part: string) => `part が ${part} のとき`;
   registerStructuredTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'get_country_context',
     'intel',
-    '【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。返却: CountryContextReport',
+    '【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }',
     {
       contextId: z.string().min(1).describe('コンテキストID'),
+      part: z.enum(['report', 'evidence', 'updates']).optional().describe('取得するもの: "report" (保存したレポート), "evidence" (根拠のページ), "updates" (前回以降の差分)').meta({ default: 'report' }),
+      evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (REST の ids に当たる。省略時はページ走査)。evidence のときだけ'),
+      cursor: z.string().optional().describe('前回の nextCursor (evidence は次ページ、updates は差分の続き)。evidence か updates のときだけ'),
+      limit: z.number().int().min(1).max(100).optional().describe('取得件数 (1〜100, デフォルト: 40)。evidence のときだけ').meta({ default: 40 }),
     },
-    CountryContextReportSchema,
-    async (opts) => {
+    z.looseObject({ contextId: z.string() }),
+    async (args) => {
+      const part = args.part ?? 'report';
+      const mode = partIs(part);
+      const invalid = onlyForMode(mode, [partIs('evidence')], args, ['evidenceIds', 'limit'], CONTEXT_USAGE, { limit: 40 })
+        ?? onlyForMode(mode, [partIs('evidence'), partIs('updates')], args, ['cursor'], CONTEXT_USAGE);
+      if (invalid) return usageError(invalid);
       try {
-        const { getPersistedCountryContext } = await import('../services/country_intel/report.js');
-        const result = getPersistedCountryContext(opts.contextId) as CountryContextReport | undefined;
-        if (!result) return { isError: true, content: [{ type: 'text', text: 'Country context not found: ' + opts.contextId }] };
-        const text = toolJson(result);
-        return { content: [{ type: 'text', text }], structuredContent: result as never };
+        const result = await PARTS[part].run(args);
+        if (!result) return { isError: true, content: [{ type: 'text', text: 'Country context not found: ' + args.contextId }] };
+        const checked = PARTS[part].schema.safeParse(result);
+        if (!checked.success) throw new Error(`invalid ${part} payload: ${checked.error.message}`);
+        return { content: [{ type: 'text', text: toolJson(result) }], structuredContent: result as never };
       } catch (err: unknown) {
         return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
       }
     },
-    { defaultEnabled: deferredDefault, keywords: ['国地域', 'コンテキスト', 'context', 'スナップショット'] },
-  );
-  registerStructuredTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'get_country_context_evidence',
-    'intel',
-    '【国地域レポートの根拠取得】contextId のレポートの根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。返却: { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }',
-    {
-      contextId: z.string().min(1).describe('コンテキストID'),
-      evidenceIds: z.array(z.string()).optional().describe('根拠ID一覧 (REST の ids に当たる。省略時はページ走査)'),
-      cursor: z.string().optional().describe('次ページカーソル'),
-      limit: z.number().int().min(1).max(100).optional().describe('取得件数 (1〜100, デフォルト: 40)').meta({ default: 40 }),
-    },
-    EvidencePageSchema,
-    async (opts) => {
-      try {
-        const { getEvidencePage } = await import('../services/country_intel/db.js');
-        const result = getEvidencePage(opts.contextId, { ids: opts.evidenceIds, cursor: opts.cursor, limit: opts.limit });
-        const text = toolJson(result);
-        return { content: [{ type: 'text', text }], structuredContent: result as never };
-      } catch (err: unknown) {
-        return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['国地域', '根拠', 'evidence', '原文', '詳細'] },
-  );
-  registerStructuredTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'get_country_context_updates',
-    'intel',
-    '【国地域レポートの差分取得】contextId のレポートについて、前回以降の根拠の追加・訂正・削除・取得障害を取得します。前回の nextCursor を cursor に渡すと続きから取得します。返却: { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? }',
-    {
-      contextId: z.string().min(1).describe('コンテキストID'),
-      cursor: z.string().optional().describe('差分カーソル'),
-    },
-    ContextUpdatesSchema,
-    async (opts) => {
-      try {
-        const { getContextUpdates } = await import('../services/country_intel/db.js');
-        const result = getContextUpdates(opts.contextId, opts.cursor);
-        const text = toolJson(result);
-        return { content: [{ type: 'text', text }], structuredContent: result as never };
-      } catch (err: unknown) {
-        return { isError: true, content: [{ type: 'text', text: 'Country intelligence error: ' + (err instanceof Error ? err.message : err) }] };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['国地域', '更新', '差分', 'updates'] },
+    { defaultEnabled: deferredDefault, keywords: ['国地域', 'コンテキスト', 'context', 'スナップショット', '根拠', 'evidence', '原文', '詳細', '更新', '差分', 'updates', 'get_country_context_evidence', 'get_country_context_updates'] },
   );
 }

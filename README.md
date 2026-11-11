@@ -58,7 +58,7 @@ docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
 AI エージェントの設定ファイル（`claude_desktop_config.json` 等）に以下を追加するだけで接続できます。
-Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (39ツール) + `search_tools`** 方式を実装しており、初期状態では 13 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 39 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 53 ツール）。
+Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (20ツール) + `search_tools`** 方式を実装しており、初期状態では 12 のコアツール（`scrape`, `search_web`, `search_deep`, `get_weather`, `search_route` 等）と `search_tools` のみを露出し、残りの 20 ツールは `search_tools` により動的にオンデマンド有効化されるため、ツール定義によるコンテキスト消費を最小限に抑えられます（全 33 ツール）。
 
 ```json
 {
@@ -73,7 +73,7 @@ Sora は Anthropic の Tool Search / progressive disclosure 設計原則を参�
 ### ③ ChatGPT (Custom GPTs / Actions & Desktop MCP) での利用
 - **Custom GPTs (Actions / OpenAI)**:
   1. ChatGPT の GPT Builder で「Configure」→「Actions」→「Create new action」を選択。
-  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 81 オペレーション（72 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
+  2. 「Import from URL」に `http://<your-host>:3016/openapi.json` を指定すると、全 82 オペレーション（73 パス、別名を含む）が自動登録され、ChatGPT から日本の Web 検索・スクレイピング・天気・知恵袋・X速報・荷物追跡・住所正規化等を呼び出せます。
 - **ChatGPT Desktop (MCP)**:
   `http://localhost:3016/mcp` を MCP サーバーとして指定。
 
@@ -102,11 +102,11 @@ Sora では、**回答拒絶の完全防止（Zero-Refusal Policy）と、Google
 > 【Sora ツール利用規約】
 > 1. 専用ツールがないことを理由に回答を拒否してはならない（ライブ日程・営業時間・発売日・最新動向等は必ず search_deep または search_web でWebから能動調査すること）。
 > 2. 以下の専門・公的データに関しては、自身の知識で推測せず必ず Sora MCP ツールを実行すること：
->    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, predict_hts_code, verify_hts_code, check_fda_regulated, check_cpsc_certificate, generate_gcc_certificate
->    - 日本の法令・国会審議録: search_laws, get_law_text, search_diet_minutes
->    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, search_disaster_warnings, search_earthquake, search_road_traffic, get_elevation, search_poi, get_flight_status, search_postal_code, normalize_address, reverse_geocode
+>    - 米国貿易・通関・HTSコード・FDA・CPSC規制判定・GCC証明書生成: check_product_compliance, lookup_hts, check_regulations, generate_gcc_certificate
+>    - 日本の法令・国会審議録: search_laws, search_diet_minutes
+>    - 気象・防災・地震・道路交通・標高・施設・航空運航・住所・郵便番号: get_weather, get_disaster_info, search_road_traffic, get_place_info, search_poi, get_flight_status, lookup_address
 >    - 国内交通乗換・運賃: search_route
->    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_trend, search_song, search_artist
+>    - 日本のSNS速報・知恵袋・トレンド・音楽: search_realtime、公開SNS投稿: search_social_posts, fetch_social_post（REST: POST /social/search・POST /social/fetch）, search_chiebukuro, search_keywords, search_music
 > 3. search_web でスニペットのみ取得して詳細が不足する場合は公式URLを scrape で精読すること（ただし search_web + formats: ["markdown"] で既に本文取得済みの場合は再度の scrape は不要）。深層Web+X調査には search_deep を使用すること。
 > ```
 
@@ -150,7 +150,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - Web検索の単一結果集合はプロバイダーの順位を保持します。複数クエリ統合は加重 RRF、Deep Search の本文・ハイライト選択は BM25 と回答値・対象との関連・日付整合性を用いて評価します。新しいページを一律に優先する設計ではありません。
 9. **🛡️ Evidence-Preserving Accessibility Hints（根拠データプレーン v2.15.0+)**:
    - **Block Provenance (出所トラッキング)**: 各見出し・段落・表ブロックへ `[S1:P4 | 2026-09-01]` 形式のアンカー識別子と連番を自動付与。LLM が回答時に引用元ブロックを決定論的に特定可能。
-   - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき（MCP の `scrape`・`scrape_batch` の `verbose` では付きません）`highlightDiagnostics` に、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
+   - **Evidence Diagnostics (客観的証拠診断量)**: Sora 自身が主観で「情報不足」と断定せず、REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき（MCP の `scrape` の `verbose` では、`url`・`urls` とも付きません）`highlightDiagnostics` に、クエリ基本単語網羅率（`queryCoverage`）や候補数、客観的な証拠シグナル（`weakEvidenceSignal`）を返し、上位エージェントが追加調査要否を自律判断。
 10. **🌐 最新 IR (情報検索) & RAG 理論 (v2.16.0+)**:
    - **MMR (Maximal Marginal Relevance) 多様性選択**: Jaccard 類似度を用いた反復多様性選択により、同一内容の言い換え重複を抑え、異なる観点の重要文を幅広く採択（多様性の重みは 0.7 固定）。
 11. **⏳ Temporal Context Anchor (時間的文脈アンカー / 相対日時の絶対解決)**:
@@ -299,49 +299,45 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ---
 
-## 2. 提供 MCP ツール一覧 (全 53 ツール / 12 のモジュール & ハイブリッド 14 コア構成)
+## 2. 提供 MCP ツール一覧 (全 33 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 53 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
-### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
-Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (13ツール) + DEFERRED (39ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 13 個のコアツールを初期有効（★ CORE）とし、残りの 39 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+v4 までのツール名（`scrape_batch`・`normalize_address`・`watch_register` など）から移るときは、[v5.0.0 への移行（旧ツール名 → 新ツール名）](#v500-への移行旧ツール名--新ツール名)の表を見てください。
 
-- **初期有効 (★ CORE 14 ツール: 機能 13 + search_tools)**:
-  - `scrape`: Web ページ Markdown 抽出・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
+### 🔍 動的ツール発見 (Tool Search Tool: `search_tools`)
+Anthropic の Tool Search / progressive disclosure 設計原則を参考にしつつ、Sora では client-neutral MCP として独自の **CORE (12ツール) + DEFERRED (20ツール) + `search_tools`** 方式を実装しています。AI エージェントが日常的・頻繁に使う代表的な 12 個のコアツールを初期有効（★ CORE）とし、残りの 20 ツールは `search_tools` によるオンデマンド動的有効化（・ DEFERRED）とすることで、1-hop の即時自律実行とコンテキストトークン消費の極小化を両立しています。
+
+- **初期有効 (★ CORE 13 ツール: 機能 12 + search_tools)**:
+  - `scrape`: Web ページ Markdown 抽出（`urls` で最大 20 件を一括並行取得）・フルページスクリーンショット（`fullPage: true`）・Shopify 等の DOM 剪定 & 在庫/価格/ブランド メタデータ抽出
   - `search_web`: 最速 1-hop Web 検索（候補 URL・スニペット即応、formats 指定で上位本文インライン取得対応）
   - `search_deep`: 深層統合検索・本文一括スクレイピング & リアルタイム速報（responseMode: evidence（既定）/ full）
   - `search_social_posts`: 公開 SNS 投稿検索（Weibo 新着 / Threads・Instagram・Facebook 公開投稿）
-  - `fetch_social_post`: 公開 SNS 投稿の本文・日時・反応取得
+  - `fetch_social_post`: 公開 SNS 投稿（X・Weibo・Threads・Instagram・Facebook。X は `statusId` でも可）の本文・日時・反応取得
   - `search_tools`: 現在 tools/list に表示されていない追加/deferred ツールの検索・動的有効化（Tool Search Tool）
   - `check_product_compliance`: 商品統合コンプライアンス一括診断（HTSコード/FDA/CPSC/eFiling）
   - `get_weather`: 気象庁 1,805 市区町村天気予報
   - `search_route`: Yahoo! 乗換案内・IC 運賃
   - `search_chiebukuro`: Yahoo! 知恵袋 Q&A 検索
   - `search_realtime`: Yahoo! リアルタイム検索（X/Twitter 最新投稿・画像 URL 抽出）
-  - `search_disaster_warnings`: 気象庁 警報・注意報
-  - `search_earthquake`: 気象庁 地震情報
-  - `search_laws`: e-Gov 法令キーワード検索
-- **動的有効化 (・ DEFERRED 39 ツール)**:
+  - `get_disaster_info`: 気象庁 警報・注意報（`include: ["warnings"]`）・地震情報（`include: ["earthquake"]`）
+  - `search_laws`: e-Gov 法令キーワード検索（`keyword`）・条文の全文（`lawId`）
+- **動的有効化 (・ DEFERRED 20 ツール)**:
   - `track_package`: 日米主要8社（ヤマト・佐川・郵便・西濃・福山・UPS・FedEx・DHL）荷物追跡・自動キャリア判別。米3社も含め資格情報なしで動作（米3社はステルスブラウザ取得、資格情報があれば公式API優先）
   - `inspect_image`: 画像 URL 取得 & MCP マルチモーダル視覚入力（Base64 / `ImageContent`）
-  - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
-  - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
+  - `get_youtube`: `url` の形で判別。動画なら題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）、チャンネル（URL・@ハンドル・ID）なら最新の動画（題名・公開日・説明文の先頭・視聴回数。Yahoo の検索は使わない）
   - `get_flight_status`: 羽田・成田・伊丹・関西・中部の 5 空港のフライト運航状況・遅延・欠航
-  - `get_elevation`: 住所・地名の座標解決（国土地理院・Nominatim）& 国土地理院の標高（海抜）取得
+  - `get_place_info`: 住所・地名または座標の地点の情報。座標解決（国土地理院・Nominatim）& `include` で選ぶ情報（既定の `elevation`: 国土地理院の標高（海抜））
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
-  - `search_postal_code`: デジタル庁 ABR / 日本郵便 郵便番号から住所候補検索・住所から郵便番号逆引き
-  - `normalize_address`: デジタル庁 ABR 住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合
-  - `reverse_geocode`: デジタル庁 ABR 緯度経度座標からの最寄り住所逆引き（住居表示・地番）
+  - `lookup_address`: デジタル庁 ABR / 日本郵便の住所。`address` で住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合、`lat`・`lon` だけで緯度経度からの最寄り住所逆引き（住居表示・地番）、`zipcode` だけで郵便番号から住所候補
   - `search_diet_minutes`: 国会会議録 衆参本会議・委員会答弁検索
-  - `predict_hts_code`: 米国 HTS/HS コード推測（USITC 公式 HTS 全件＋CBP 分類判例。英語で入力）・分岐点の確認質問
-  - `verify_hts_code`: 米国 USITC 公式 HTS/HS コード実在検証
-  - `check_fda_regulated`: 米国 FDA 規制判定
-  - `check_cpsc_certificate`: 米国 CPSC 証明書 (GCC/CCC) / eFiling 義務判定
+  - `lookup_hts`: 米国 HTS/HS コード。`htsCode` があれば USITC 公式 HTS での実在検証、省けば推測（USITC 公式 HTS 全件＋CBP 分類判例。英語で入力）・分岐点の確認質問
+  - `check_regulations`: 米国の規制判定。`agencies` で CPSC 証明書 (GCC/CCC) / eFiling 義務と FDA 規制を選ぶ（既定は両方）
   - `generate_gcc_certificate`: 米国 CPSC の一般適合証明書（GCC）と通関の保留に出す書類（呼び出し側の記録から作る。HTS は推測しない）
   - `browser_action`: ヘッドレス Chromium ブラウザ自動操作（クリック/入力/待機/スクショ）
-  - `scrape_batch`, `map_site`, `crawl_site`, `search_image`, `search_video`, `search_news`, `search_trend`, `suggest_keywords`, `search_road_traffic`, `watch_register`, `watch_check`, `watch_list`, `watch_delete`, `search_song`, `search_artist`, `search_music`, `get_law_text`, `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`, `fetch_x_post`
+  - `crawl_site`, `search_media`, `search_keywords`, `search_road_traffic`, `watch`, `search_music`, `research_country_context`, `get_country_context`
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -349,26 +345,68 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 ├─────────────────┬───────────────────┬──────────────────┬─────────────────┬─────────────┬───────────────┬──────────────┬───────────┤
 │ 🌐 Core Web     │ 🤖 Browser Action │ 🇯🇵 Yahoo Services │ 🗾 Daily Life   │ 🚨 Disaster │ 👁️ Watch/Diff │ 🏛️ Gov / Law │ 📦 Trade  │
 │ (`web`)         │ (`browser`)       │ (`yahoo`)        │ (`life`)        │(`disaster`) │ (`watch`)     │ (`gov`)      │ (`trade`) │
-│ ★scrape         │ ・browser_action  │ ・search_image   │ ★search_route   │★search_     │・watch_       │★search_laws  │★check_    │
-│ ★search_web     │   (クリック/入力/ │ ・search_video   │   (乗換案内)    │  disaster_  │  register     │・get_law_text│  product_ │
-│ ★search_deep    │    スクショ/JS実行│ ・search_news    │ ★get_weather    │  warnings   │・watch_check  │・search_diet_│  compli-  │
-│ ★search_tools   │    セッション保持)│ ★search_chie-    │   (気象庁天気)  │★search_     │・watch_list   │  minutes     │  ance     │
-│ ・scrape_batch  │                   │   bukuro         │ ・search_road_  │  earthquake ├───────────────┤ (国会会議録) │・predict_ │
-│ ・map_site      │                   │ ★search_realtime │   traffic (道路)│・get_       │ 🎵 Music      ├──────────────┤  hts_code │
-│ ・crawl_site    │                   │ ・search_trend   │ ・get_flight_   │  elevation  │ (`music`)     │ 📷 Media     │・verify_  │
-│                 │                   │ ・suggest_       │   status (航空) │ (国土地理院)│・search_song  │ (`media`)    │  hts_code │
-│                 │                   │   keywords       │ ・track_package │             │・search_artist│・inspect_    │・check_   │
-│                 │                   │                  │   (荷物追跡)    │             │・search_music │  image       │  fda_regu-│
-│                 │                   │                  │                 │             │               │ (マルチモ    │  lated    │
-│                 │                   │                  │                 │             │               │  ーダル視覚) │・check_   │
-│                 │                   │                  │                 │             │               │              │  cpsc_cert│
+│ ★scrape         │ ・browser_action  │ ・search_media   │ ★search_route   │★get_        │・watch        │★search_laws  │★check_    │
+│ ★search_web     │   (クリック/入力/ │ ★search_chie-    │   (乗換案内)    │  disaster_  │ (action で    │ (keyword /   │  product_ │
+│ ★search_deep    │    スクショ/JS実行│   bukuro         │ ★get_weather    │  info       │  登録/確認/   │  lawId)      │  compli-  │
+│ ★search_tools   │    セッション保持)│ ★search_realtime │   (気象庁天気)  │ (警報・地震)│  一覧/削除)   │・search_diet_│  ance     │
+│ ・crawl_site    │                   │ ・search_keywords│ ・search_road_  │             ├───────────────┤  minutes     │・lookup_  │
+│                 │                   │                  │   traffic (道路)│・get_       │ 🎵 Music      │ (国会会議録) │  hts      │
+│                 │                   │                  │ ・get_flight_   │  place_info │ (`music`)     ├──────────────┤ (照合/    │
+│                 │                   │                  │   status (航空) │ (国土地理院)│・search_music │ 📷 Media     │  推測)    │
+│                 │                   │                  │ ・track_package │             │ (曲・歌手・   │ (`media`)    │・check_   │
+│                 │                   │                  │   (荷物追跡)    │             │  アルバム)    │・inspect_    │  regula-  │
+│                 │                   │                  │                 │             │               │  image       │  tions    │
+│                 │                   │                  │                 │             │               │ (マルチモ    │ (CPSC/    │
+│                 │                   │                  │                 │             │               │  ーダル視覚) │  FDA)     │
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
-★ = 初期常時有効 (CORE: 14ツール: 機能 13 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 39ツール)
-図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube_transcript` / `get_youtube_channel`）・Music・Intel（`research_country_context` 他 3 件）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
+★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 20ツール)
+図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube`）・Music・Intel（`research_country_context` / `get_country_context`）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
 `browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
 
-### 💻 コード実行環境から使う (型付き TypeScript クライアント)
+### v5.0.0 への移行（旧ツール名 → 新ツール名）
+
+v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめました（初期公開は 14 個から 13 個）。旧いツール名 29 個がなくなり、新しいツール名 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。
+
+- **旧名の別名は残していません。** 旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。下の表の新しいツールと引数で呼んでください。
+- **`search_tools` で旧名を検索すると、新しいツールが見つかります**（新しいツールの検索語に旧名を入れています）。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスの欄は同じで（応答の文だけ変えたものがあります）、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更（`GET /client` の廃止など）は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
+- 統合したツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選びます。選んだ使い方に無い引数を既定と違う値で渡すと、正しい使い方を添えた入力の誤り（`isError`、「入力の誤り: …」）になります。既定と同じ値は通ります。
+- 応答の形とエラーの変化は、[RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節にあります。
+
+| 旧ツール名 | 新ツール名 | 呼び方（引数） | 備考 |
+|---|---|---|---|
+| `scrape_batch` | `scrape` | `urls`（最大 20 件）。`concurrency`・`webhookUrl` も `urls` のときだけ | `fullPage`・`keepDataImages` は `url` のときだけ |
+| `map_site` | `crawl_site` | `listOnly: true`（`limit`・`since`・`until`） | 本文を巡回するときは `listOnly` を省く |
+| `fetch_x_post` | `fetch_social_post` | X の投稿の `url`、または `statusId` | モジュールは `web`（旧は `yahoo`）。`commentLimit` は X 以外のときだけ |
+| `search_image` | `search_media` | `type: "image"` | `page` は image・video のときだけ |
+| `search_video` | `search_media` | `type: "video"` | `transcripts`・`transcriptChars`・`updated`・`platform` は video のときだけ |
+| `search_news` | `search_media` | `type: "news"` | `page` は使えない（`page: 1` は通る） |
+| `suggest_keywords` | `search_keywords` | `query` を渡す | `limit` は 20 まで |
+| `search_trend` | `search_keywords` | `query` を省く | `limit` は 50 まで |
+| `normalize_address` | `lookup_address` | `address`（`zipcode`・`lat` と `lon`・`compareAddress` で突き合わせ、`level` で階層） | 応答に `mode: "normalize"` |
+| `reverse_geocode` | `lookup_address` | `address` なしで `lat` と `lon`（`maxDistanceMeters`） | 応答に `mode: "reverse"` |
+| `search_postal_code` | `lookup_address` | 郵便番号から住所: `zipcode` だけ。住所から郵便番号: `address` | `zipcode` だけなら応答に `mode: "postal"`。`address` なら正規化の応答の `postalCodes`（入力の写しの欄は `address` でなく `input`） |
+| `get_elevation` | `get_place_info` | `address`、または `lat` と `lon`（`include` の既定は `["elevation"]`） | 応答は `{ location, elevation, include }`。`address` と `lat`・`lon` を同時に渡すとエラー |
+| `search_disaster_warnings` | `get_disaster_info` | `city` か `areaCode`（`include` は既定で `["warnings"]`） | 応答は `{ include, warnings }`。地域を省くと地震を返す（警報は地域が必須） |
+| `search_earthquake` | `get_disaster_info` | 地域を省く、または `include: ["earthquake"]`（`limit`・`minIntensity`） | 応答は `{ include, earthquake }`。両方は `include: ["warnings", "earthquake"]` |
+| `get_law_text` | `search_laws` | `lawId` | `keyword` と `lawId` はどちらか 1 つ。`search_laws` はコアのツール |
+| `search_song` | `search_music` | `attribute: "songTerm"` | |
+| `search_artist` | `search_music` | `attribute: "artistTerm"` と `entity: "song"` / `"album"`。アーティストの情報は `entity: "musicArtist"`（`attribute` なし） | |
+| `watch_register` | `watch` | `action: "register"`（`url` は必須。`title`・`selector`・`webhookUrl`） | |
+| `watch_check` | `watch` | `action: "check"`（`id`。省くと全件） | |
+| `watch_list` | `watch` | `action: "list"` | |
+| `watch_delete` | `watch` | `action: "delete"`（`id` は必須） | |
+| `predict_hts_code` | `lookup_hts` | `htsCode` を省く（`productName` は必須） | 応答に `mode: "predict"` |
+| `verify_hts_code` | `lookup_hts` | `htsCode` と `description` | 旧の `productDescription` は `description`。応答に `mode: "verify"` |
+| `check_cpsc_certificate` | `check_regulations` | `htsCode`・`targetAge`（cpsc を含むとき必須）。CPSC だけなら `agencies: ["cpsc"]` | `agencies` の既定は `["cpsc", "fda"]`。応答は `{ agencies, cpsc?, fda? }`（頼んだ機関の節だけ） |
+| `check_fda_regulated` | `check_regulations` | `htsCode` と `agencies: ["fda"]`（`foodContact`） | 既定（両方）では `targetAge` も要る |
+| `get_country_context_evidence` | `get_country_context` | `part: "evidence"`（`evidenceIds`、または `cursor`・`limit`） | `part` を省くと保存したレポート（旧 `get_country_context` と同じ） |
+| `get_country_context_updates` | `get_country_context` | `part: "updates"`（`cursor`） | |
+| `get_youtube_transcript` | `get_youtube` | 動画の URL か 11 文字の動画 ID（`lang`・`fromSec`・`maxChars`） | 応答に `mode: "video"` |
+| `get_youtube_channel` | `get_youtube` | チャンネルの URL・`@ハンドル`・`UC…` の ID（`limit`） | 応答に `mode: "channel"` |
+
+### 💻 コード実行環境から使う (REST の直接呼び出し)
 `search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -376,22 +414,20 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 | ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
 |---|:---:|---|---|---|
-| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）に回答値の倍率を掛けたハイライト選択（長い節は Dinkelbach 法で情報密度が最大の区間を切り出す）、MMR 多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance 出所追跡（`[S1:P4]`）、読了時間、PII 保護に対応。画像・音声・動画のファイル（`Content-Type` が `image/`・`audio/`・`video/`。上限の 30MB を超えるものも）は中身を読まず、種類と大きさだけを返します（`contentStatus: "unavailable"`）。HTTP の状態が 400 以上のページ（ブロックやエラーの画面）は `contentStatus: "unavailable"` で返します（v2.48.0）。TikTok の動画の URL は、ブラウザで開いたページのデータから、説明文・投稿者・投稿日時と、TikTok の自動字幕（字幕のある動画だけ。`### 1m23s` の見出しで段落に分ける）を本文にして返します（約 10〜13 秒。v2.49.0）。 | `source: "web"` | - `url` (string, 必須): 対象 URL / PDF<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`（`html` は本文の HTML、`rawHtml` は取得したそのままの HTML）<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`（ハイライトがあれば content をハイライトに置き換える）<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る）<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
+| `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）に回答値の倍率を掛けたハイライト選択（長い節は Dinkelbach 法で情報密度が最大の区間を切り出す）、MMR 多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance 出所追跡（`[S1:P4]`）、読了時間、PII 保護に対応。画像・音声・動画のファイル（`Content-Type` が `image/`・`audio/`・`video/`。上限の 30MB を超えるものも）は中身を読まず、種類と大きさだけを返します（`contentStatus: "unavailable"`）。HTTP の状態が 400 以上のページ（ブロックやエラーの画面）は `contentStatus: "unavailable"` で返します（v2.48.0）。TikTok の動画の URL は、ブラウザで開いたページのデータから、説明文・投稿者・投稿日時と、TikTok の自動字幕（字幕のある動画だけ。`### 1m23s` の見出しで段落に分ける）を本文にして返します（約 10〜13 秒。v2.49.0）。 | `source: "web"` | - `url` (string): 対象 URL / PDF。`url` か `urls` のどちらか 1 つ<br>- `urls` (string[]): 複数ページの一括取得 (最大20件)。ドメインスロットリングを維持しながら並行取得し、`{ total, successful, failed, results, errors }` で返す（`results` は入力の順ではなく、取得が終わった順）<br>- `concurrency` (number, 任意, `urls` のときだけ): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `webhookUrl` (string, 任意, `urls` のときだけ): 完了時に、応答と同じ整形後の結果を 1 回だけ POST する URL<br>- `fullPage`・`keepDataImages` (boolean, 任意): `url` のときだけ<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000。`urls` のときは 1 ページあたりで 50000 まで)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`（`html` は本文の HTML、`rawHtml` は取得したそのままの HTML）<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`（ハイライトがあれば content をハイライトに置き換える）<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る）<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
 | `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。検索元（Yahoo! JAPAN）の順位のまま返します（`SORA_WEB_NATIVE_RANKING=false` のときだけ BM25 で並べ替えます）。ドメイン絞り込み・除外・期間指定に対応。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/web`）は `data` で包みます。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
 | `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。MMR 多様性選択、Temporal Context Anchor、Smart Table Minimizer、深層エビデンス駆動リランキング（`rerankByDeepEvidence`）対応。返却量は `responseMode` で選択可能。既定は `evidence`（ハイライト中心。局所的事実の確認はこれで足りる）。全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は `full` を指定（MCP・REST 共通）。`evidence` で根拠が不足・曖昧な場合は `full` または `formats: ["markdown"]` で再取得できます。根拠が足りているかは、応答の `contextSufficiency` で確認できます。 | Web: `source: "web"`<br>X: `source: "x"`<br>YouTube: `source: "youtube"` | - `query` (string, 必須): 検索キーワード。http(s) の URL を入れると、検索せずにその URL（最大 `limit` 件）を `scrape` と同じ方法で読んで返す（Web・X・動画の検索はしない。URL 以外の語はハイライトの選択に使う。v2.48.0）<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `responseMode` (string, 任意): `"evidence"` (デフォルト: 局所事実・ハイライト優先) または `"full"` (全文・網羅調査重視)<br>- `formats` (string[], 任意): 出力フォーマット（responseMode と直交して指定可能）<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `realtimeFocus` (string, 任意): X 投稿で優先する発信者。`"official"`=本人・公式（予定・告知・事実確認）、`"public"`=本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミなどがあれば public）<br>- `realtimeAnchor` (string, 任意, 100字まで): X 検索で守る固有名詞（クエリ中の人名・グループ名・作品名・会場名など）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない。対応する語が無ければ無視して推定する<br>- `realtimeLimit` (number, 任意, 1〜100, デフォルト: 20): 返す X 投稿の上限（公式の投稿は別枠）。省いた件数は `realtime.omittedCount`。20 より大きくすると取得も増やす（Yahoo の1回の取得は最大40件）<br>- `officialAccountId` (string, 任意): 公式XアカウントID<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`。`videos` の動画検索にも使う)<br>- `noCache` (boolean, 任意): キャッシュ迂回・強制最新取得<br>- `maxChars` (number, 任意): 各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。`html` には効かない)<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で画像・動画の URL（X 投稿の `media`、各ページの `ogImage` と `media`、本文（Markdown）中の画像）を省く（`formats` の `rawHtml` の `<img>` は消さない。`html` は、記事以外のページでは画像が入らない）。ページを取るときにも false を渡すので、rs-trafilatura が画像を戻す 2 回目の取り出しは走らせない。画像の内容が必要な質問では省かない<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `adaptiveScrape` (boolean, 任意, デフォルト: false): 証拠不足時の追加取得を許可<br>- `scrapeBudget` (number, 任意, デフォルト: 8, 最大: 20): adaptive時の取得上限<br>- `scrapeDeadlineMs` (number, 任意, 0〜120,000, デフォルト: 0=無効): 本文取得の打ち切り上限（opt-in。遅いが本文のあるページも落ちるため、待ち時間を優先する場合のみ指定）。半数のページが揃ってから5秒待っても終わらないページ、または上限に達したページは打ち切り、`deadlineExceeded: true` とスニペット代替で返す（打ち切りを発動した応答はキャッシュせず、補充取得も `adaptiveScrape` の追加取得も行わない。打ち切った取得自体は継続しキャッシュに残る）<br>- `videos` (number, 任意, 0〜5, デフォルト: 0): 動画の中身が要るとき、Yahoo! 動画検索の上位の YouTube 動画の字幕を何本読んで `results` に足すか（`source: "youtube"`。動画検索は YouTube に絞る。Web 検索と並行して取得し、検索語に関係する部分が選ばれる。0 なら動画は検索しない。検索語に URL があるときは使わない）<br>- `maxTotalChars` (number, 任意, 1,000〜500,000): 全結果の本文 Markdown 合計の上限。上位ほど多く配分し、超過分は段落境界で切り詰めて `markdownTruncated: {totalChars, keptChars}` を付与（`highlights` は削らない。切り詰めのとき本文の塊を先に残し、ナビの塊（短いラベルのリンクだけの塊）を先に落とす。未指定なら制限なし） |
 | `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) 任意引数 `detail`（`names` / `summary` / `schema`）で返す詳しさを、`activate:false` で有効化せずに調べるだけにできます。 |
-| `scrape_batch` | ・ DEFERRED | 複数の Web ページ URL を指定し、ドメインスロットリングを維持しながら高速に並行スクレイピングして一括返却します（`results` は入力の順ではなく、取得が終わった順）。 | `source: "web"` | - `urls` (string[], 必須): スクレイピング対象 URL 配列 (最大20件)<br>- `concurrency` (number, 任意): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
-| `map_site` | ・ DEFERRED | 指定した Web サイトの sitemap.xml や内部リンクを探索し、サイト内の全 URL 一覧（サイトマップ）を高速抽出します。 | - | - `url` (string, 必須): 対象のベース URL<br>- `limit` (number, 任意): 取得件数 (デフォルト: 200, 最大: 1000)。`since`・`until` で絞ってから件数で切る<br>- `since` / `until` (string, 任意): サイトマップの `lastmod` で絞る日付・日時。`lastmod` の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない |
-| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxChars` (number, 任意): 1 ページあたりの最大文字数 (デフォルト: 15000, 最大: 50000)<br>- `includePatterns` / `excludePatterns` (string[], 任意): たどる URL のパスを絞る・除くワイルドカード (例: `["/docs/**"]`・`["/tag/**", "*.pdf"]`。起点の URL は常に取る)<br>- `formats` (string[], 任意): 取得する形式 (デフォルト: `["markdown"]`)。`screenshot` を指定すると各ページ（最大 50）に全画面の画像が付き、応答が大きくなります<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `highlightMaxCount` (number, 任意, 1〜10): ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し (8 件まで)、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
+| `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。`listOnly: true` のときは本文を取らず、sitemap.xml や内部リンクからサイト内の URL 一覧（サイトマップ）だけを高速抽出し、`{ url, links, count, source }` で返します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL（`listOnly` のときは対象のベース URL）<br>- `listOnly` (boolean, 任意, デフォルト: false): `true` で URL 一覧だけ。`limit`・`since`・`until` は `listOnly` のときだけ、下の巡回の引数は `listOnly` でないときだけ指定できる<br>- `limit` (number, 任意): URL 一覧の取得件数 (デフォルト: 200, 最大: 1000)。`since`・`until` で絞ってから件数で切る<br>- `since` / `until` (string, 任意): サイトマップの `lastmod` で絞る日付・日時。`lastmod` の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxChars` (number, 任意): 1 ページあたりの最大文字数 (デフォルト: 15000, 最大: 50000)<br>- `includePatterns` / `excludePatterns` (string[], 任意): たどる URL のパスを絞る・除くワイルドカード (例: `["/docs/**"]`・`["/tag/**", "*.pdf"]`。起点の URL は常に取る)<br>- `formats` (string[], 任意): 取得する形式 (デフォルト: `["markdown"]`)。`screenshot` を指定すると各ページ（最大 50）に全画面の画像が付き、応答が大きくなります<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `highlightMaxCount` (number, 任意, 1〜10): ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し (8 件まで)、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
 ---
 
 ### 💡 LLM / Agent 連携時のベストプラクティス & `limit` 調整ガイド
 
-遅延ツールは `search_tools` で有効化すると、正式名（例: `search_trend`）と LibreChat 互換名（`default.search_trend`）が公開されます。初期公開は14ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
+遅延ツールは `search_tools` で有効化すると、正式名（例: `search_keywords`）と `default.` を付けた互換名（`default.search_keywords`）が公開されます。初期公開は13ツールで、有効化した遅延ツールごとに2定義が追加されます。通常は正式名を使用してください。カテゴリ名を指定した検索は、そのカテゴリの全ツールを対象にします。
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の14ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全53ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全33ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -408,7 +444,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 > **より効果的なアプローチ**:
 > 1. **スニペットと全文の使い分け**: 検索スニペット（`search_web`）自体は **10〜20 件** 返して概要を広く把握しつつ、全文スクレイプ対象（`search_deep` の `limit`）は **上位 3〜5 件に絞る** のが最も高速かつ高精度です。
 > 2. **クエリに関係する段落だけを読む（`query` の指定）**: `query` を指定すると、見出し階層ボーナス付き BM25 に回答値の倍率を掛けた点数で、クエリに関係する段落を MMR で重複を避けて選びます。LLM は長いページ全体を読む代わりに、関係する段落だけを読めるため、不要なトークンを減らせます。さらに W3C 標準の `textFragmentUrl`（`#:~:text=...`）が自動生成され、ブラウザや `browser_action` が該当位置へ即座に自動スクロール・反転表示します。
-> 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき、客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を `highlightDiagnostics` に付与します（MCP の `scrape`・`scrape_batch` の `verbose` では付きません）。LLM の自律判断を妨げず、決定論的な事実データを供給します。
+> 3. **Evidence-Preserving Accessibility Hints（根拠データプレーン）**: REST の `/scrape`・`/scrape/batch`・`/search` と MCP の `search_deep` で `verbose: true` のとき、客観的観測量（クエリ単語網羅率 `queryCoverage` や `weakEvidenceSignal`）を `highlightDiagnostics` に付与します（MCP の `scrape` の `verbose` では、`url`・`urls` とも付きません）。LLM の自律判断を妨げず、決定論的な事実データを供給します。
 > 4. **検索結果の並べ方**: `search_chiebukuro`・`search_laws` の検索結果は、返却されたヒットアイテム群からインメモリでドキュメント頻度 $df(t)$ と動的 IDF を算出し、タイトル（重み 3.0）と本文（重み 1.0）の BM25 TF 飽和＋長さ正規化で瞬時にリランキングされます。`search_web` は検索元の順位のままです。さらに深層統合検索（`/search`, `/search/deep`）では、スクレイピング完了後に本文およびハイライトの重要クエリ単語カバレッジやハイライトの点数を再評価する**深層エビデンス駆動リランキング（`rerankByDeepEvidence`）**が自動作動し、スニペット段階の偽陽性（作詞者等のキーフレーズが本文に含まれない記事）を排除して真に回答根拠を含むソースを最上位に浮上させます。
 > 5. **説明文（`description`）**: meta の説明文（og:description・meta description・JSON-LD）をそのまま返します。ハイライトで置き換えません（v4.0.0 から）。ページに meta の説明文が無いときは返しません。
 > 6. **全エンドポイント共通メタデータ (Firecrawl / Tavily 互換)**: `publishedTime`（公開日時/更新日時）、`author`（著者名）、`siteName`（サイト名）を OGP / JSON-LD / HTML メタタグから自動抽出し、Frontmatter および JSON レスポンスに付与。LLM が情報の鮮度（ファクトチェック）を瞬時に判定可能。
@@ -446,7 +482,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 - **応答サイズ**: 平均 81KB（24〜240KB）。内訳は本文 Markdown 49%、X 投稿 31%、ハイライト 11%。
 - **待ち時間**: 1.1〜14.4 秒、中央値 3.3 秒。遅いときは、最も遅い 1 ページ（ブラウザ描画に昇格したページなど）が全体を律速します。
-- **`tools/list`**: 全 50 ツールで約 88KB（`outputSchema` を除外した後。除外前は約 260KB）。初期公開の 14 ツールは約 35KB です。
+- **`tools/list`**: 全 33 ツールで約 57,000 字（`outputSchema` を除外した後。除外前は約 131,000 字）。初期公開の 13 ツールは約 23,000 字です（`bun scripts/measure-context.ts`、2026-11-12）。
 
 | 目的 | 指定するもの | 内容と注意 |
 |---|---|---|
@@ -474,14 +510,11 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_image` | Yahoo! JAPAN 画像検索を実行し、画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページを取得します。 | 各アイテムに `source: "image"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く |
-| `search_video` | Yahoo! JAPAN 動画検索を実行し、動画タイトル・動画URL・再生時間・配信元・サムネイルを取得します。`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます（全文は `get_youtube_transcript`）。 | 各アイテムに `source: "video"` | - `query` (string, 必須): 検索キーワード（URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大 20 件。大きい値を指定しても 20 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0） |
-| `search_news` | Yahoo!ニュース検索を実行し、最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。 | 各アイテムに `source: "news"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50) |
+| `search_media` | Yahoo! JAPAN の画像・動画・ニュースの検索（`type` で選ぶ）。`image` は画像タイトル・画像URL・サムネイル・画像サイズ・ソース元ページ、`video` は動画タイトル・動画URL・再生時間・配信元・サムネイル（`transcripts` を指定すると、上位の YouTube 動画に、検索語に関係する字幕の部分（時刻つき）を `transcript` として付けます。全文は `get_youtube`）、`news` は最新ニュース記事のタイトル・概要・配信社・公開日時・記事URLを取得します。REST は `POST /search/image`・`/search/video`・`/search/news` のまま。 | 各アイテムに `source: "image"`・`"video"`・`"news"` | - `type` (string, 必須): `"image"`・`"video"`・`"news"`<br>- `query` (string, 必須): 検索キーワード（`video` で URL を入れると検索せず、`items: []` と読み方の `message` を返す。v2.48.0）<br>- `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。`image`・`video` は大きい値を指定しても 20 件)<br>- `page` (number, 任意, `image`・`video` のときだけ): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 20 件ずつ進む。漏れなく続けるには `limit` を省く<br>- `transcripts` (number, 任意, `video` のときだけ): 字幕を付ける YouTube 動画の本数 (デフォルト: 0, 最大: 5)<br>- `transcriptChars` (number, 任意, `video` のときだけ): 1 本あたりの最大文字数 (デフォルト: 2000, 500〜10,000)<br>- `updated` (string, 任意, `video` のときだけ): 投稿日の期間 `"all"` (デフォルト), `"hour"`, `"day"`, `"week"`, `"month"`, `"year"`<br>- `platform` (string, 任意, `video` のときだけ): 動画サイト `"all"` (デフォルト), `"youtube"`, `"tiktok"`, `"x"`, `"instagram"`, `"niconico"`, `"dailymotion"`。YouTube・ニコニコ・Dailymotion は Yahoo の絞り込み、ほかは検索語に `site:` を足して絞る（`updated` か `platform` を指定すると、Yahoo の動画検索のページを直接読む。v2.48.0）<br>- そのモードに無い引数（`news` の `page`、`image`・`news` の動画の引数）は、正しい使い方を添えた入力の誤りになる（既定値と同じ値は通す） |
 | `search_chiebukuro` | Yahoo!知恵袋 Q&A 検索を実行し、質問タイトル・回答数・解決ステータス・本文スニペットを取得します。アイテム間動的コーパスIDF付きBM25+リランキングによりクエリへの適合度が高いQ&Aを最上位表示。 | 各アイテムに `source: "chiebukuro"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大 10 件。大きい値を指定しても 10 件)<br>- `page` (number, 任意): ページ番号 (1 始まり, 上限: 100)。`limit` によらず 10 件ずつ進む。漏れなく続けるには `limit` を省く |
-| `suggest_keywords` | Yahoo! JAPAN オートコンプリートサジェストを取得し、関連検索ワード・補完候補を返します。 | `source: "suggest"` | - `query` (string, 必須): 補完キーワード<br>- `limit` (number, 任意): 取得件数 (デフォルト: 10, 最大: 20) |
+| `search_keywords` | `query` を指定すると Yahoo! JAPAN オートコンプリートサジェスト（関連検索ワード・補完候補）、省くと Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。REST は `POST /search/suggest`・`/search/trend` のまま。 | サジェスト: `source: "suggest"`<br>トレンド: 各アイテムに `source: "x"` | - `query` (string, 任意): 補完キーワード。省くと急上昇トレンド<br>- `limit` (number, 任意): 取得件数。サジェストはデフォルト 10・上限 20（超えると入力の誤り）、トレンドはデフォルト 20・上限 50（返るのはページに載っている件数まで。2026-11 は 31 件） |
 | `search_realtime` | **【必須・Web検索代替不可】** Yahoo! リアルタイム検索を実行し、X (旧 Twitter) の最新ポスト（投稿者・本文・投稿日時・メディア・URL）を取得します。アイドルのライブ出演・物販タイテ・緊急告知・現地の生の声や障害速報の調査に最適。新着順 (`recent`) と 話題順 (`popular`) の切り替えに対応。X取得はYahooのJSON直取得 (MCPバイナリ不使用)。一部失敗時は `partial: true` と `providerErrors` を付与。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/realtime`）は `data` で包みます。 | 各アイテムに `source: "x"` | - `query` (string, 任意): 検索キーワード (他条件の指定時は省略可)<br>- `accountId` / `fromUser` (string, 任意): 特定アカウント (`id:xxx` に変換)<br>- `toAccount` (string, 任意): 宛先 (`@xxx` に変換)<br>- `hashtags` (string, 任意): ハッシュタグ (`#` 付与)<br>- `excludeWords` (string, 任意): 除外語 (`-` 付与)<br>- `orWords` (string[], 任意): OR検索 (`(A B)` に変換)<br>- `url` (string, 任意): URL/ドメイン (`URL:` 演算子として送信)<br>- `sort` (string, 任意): `"recent"` (新着順, デフォルト) または `"popular"` (話題順)<br>- `limit` (number, 任意): 返す投稿の上限 (デフォルト: 20, 最大: 40)。省いた件数は `omittedCount`<br>- `page` (number, 任意): ページ番号 (デフォルト: 1。`limit` 件ずつ進む)<br>- `focus` (string, 任意): `"official"`（本人・公式を優先）または `"public"`（本人以外を優先。評判・感想・炎上の調査）。省略時はクエリの語から判定<br>- `anchor` (string, 任意, 100字まで): 守る固有名詞（クエリ中の語）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない |
-| `search_trend` | Yahoo リアルタイム検索の最新トレンド（急上昇キーワードランキング 20 件）を取得します。 | 各アイテムに `source: "x"` | - `limit` (number, 任意): 取得件数 (デフォルト: 20, 最大: 50。返るのはページに載っている件数まで。2026-11 は 31 件) |
-| `fetch_x_post` | Xの個別投稿をステータスIDまたは投稿URLで指定して全文・投稿日時・メディアを取得（FxTwitter経由・ID突合検証済みのみ返却）。`search_realtime` で見つけた投稿の深掘り用。取得不可は明示エラー。 | `found: true` 時に `detail.text` | - `statusId` (string, 任意): 数値ステータスID<br>- `url` (string, 任意): X投稿URL（`statusId` の代わりに指定可） |
+| `fetch_social_post`（X の投稿。モジュールは `web`） | Xの個別投稿をステータスIDまたは投稿URLで指定して全文・投稿日時・メディアを取得（FxTwitter経由・ID突合検証済みのみ返却）。`search_realtime` で見つけた投稿の深掘り用。取得不可は明示エラー。X 以外（Weibo・Threads・Instagram・Facebook）の URL は公開 SNS 投稿の取得になる。REST は `POST /realtime/post` のまま。 | `found: true` 時に `detail.text` | - `url` (string, 任意): X投稿URL（x.com・twitter.com）<br>- `statusId` (string, 任意, X だけ): 数値ステータスID（`url` の代わりに指定可）。`url` か `statusId` のどちらかは必須<br>- `commentLimit` は X 以外のときだけ |
 
 > 💡 **X (旧 Twitter) ポスト詳細・長文投稿（Note Tweet）の適応的補完**:  
 > X post detail enrichment may use the third-party FxTwitter/FxEmbed public API. Only the public X status ID is sent. The integration is fail-soft and can be disabled with `SORA_X_DETAIL_PROVIDER=off`.
@@ -507,25 +540,19 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_disaster_warnings` | 気象庁公式防災情報による特別警報・危険警報・警報・注意報（大雨、土砂災害、高潮、暴風、大雪、波浪、雷等。河川の氾濫は対象外）を市区町村単位（都道府県名は県全体、市区町村でも都道府県でもない名前は予報区単位）でリアルタイム取得します。大雨・土砂災害・高潮は段階（`alertLevel`: レベル2〜5）付き。見つからない地名はエラー。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方<br>- `areaCode` (string, 任意): 気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27"。北海道・鹿児島・沖縄は6桁の気象台で指定)。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可 |
-| `search_earthquake` | 気象庁の公式データ（使えない間は P2P地震情報）によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)。震度で絞ってから `limit` 件を返す。取得に失敗したときは 0 件でなくエラー |
-| `get_elevation` | 住所・地名を緯度経度へ解決し（番地まである住所は国土地理院、施設名・駅名・地名はNominatim）、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度 (-90〜90)<br>- `lon` (number, 任意): 経度 (-180〜180)<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
+| `get_disaster_info` | 気象庁公式防災情報による特別警報・危険警報・警報・注意報（大雨、土砂災害、高潮、暴風、大雪、波浪、雷等。河川の氾濫は対象外）と、気象庁の公式データ（使えない間は P2P地震情報）によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を、`include` で選んで返します（`warnings`・`earthquake`。既定は `city` か `areaCode` があれば `["warnings"]`、無ければ `["earthquake"]`。両方は `["warnings","earthquake"]`）。応答は `{ include, warnings, earthquake }` で、`warnings` は REST の `/disaster/warnings`、`earthquake` は `/disaster/earthquake` の応答（`{ count, earthquakes }`）と同じ中身です。警報は市区町村単位（都道府県名は県全体、市区町村でも都道府県でもない名前は予報区単位）でリアルタイム取得し、大雨・土砂災害・高潮は段階（`alertLevel`: レベル2〜5）付き。見つからない地名はエラー。`warnings` には `city` か `areaCode` が必要です。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。`warnings` のとき<br>- `areaCode` (string, 任意): 気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27"。北海道・鹿児島・沖縄は6桁の気象台で指定)。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可。`warnings` のとき<br>- `limit` (number, 任意): 地震の取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)。震度で絞ってから `limit` 件を返す。`earthquake` のとき。取得に失敗したときは 0 件でなくエラー<br>- `include` (string[], 任意): 返す情報（`warnings`: 警報・注意報、`earthquake`: 地震） |
+| `get_place_info` | 地点（住所・地名か座標のどちらか一方）の情報を返します。住所・地名は緯度経度へ解決し（番地まである住所は国土地理院、施設名・駅名・地名はNominatim）、`include` で選んだ情報を節ごとに返します（いまは `elevation`: 国土地理院の海抜標高（m）。既定）。応答は `{ location, elevation, include }` で、座標解決の欄（`matchedTitle`・`geocodingSource`・`geocodingAttribution`・`needsVerification`・`lat`・`lon`）は `location` に、標高の欄（`elevationMeters`・`dataAccuracy`・`formatted`・`source`）は `elevation` にあります。解決先は`location.matchedTitle`、取得元の確認要求は`location.needsVerification`で確認できます。取得済みローカル住所データがあれば優先。`address` と `lat`・`lon` の両方、`lat` だけ、使えない `include` の値は、正しい使い方を示すエラー。REST（`/geo/elevation`）の応答は平らなまま。 | `elevation.source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。`lat`・`lon` とは排他<br>- `lat` (number, 任意): 緯度 (-90〜90、`lon` とペア)<br>- `lon` (number, 任意): 経度 (-180〜180、`lat` とペア)<br>- `noCache` (boolean, 任意): 座標・標高を再取得<br>- `include` (string[], 任意): 返す情報 (`elevation`。デフォルト: `["elevation"]`) |
 | `search_poi` | OpenPOI直結の全国施設POI検索。中心地名を座標化し（番地まである住所は国土地理院、それ以外はNominatim）、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`（`withAddress`指定時は`addressAttribution`も）は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000、bbox 指定時は無視)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 各POIの住所を正規化して郵便番号を付け、POIの座標と突き合わせて addressInfo として付与（住所データ未取得の地域は初回に取得を待つ。最大 `SORA_ADDRESS_WAIT_MS`）。待ち時間までに揃わなかったPOIは`addressIncomplete: true`（全体の`addressIncomplete` / `addressPending` / `addressUnavailable`で不足を確認）で、数秒後の再実行で完全になります。解釈できない住所は`addressInfo`なしで印も付きません<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
-| `search_postal_code` | 日本郵便およびデジタル庁 ABR による郵便番号検索・逆引き。郵便番号から住所候補（町字・事業所）を引く、または住所から郵便番号を逆引きします。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)<br>- `address` (string, 任意): 住所文字列 (zipcode と排他) |
-| `normalize_address` | デジタル庁 ABR による住所正規化・代表点座標解決・名寄せ突き合わせ。住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 必須): 正規化対象住所 (例: "東京都千代田区永田町1-7-1")<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8)<br>- `zipcode` (string, 任意): 突き合わせ用郵便番号<br>- `lat` / `lon` (number, 任意): 突き合わせ用座標<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 |
-| `reverse_geocode` | デジタル庁 ABR による緯度経度からの最寄り住所逆引き。住居表示または地番レベル（level 8）の住所文字列、全国地方公共団体コード、街区・番地号キー、郵便番号を即座に特定します。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `lat` (number, 必須): 緯度 (-90〜90)<br>- `lon` (number, 必須): 経度 (-180〜180)<br>- `maxDistanceMeters` (number, 任意): 番地・号の点を探す範囲 (メートル, デフォルト: 300, 上限: 2000) |
+| `lookup_address` | デジタル庁 ABR・日本郵便による住所の正規化・逆ジオコーディング・郵便番号検索。入力で選び、応答の `mode` に `normalize` / `reverse` / `postal` を返します。`address` は住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号（住所から郵便番号の逆引きは応答の `postalCodes`）を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。`address` なしの `lat`・`lon` は最寄り住所の逆引き（住居表示または地番の level 8 の住所、全国地方公共団体コード、街区・番地号キー、郵便番号）。`zipcode` だけは郵便番号から住所候補（町字・事業所）。組み合わせの誤り（`lat`・`lon` と `zipcode` だけ、`address` に `maxDistanceMeters` など）は、正しい使い方を示すエラー。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 任意): 正規化する住所 (例: "東京都千代田区永田町1-7-1")<br>- `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)。単独なら住所候補、`address` と一緒なら突き合わせ<br>- `lat` / `lon` (number, 任意, ペア指定): `address` なしなら逆引きする座標、`address` と一緒なら突き合わせ用座標<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8。`address` のときだけ)<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 (`address` のときだけ)<br>- `maxDistanceMeters` (number, 任意): 番地・号の点を探す範囲 (メートル, デフォルト: 300, 上限: 2000。逆引きのときだけ) |
 
 ---
 
 ### 👁️ Module 6: Watch & Diff Monitoring (`ENABLED_MODULES=watch`)
-汎用 Web ページ監視プリミティブ。URL / セレクタごとの差分検知（`watch_check` を呼んだときに前回と比べる。自動の巡回は無い）、SQLite 履歴永続化、差分があったときの Webhook 通知。
+汎用 Web ページ監視プリミティブ。URL / セレクタごとの差分検知（`watch` の `action: "check"` を呼んだときに前回と比べる。自動の巡回は無い）、SQLite 履歴永続化、差分があったときの Webhook 通知。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `watch_register` | Web ページの変更監視ターゲットを登録し、初期ハッシュベースラインを構築します。チケット当落、再販監視、お知らせ検知等に利用可能。 | `source: "watch"` | - `url` (string, 必須): 監視対象の Web ページ URL<br>- `title` (string, 任意): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意): 差分検知時に通知する Webhook URL |
-| `watch_check` | 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。 MCP は `id` 指定時は結果1件、省略時は結果の配列をそのまま返し、REST（`POST /watch/check`）は `{ result }` / `{ results }` で包みます。 | `source: "watch"` | - `id` (string, 任意): 特定の監視ターゲット ID (省略時は全登録ターゲットを一括スキャン) |
-| `watch_list` | 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。 MCP は監視対象の配列をそのまま返し、REST（`GET /watch/list`）は `{ count, targets }` で返します。 | `source: "watch"` | - なし |
-| `watch_delete` | 指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します。 | `source: "watch"` | - `id` (string, 必須): 削除する監視ターゲットのID |
+| `watch` | Web ページの変更監視。`action` で選びます。`register`: 監視ターゲットを登録し、初期ハッシュベースラインを構築します（チケット当落、再販監視、お知らせ検知等。REST は `POST /watch/register`）。`check`: 登録された監視ターゲットの差分スキャンを実行し、変化の有無・ハッシュ値・スナップショットを返します。差分検知時は自動で Webhook を発火します。MCP は `id` 指定時は結果1件、省略時は結果の配列をそのまま返し、REST（`POST /watch/check`）は `{ result }` / `{ results }` で包みます。`list`: 現在 SQLite に永続化されている監視ターゲットの一覧および最終チェック状態を取得します。MCP は監視対象の配列をそのまま返し、REST（`GET /watch/list`）は `{ count, targets }` で返します。`delete`: 指定したIDの監視ターゲットをSQLiteから削除し、以後の差分監視を停止します（REST は `DELETE /watch/:id`）。その `action` で使わない引数（`check` に `url` など）や、足りない引数（`register` に `url`、`delete` に `id` が無い）は、正しい使い方を示すエラー。 | `source: "watch"` | - `action` (string, 必須): `"register"`・`"check"`・`"list"`・`"delete"`<br>- `url` (string, `register` で必須): 監視対象の Web ページ URL<br>- `title` (string, 任意, `register` のときだけ): 監視ターゲットの識別用タイトル<br>- `selector` (string, 任意, `register` のときだけ): ピンポイントで監視する CSS セレクタ<br>- `webhookUrl` (string, 任意, `register` のときだけ): 差分検知時に通知する Webhook URL<br>- `id` (string): 監視ターゲット ID。`check` では任意（省略時は全登録ターゲットを一括スキャン）、`delete` では必須 |
 
 ---
 
@@ -534,9 +561,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_song` | iTunes Search API による曲名（楽曲タイトル）指定の楽曲メタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。 | `source: "music"` | - `query` (string, 必須): 検索曲名・タイトル (例: "アイドル", "季節外れのリナリア")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `search_artist` | iTunes Search API によるアーティスト名指定の音楽メタデータ検索を実行し、公式カタログの代表曲一覧、アルバム一覧、アーティスト基本情報を取得します。※ライブ・公演日程や最新の出演スケジュール・最新活動情報は `search_deep` または `search_realtime` を使用してください。 | `source: "music"` | - `query` (string, 必須): アーティスト名 (例: "君と見るそら", "CUTIE STREET")<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `search_music` | iTunes Search API による楽曲・アルバム・アーティストメタデータ検索を実行します（汎用・後方互換用）。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song", "album", "musicArtist" (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm", "artistTerm", "albumTerm" のどれか（ほかの値は 400）<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
+| `search_music` | iTunes Search API による楽曲・アルバム・アーティストのメタデータ検索を実行し、高解像度ジャケット画像（600x600）、30秒試聴音源 URL、アーティスト名、リリース日、Apple Music リンク等を取得します。曲名で探す（REST の `POST /search/song`）ときは `attribute: "songTerm"`、アーティスト名で代表曲・アルバムを探す（REST の `POST /search/artist`）ときは `attribute: "artistTerm"` と `entity: "song"` / `"album"`、アーティスト基本情報は `entity: "musicArtist"`（`attribute` なし）。※ライブ・公演日程や最新の出演スケジュール・最新活動情報は `search_deep` または `search_realtime` を使用してください。 | `source: "music"` | - `query` (string, 必須): 検索キーワード (曲名、アーティスト名、アルバム名)<br>- `country` (string, 任意): 国コード (デフォルト: "jp")<br>- `entity` (string, 任意): "song" (楽曲一覧), "album" (アルバム一覧), "musicArtist" (アーティスト情報) (デフォルト: "song")<br>- `attribute` (string, 任意): "songTerm" (曲名), "artistTerm" (アーティスト名), "albumTerm" (アルバム名) のどれか（ほかの値は 400）<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
 
 ---
 
@@ -545,8 +570,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `search_laws` | e-Gov 法令 API v2 によるキーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示。 | `source: "e-gov"` | - `keyword` (string, 必須): 検索キーワード (例: "著作権法", "民法")<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20) |
-| `get_law_text` | e-Gov 法令 API v2 による法令条文・本文詳細取得を実行し、章・節・条・項・号が正確に構造化された Markdown 形式で返却します。 | `source: "e-gov"` | - `lawId` (string, 必須): e-Gov 法令ID (例: "129AC0000000089") |
+| `search_laws` | e-Gov 法令 API v2 による法令検索と条文取得。`keyword` を指定すると、キーワード法令検索を実行し、法令名、法令番号、公布年月日、法令種別の一覧を取得します。BM25+ 多信号リランキングにより完全一致法令を最上位表示（REST は `POST /gov/laws`）。`lawId` を指定すると、法令条文・本文詳細を、章・節・条・項・号が正確に構造化された Markdown 形式で返却します（REST は `POST /gov/law-text`）。`keyword`・`lawId` はどちらか 1 つ（両方・どちらも無い・`lawId` に `limit` は、正しい使い方を示すエラー）。 | `source: "e-gov"` | - `keyword` (string, 任意): 検索キーワード (例: "著作権法", "民法")<br>- `lawId` (string, 任意): e-Gov 法令ID (例: "129AC0000000089"。検索結果の `id`)<br>- `limit` (number, 任意): 取得件数 (1〜50, デフォルト: 20。`keyword` のときだけ) |
 | `search_diet_minutes` | 国立国会図書館公式 API による戦後〜最新（2026年）の衆議院・参議院本会議および全委員会の発言記録・議員答弁全文検索。立法趣旨・政治政策ファクトチェックに活用可能。`keyword`・`speaker`・`nameOfMeeting` のどれか 1 つは必須（無いと REST は 400）。 | `source: "kokkai-ndl"` | - `keyword` (string, 任意): 検索キーワード<br>- `speaker` (string, 任意): 発言者名 (例: "総理大臣")<br>- `nameOfHouse` (string, 任意): `"衆議院"` または `"参議院"`<br>- `nameOfMeeting` (string, 任意): 委員会名<br>- `from` / `until` (string, 任意): 期間 (YYYY-MM-DD)<br>- `limit` (number, 任意): 取得件数 (1〜30, デフォルト: 10) |
 
 ---
@@ -556,10 +580,8 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `predict_hts_code` | 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語が主でないと 400）。 | `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `productName` (string, 必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `description` (string, 任意): 詳細説明・用途（英語）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測の検索語には入るが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。`true` のときだけ推測の検索語に battery を足す。`false` では何もしない |
-| `check_cpsc_certificate` | HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`: A（規則の対象外と確かめた品）、B（16 CFR 1610.1(d) の免除の大人の衣料。Intended Use Code 130.006））を案内します。 | `source: "cpsc-hts-list"` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073")<br>- `targetAge` (string, 必須): `"adult"` \| `"child"` \| `"unknown"`。12歳以下は GCC でなく CPC<br>- `material` (string, 任意): 主な素材。衣料では繊維の組成（`"100% polyester"` の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ<br>- `hasBattery` (boolean, 任意): 電池を使う製品か。true で `batteryType` が `button_coin` なら 16 CFR 1263 を当てる<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`。`button_coin` は `hasBattery` を省いても電池ありとして扱う（`false` とは矛盾で 400）。other はリチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除 |
-| `check_fda_regulated` | HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "0902.10.10.15", "3304.99.5000")<br>- `foodContact` (boolean, 任意): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ |
-| `verify_hts_code` | LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 | `source: "usitc-hts"` | - `htsCode` (string, 必須): 検証したいHTSコード (例: "9503.00.0073")<br>- `productDescription` (string, 必須): 製品の説明（素材・用途・機能・加工度合い等）。判定には使わず、根拠の記録として応答に返す |
+| `lookup_hts` | 米国の HTS/HS コードを、入力で照合と推測に分けて引きます（応答の `mode` が `verify` か `predict`）。**照合**（`htsCode` を指定）: LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 **推測**（`htsCode` を省く）: 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語が主でないと 400）。 | `mode`、照合は `source: "usitc-hts"`、推測は `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `htsCode` (string, 任意): 照合したいHTSコード (例: "9503.00.0073")。ユーザーが示したコードだけを入れる（推測したいときは省く）。指定すると照合、省くと推測<br>- `description` (string, 照合では必須): 照合では商品の説明（素材・用途・機能・加工度合い等）で、判定には使わず、根拠の記録として応答の `productDescription` に返す。推測では詳細説明・用途（英語）<br>- `productName` (string, 推測では必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測の検索語には入るが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。`true` のときだけ推測の検索語に battery を足す。`false` では何もしない<br>`productName` から `hasBattery` までは推測（`htsCode` を省いたとき）だけの引数で、`htsCode` と一緒に指定すると入力の誤り |
+| `check_regulations` | HTSコードと製品情報から、米国の規制を判定します。`agencies`（既定は両方）で選んだ機関ごとに、節（`cpsc`・`fda`）を返します。**cpsc**: HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`: A（規則の対象外と確かめた品）、B（16 CFR 1610.1(d) の免除の大人の衣料。Intended Use Code 130.006））を案内します。 **fda**: HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `agencies`、`cpsc` は `source: "cpsc-hts-list"`、`fda` は `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073", "0902.10.10.15")<br>- `agencies` (string[], 任意, 既定 `["cpsc","fda"]`): 判定する機関（`cpsc`・`fda`）。応答は、選んだ機関ごとの節（`cpsc`・`fda`）<br>- `targetAge` (string, `cpsc` では必須): `"adult"` \| `"child"` \| `"unknown"`。12歳以下は GCC でなく CPC<br>- `material` (string, 任意): 主な素材。衣料では繊維の組成（`"100% polyester"` の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ<br>- `hasBattery` (boolean, 任意): 電池を使う製品か。true で `batteryType` が `button_coin` なら 16 CFR 1263 を当てる<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`。`button_coin` は `hasBattery` を省いても電池ありとして扱う（`false` とは矛盾で 400）。other はリチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `foodContact` (boolean, 任意, `fda` だけ): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>`targetAge` から `fabricWeightOzPerSqYd` までは `cpsc` だけの引数。選ばなかった機関だけの引数を指定すると入力の誤り |
 | `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材。衣料は `"100% polyester"` の形（16 CFR 1610.1(d)(2)）<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足す。`batteryType` が `"button_coin"` なら、CPSC の判定に 16 CFR 1263 を当て、注意書きを 1 行足す。`false` では何もしない（`batteryType` が `"button_coin"` だと矛盾で 400）<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"` |
 | `generate_gcc_certificate` | 米国CPSCの一般適合証明書（GCC。`16 CFR 1110.11` の要素）と、通関の保留に出す一式（表紙・品ごとの GCC・免除の説明）を、呼び出し側の記録から作ります（JSON の要約と印刷用 HTML）。HTS は推測せず、判例も HTS の全件も読みません。外に出るのは、`url` を付けた品の商品ページを、番号の候補（`suggestions`）のために静的な取得で読むときだけです（候補は証明書に載せません）。足りない記録は既定でエラー（`MISSING_REQUIRED_GCC_FIELDS`。下書きは `allowDraft: true`）、見本・仮置きの値は `UNVERIFIED_PLACEHOLDER_INPUT`、12 歳以下は `cpc_required_instead`。 | `packageId`, `overallStatus`, `counts`, `items`, `packageHtml` | - `items` (array, 必須, 1〜50 件): 1 件 1 製品。`htsCode`（10 桁）・`productName`（英語）は必須。ほかは `identifier`・`identifierType`、`brand`・`description`、`targetAge`、`material`・`fabricSurface`・`fabricWeightOzPerSqYd`（衣料）、`hasBattery`・`batteryType`、`foodContact`、`citations`（試験報告書の規則。`[]` は「当てはまる規則が無いと確かめた」）、`manufacture`・`testing`、`url`（番号の候補を読む。5 件まで。証明書には載せない）<br>- `certifier` / `recordCustodian` (任意): `{ name, street, city, state, country, email, phone }`。省くと環境変数 `SORA_GCC_CERTIFIER` / `SORA_GCC_CUSTODIAN`（JSON）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 表紙に載せる注文・運送状の番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 足りない項目があっても下書きを返す |
 
@@ -582,9 +604,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | ツール名 | 説明 |
 |---|---|
 | `research_country_context` ・ DEFERRED | 指定国・地域の政治・経済・安全・災害・保健・旅行等の分野横断調査。初回は代表証拠、全件はcontextId参照 |
-| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得 |
-| `get_country_context_evidence` ・ DEFERRED | 証拠明細の取得 |
-| `get_country_context_updates` ・ DEFERRED | 更新差分の取得 |
+| `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得。`part` で選ぶ（`report`（既定）: レポート全体、`evidence`: 証拠明細（`evidenceIds`・`limit`）、`updates`: 更新差分。`evidence` と `updates` は `cursor` で続きを読む） |
 
 ### 🎤 Module 12: Lyrics (`ENABLED_MODULES=all,lyrics`)
 歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
@@ -606,23 +626,22 @@ curl -X POST http://localhost:3016/lyrics \
 ```
 
 ### 🎬 Module 13: YouTube (`ENABLED_MODULES=youtube`)
-YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（`get_youtube_channel`。字幕は一覧の `videoId` を `get_youtube_transcript` に渡して読みます）。
+YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（同じ `get_youtube` が `url` の形で判別します。字幕は一覧の `videoId` を `url` に渡して読みます）。
 
 - 字幕は手動の字幕を優先し、無ければ YouTube の自動字幕（音声認識）を返します。自動字幕は `transcript.source: "auto"` と `note` で明示します。聞き間違いを含み、固有名詞や句読点が正しくないことがあります。
 - 字幕が無い動画（自動字幕も無い MV・ショートなど）は、`transcript.status: "none"` と理由（`no-captions` / `live-now` / `language-mismatch`）を返します。音声認識はしません。YouTube が取得を拒否したときは `unavailable`（`blocked` / `request-failed`）で、キャッシュしません。
 - 字幕は Android アプリと同じ YouTube の内部 API（innertube）から取ります。公開 API ではないため、YouTube の変更で止まることがあります。bot の確認を回避する処理（PO トークンの生成・Cookie）は持ちません。
 - 長い動画は `maxChars`（既定 30,000 字）を超えると段落の境目で切り、続きの開始秒 `nextFromSec` を返します。URL の `t=` は `requestedStartSec` に入ります。
 - 起動時の処理・常駐タイマー・事前取得はありません。呼ばれたときだけ YouTube に問い合わせ、結果を 30 分（字幕なしは 60 秒）キャッシュします。
-- `get_youtube_channel` は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
-- ほかのツールからも使われます。`scrape`（`scrape_batch`・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_video` の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_video` は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
+- チャンネルの一覧は、チャンネルの公開の Atom フィード（最新 15 件。ショート動画も含む）を読みます。Yahoo の検索やブラウザは使いません。`@ハンドル` などのチャンネル ID は、チャンネルのページから読み、24 時間覚えます。フィードは 30 分（チャンネルが無い・動画が無いときは 60 秒）キャッシュします。同意の画面・ブロック・読めない応答は `found: false` にせず、エラーにします（キャッシュしません）。
+- ほかのツールからも使われます。`scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` も同じ）は YouTube の動画 URL を、動画のページ（おすすめ動画の一覧しか読めない）ではなく、字幕と説明文から作った本文で返します（字幕の段落は `### 1m23s` の見出しで分け、チャプターがあればその見出しの下に並べます。字幕が `maxChars` に収まらないときは、検索語（`query`）に関係する段落を選んで載せ、検索語が無ければ先頭から載せます）。`search_media`（`type: "video"`）の `transcripts` と `search_deep` の `videos` は、動画検索の上位の YouTube 動画の字幕を読み、検索語に関係する部分を返します（どちらも既定は 0 で、指定したときだけ）。検索語が動画の URL のときは、`search_deep` はその動画を字幕で読み、`search_media` の動画は検索しません（URL を検索語にすると関係ない動画が返るため。v2.48.0）。
 
 | ツール名 | 説明 | 主要引数 |
 |---|---|---|
-| `get_youtube_transcript` ・ DEFERRED | YouTube の字幕・説明文・チャプターを取得します。`search_tools` で有効化してください。REST: `POST /youtube/transcript` | - `url` (string, 必須。URL か 11 文字の動画 ID)<br>- `lang` (string, 任意。既定 `ja`)<br>- `fromSec` (integer, 任意。読み始める秒)<br>- `maxChars` (integer, 任意)<br>- `noCache` (boolean, 任意) |
-| `get_youtube_channel` ・ DEFERRED | YouTube チャンネルの最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。`search_tools` で有効化してください。REST: `POST /youtube/channel` | - `url` (string, 必須。チャンネルの URL・@ハンドル・UC… の ID)<br>- `limit` (integer, 任意。1〜15、既定 10)<br>- `noCache` (boolean, 任意) |
+| `get_youtube` ・ DEFERRED | `url` が動画なら字幕・説明文・チャプター、チャンネルなら最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。応答の `mode`（`video` / `channel`）でどちらかを示します。どちらでもない `url` は、使い方を示すエラーです。`search_tools` で有効化してください。REST: `POST /youtube/transcript`（動画）・`POST /youtube/channel`（チャンネル） | - `url` (string, 必須。動画の URL か 11 文字の動画 ID、またはチャンネルの URL・@ハンドル・UC… の ID)<br>- `lang` (string, 任意。既定 `ja`。動画のときだけ)<br>- `fromSec` (integer, 任意。読み始める秒。動画のときだけ)<br>- `maxChars` (integer, 任意。動画のときだけ)<br>- `limit` (integer, 任意。1〜15、既定 10。チャンネルのときだけ)<br>- `noCache` (boolean, 任意) |
 
 ### 🎧 Module 14: Song Recognition (`ENABLED_MODULES=all,shazam`)
-音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_song` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_music` の `items` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
 
 - 音は、音声・動画ファイルの URL（mp3・m4a・wav・ogg・webm・flac・mp4 など。20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。
 - 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし、12 秒の窓から Shazam の指紋を作って送ります（[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper) の `sigx.py`、MIT を移植）。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。
@@ -805,10 +824,10 @@ curl -X POST http://127.0.0.1:3016/cache/clear
   "query": "新機能 リリース"
 }
 ```
-- **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（`formats` に `screenshot` があるとき、ページ全体の代わりに要素だけの画像を返す。`mode: "fast"`・`fastOnly` では撮れない）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape` と `scrape_batch` には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
+- **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（`formats` に `screenshot` があるとき、ページ全体の代わりに要素だけの画像を返す。`mode: "fast"`・`fastOnly` では撮れない）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape`（`url`・`urls` とも）には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
 - **`formats` の `screenshot`**: `mode` が `auto` でも、静的に取ったあとでブラウザを開いて撮ります。静的に取れたページ（JS 必須・確認画面でないページ）は、本文と HTTP の状態を静的な取得のまま返し、ブラウザからは画像だけを使います（ブラウザだけが 403 などの画面に飛ばされても、本文は替えません。ブラウザが失敗したときは画像なしで `warnings` を付けます）。本文が 50 字未満の SPA の殻でも、`screenshot` を求めていてブラウザが失敗したときは、例外にせず静的な結果に `warnings` を付けて返します（`screenshot` を求めていない SPA の失敗は、今までどおりエラー）。`warnings` の付いた結果のキャッシュは 1 分です。`search_web`・`search_deep` の `formats` で取った結果にも `warnings` が残ります。`mode: "fast"`（`fastOnly`）を明示したとき、Chromium がないとき、PDF・画像などのファイルのときは切り替えず、本文はそのままで、`warnings` に画像を取れなかった旨を付けます。
 - **入力の誤り**: `renderJs` と `fastOnly` の同時指定や、CSS セレクタとして読めない `removeSelectors` は、取得の前に 400（`INVALID_INPUT`、`retryable: false`）で断ります（`/scrape/batch` の `removeSelectors` も同じ）。
-- **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`・`scrape_batch`・`crawl_site` も同じ）。
+- **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`（`url`・`urls`）・`crawl_site` も同じ）。
 - **レスポンス例 (デフォルト: Compact Mode - LLMトークンを50%以上削減)**:
 ```json
 {
@@ -879,12 +898,12 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > 
 > **⏱️ 読了時間 & 文字・単語数統計**: 本文から `characterCount`、`wordCount`、および言語特性に応じた推定読了時間 `readingTimeMin`（分数）を自動算出して付与します。
 > 
-> **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`、MCP の `scrape_batch`）やサイト巡回（`/crawl`・`/crawl/stream`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。`webhookUrl` は URL の形でなければ 400 です。
+> **🔔 非同期 Webhook コールバック (`webhookUrl`)**: 一括取得（`/scrape/batch`、MCP の `scrape` の `urls`）やサイト巡回（`/crawl`・`/crawl/stream`）の完了時に、指定したエンドポイントへ非同期で、結果ペイロードを 1 回だけ HTTP POST 通知します（ページごとの通知はしません。`/scrape` には `webhookUrl` はありません）。`webhookUrl` は URL の形でなければ 400 です。
 > 
 > 中身はどの Webhook も `{ "event": "scrape.completed", "timestamp": "<ISO 8601>", "data": <下の形> }` で、外側の `event` はどの通知でも `scrape.completed` で、`data` が通知ごとに違います。
-> - `scrape_batch`・`/scrape/batch`: 応答と同じ整形後の結果 `{ total, successful, failed, results: [...], errors: [{ url, error }] }`（`results` の各項目は `/scrape` と同じ整形。`verbose: true` のときは整形しません）。
+> - MCP の `scrape` の `urls`・`/scrape/batch`: 応答と同じ整形後の結果 `{ total, successful, failed, results: [...], errors: [{ url, error }] }`（`results` の各項目は `/scrape` と同じ整形。`verbose: true` のときは整形しません）。
 > - `/crawl`・`/crawl/stream`: 応答と同じ `{ url, baseUrl, count, totalPages, pages: [...] }`（`pages` の各項目は `/scrape` と同じ整形。`links` は `formats` に `links` を指定したときだけ付きます）。
-> - 差分監視（`watch_check`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
+> - 差分監視（`watch` の `action: "check"`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
 > - 管理者アラート（`ADMIN_ALERT_WEBHOOK_URL`）: `{ event: "sora.alert.health.degraded", service: "sora", level: "warning", timestamp, details }`。
 > 
 > **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列（`http(s)://` で始まり、空白と `@` を含まないもの）、`socialLinks`・`ogImage`・`twitterHandle` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`extracted` の中の文字列は、URL もほかの文字列と同じくマスクの対象です）。表の見出しが隠したあとにぶつかるときは、2 列目以降に `_2`・`_3` を付けて列を残します。`screenshot` の画像はマスクしません。
@@ -1382,7 +1401,7 @@ Yahoo! 道路交通情報（roadway.yahoo.co.jp）のページに基づき、日
 ---
 
 ### 3.12 汎用 Web ページ差分監視 & Webhook (`POST /watch/*`, `GET /watch/list`, `DELETE /watch/:id`)
-URL またはピンポイント CSS セレクタの内容を、`POST /watch/check`（MCP は `watch_check`）を呼んだときに取得し直し、前回値（SHA-256 ハッシュ）と比較して、差分があれば登録した Webhook へ通知します。自動の巡回は無く、呼んだときだけ確認します。データは SQLite に永続化。
+URL またはピンポイント CSS セレクタの内容を、`POST /watch/check`（MCP は `watch` の `action: "check"`）を呼んだときに取得し直し、前回値（SHA-256 ハッシュ）と比較して、差分があれば登録した Webhook へ通知します。自動の巡回は無く、呼んだときだけ確認します。データは SQLite に永続化。
 
 - **監視ターゲット登録 (`POST /watch/register`)**:
   ```json
@@ -1545,7 +1564,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ### 3.16 座標解決・国土地理院の標高取得 (`POST /geo/elevation` / `GET /geo/elevation`)
 
-住所・地名を緯度経度へ解決し（番地まである住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)を先に、施設名・駅名・地名は[Nominatim (OpenStreetMap)](https://nominatim.org/)を先に引き、該当が無ければもう一方で補完）、国土地理院からその地点の海抜標高（m）を取得します。住所・郵便番号は、取得済みの住所データ（デジタル庁 ABR・日本郵便。`search_postal_code` などで一度取得した市区町村）があればそちらを優先して解決し（`geocodingSource: "abr"`）、地名・駅名・施設名や未取得の地域は、番地まである住所なら国土地理院 → Nominatim、それ以外なら Nominatim → 国土地理院の順です。座標解決の取得元は`geocodingSource`（`nominatim` / `gsi` / `abr`）、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
+住所・地名を緯度経度へ解決し（番地まである住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)を先に、施設名・駅名・地名は[Nominatim (OpenStreetMap)](https://nominatim.org/)を先に引き、該当が無ければもう一方で補完）、国土地理院からその地点の海抜標高（m）を取得します。住所・郵便番号は、取得済みの住所データ（デジタル庁 ABR・日本郵便。`lookup_address` などで一度取得した市区町村）があればそちらを優先して解決し（`geocodingSource: "abr"`）、地名・駅名・施設名や未取得の地域は、番地まである住所なら国土地理院 → Nominatim、それ以外なら Nominatim → 国土地理院の順です。座標解決の取得元は`geocodingSource`（`nominatim` / `gsi` / `abr`）、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
 
 地名解決は`search_poi`と共有します。同一Soraプロセス内のMCP・REST全要求で、Nominatimへの実際の問い合わせ開始を1.1秒以上空けます。同じ地名の同時要求は1回にまとめ、成功結果は24時間キャッシュします。異なる未キャッシュ地名の要求は順番に待機します。`noCache: true`でも1.1秒間隔の制限は維持します。直接`lat` / `lon`を指定した場合は地名解決を行いません。
 
@@ -1995,7 +2014,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   - 当事者（`certifier`・`recordCustodian`・`manufacture`・`testing.parties[]`）は同じ形 `{ name, street, city, state, country, email, phone }`（16 CFR 1110.11(a)(3)〜(6)）です。州・県が無い国は `state` に `N/A`・`NA`・`-`・`None` を渡すと、印刷では州の欄を省きます。製造の日（`manufacture.date`、16 CFR 1110.11(a)(5)）は `YYYY-MM` か `YYYY-MM-DD`、試験の日（`testing.date`、(a)(6)。CATAIR の Laboratory Testing の日は 8 桁）は `YYYY-MM-DD` で、どちらも実在する未来でない日にしてください。証明書に載る値（`productName`・`brand`・`description`・`identifier`・`citations`・当事者の全項目・`testing.reportNumber`）は英語（ラテン文字。`µ` などの Script=Common の文字は通します）だけです（16 CFR 1110.9(a)）。
   - `citations` は、試験報告書にある規則を 1 つずつ（例 `"16 CFR 1203"`）。1 つの文字列に `16 CFR` を 2 回書くと 400 です（16 CFR 1110.11(a)(2) は規則を分けて挙げます）。`citations: []` は「当てはまる規則が無いと証明者が確かめた」という答えです。省くと、その品は下書きです（大人の衣料で 16 CFR 1610.1(d) の免除に当たる品だけは、省いたままで Disclaim B になります）。Sora が当てはまると判断した規則（ボタン・コイン電池の 16 CFR 1263、衣料の 16 CFR 1610）が `citations` に無いと、`[]` でも下書きです（16 CFR 1610.1(d) の免除の大人の衣料では、`citations` を省けば Disclaim B になると質問に書きます）。`testing` の記録（日付か試験した者）を渡すと、16 CFR 1110.11(c) の試験の除外（1610.1(d)）は書かず、記録を載せます。
 - **判定**（品ごと）:
-  - 12 歳以下（`targetAge: "child"`）は `cpc_required_instead` です（CPC はこのツールでは作りません）。`targetAge` が無いと、年齢を聞く下書きです。HTS の見出し 6111・6209（Babies' garments and clothing accessories）で `targetAge: "adult"` のときも、大人の免除の判定をせず、年齢を聞く下書きです（`check_cpsc_certificate` は `unknown`）。
+  - 12 歳以下（`targetAge: "child"`）は `cpc_required_instead` です（CPC はこのツールでは作りません）。`targetAge` が無いと、年齢を聞く下書きです。HTS の見出し 6111・6209（Babies' garments and clothing accessories）で `targetAge: "adult"` のときも、大人の免除の判定をせず、年齢を聞く下書きです（`check_regulations` の `cpsc` は `unknown`）。
   - 大人の衣料で 16 CFR 1610.1(d) の試験の免除（平らな生地で 2.6 oz/sq yd 以上、または acrylic・modacrylic・nylon・olefin・polyester・wool だけの生地）に当たるもの（`citations` を省いたとき）は `exempt_disclaim_b` です。2016 年の執行裁量（81 FR 12587、2016 年 3 月 25 日から）で GCC は要らず、証明書のデータの eFiling も要らず、ACE では Disclaim B を送れます（任意。CATAIR。送るときは Intended Use Code `130.006` が要ります）。
   - `citations: []` で、CPSC の一覧にあるコードは `exempt_no_gcc_needed` と Disclaim A（`warnings` に、規則が当てはまらないと確かめてから送る旨）です。Disclaim A の送信には Intended Use Code が要ります（Appendix R の `130.XXX`。ただし 130.001〜005 は除く）。一覧に無いコードは `exempt_no_gcc_needed` で、CPSC のデータを送らない案内です。どちらも紙には「証明者の答え」と書きます。証明者が無い（`certifier` も環境変数も無い）ときは、`Declared by: [MISSING: certifier]` と、要求した側の答え（`no certifier is identified`）として書きます（status は変わりません）。
   - 帽子・手袋・履物の見出し（6504〜6506、6116・6216、6401〜6405）は、16 CFR 1610.1(c) の条件に当たるかで 16 CFR 1610 が要るかが決まります。条件を質問で返し、`citations` に 1610 は求めません。
@@ -2256,7 +2275,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 - Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
 - Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries) become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
 - Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). `SORA_INTEL_WEB_SEARCH=off` stops the `official_web` provider's real web search (the provider stays in the run and returns no items); tests use it to stay offline. Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
-- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context`, `get_country_context_evidence`, `get_country_context_updates`. All four return text JSON plus validated `structuredContent`. REST mirrors them: `GET /intelligence/context/:contextId/evidence|updates`. Evidence by id: REST `ids` (comma separated) is MCP `evidenceIds` (array); ids not in the report come back in `missingIds`, and more ids than `limit` continue through `nextCursor` (pass the same ids with `cursor`).
+- MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context` (`part`: `report` (default), `evidence`, `updates`). Both return text JSON plus validated `structuredContent`. REST mirrors the parts: `GET /intelligence/context/:contextId` and `/evidence|updates`. Evidence by id: REST `ids` (comma separated) is MCP `evidenceIds` (array); ids not in the report come back in `missingIds`, and more ids than `limit` continue through `nextCursor` (pass the same ids with `cursor`).
 - No sentiment, hostility, anti-Japan, safety, or risk scores by design.
 - Persistence: SQLite at `SORA_DB_PATH` (production: mount a volume and use `SORA_DB_PATH=/data/sora.db`). Reports retained 90 days, evidence excerpts and details 180 days. Retrieval: `GET /intelligence/context/:contextId`.
 - Opt-in live smoke: `bun run test:intel:live`
@@ -2293,7 +2312,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・複数クエリ統合の既定値は有効化していません。
 
-### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`、旧 `GET /client`)
+### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`)
 
 コード実行環境から、言語を問わず（curl・Python・Node など）REST を直接呼べるように、操作の一覧と 1 つ分の定義を返します。
 
@@ -2302,7 +2321,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 - 認証は他の REST と同じです（`Authorization: Bearer` または `X-API-Key`）。
 - REST の操作の失敗は、HTTP の 4xx / 5xx と、共通の `{ error, code, status, retryable, details? }`（401・403・413・429 も同じ形。HTML の `GET /t/…` のページは除く）。
 - `GET /openapi.json`（約 580KB）の各操作には、`operationId`・`tags`（カテゴリ）・認証・共通のエラー応答を宣言しています。LLM が読むときは、全体ではなく `GET /tools` を使ってください。
-- **旧: `GET /client`・`GET /client/<path>`（型付き TypeScript クライアント、v2.40.0）** は、REST の直接呼び出しに置き換わりました。案内をやめ、OpenAPI で `deprecated` にしています。当面は残しますが、v5.0.0 で廃止する予定です。
+- 型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>`（v2.40.0 から）は、v5.0.0 で廃止しました。REST を直接呼んでください。型が要るときは、`GET /openapi.json` から標準のジェネレータで作れます。
 - 手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。
 
 ### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)
@@ -2442,7 +2461,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - キャッシュしません（読みも書きもせず、同時の要求もまとめません）。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`、モジュールが無効なら 404 `MODULE_DISABLED` です。
   - 当たっても、iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は同じ 502 にします。`itunes: null` は iTunes につなげる曲が無かったときだけなので、呼び出し側は 502 なら指紋を残して照会し直せます（`/music/recognize` は今までどおり `itunes: null` で当たりを返します）。
 
-### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v4.3.0, 明示オプトイン)
+### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v5.0.0, 明示オプトイン)
 
 保存した HTS の版の一覧と、1 つの版の全件を返します。**`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。保存の仕組みは「Module 15: HTS Release Archive」を参照してください。
 
@@ -2504,8 +2523,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
 | `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
 | `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（13 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 53 ツール静的一括ロード |
-| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: 3 ツールが呼ばれたときだけ必要な市区町村を取得する（`get_elevation` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: 3 ツールを登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
+| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード |
+| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
 | `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
 | `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
 | `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
@@ -2518,6 +2537,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `HTTPS_PROXY` / `https_proxy` | *(未設定)* | 標準 HTTPS プロキシ URL（Chromium および外部 HTTPS 通信に自動適用） |
 | `ALL_PROXY` / `all_proxy` | *(未設定)* | 標準汎用プロキシ URL（SOCKS5 等） |
 | `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
+| `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
 | `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
 | `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
 | `SORA_BROWSER_LOW_MEMORY` | *(未設定 = 無効)* | `true`（`1`・`on`・`yes` も可）で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
@@ -2546,7 +2566,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
 | `SORA_TRACKING_PAGE_SECRET` | *(未設定)* | 荷物ごとの表示ページ（照会結果の `pageUrl`、`GET /t/:carrier/:number`）の署名に使う秘密鍵。`SORA_PUBLIC_URL` と両方を設定したときだけ表示ページが有効になり、照会結果に `pageUrl` が付きます。未設定なら表示ページは `404` で、起動時の処理もありません。値を変えると、発行済みの URL はすべて無効になります |
 | `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。`pageUrl` の組み立てに使います |
-| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
+| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
 | `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
 | `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
 | `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
@@ -2569,7 +2589,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **実測の目安**: 起動直後 約 160MB、静的取得後 約 195MB、ブラウザ描画中 約 950MB（bun 約 250MB + Chromium 約 700MB）、解放後 約 200MB。
 - **ブラウザ描画中のピークを下げたい**ときは `SORA_BROWSER_LOW_MEMORY=true`（既定は無効）。Chromium を低メモリ端末のモードで起動し、ページを 1 つずつ開いたときのピークが約 18%、3 ページ同時で約 14% 下がります。副作用は `navigator.deviceMemory` が 8 から 2 になることだけです（詳細は §4.3 の表）。
 - **ブラウザを使わせたくないリクエスト**には `scrape` の `mode: "fast"`（静的取得のみ）を指定します。
-- **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 14 ツールに絞れます。
+- **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 13 ツールに絞れます。
 
 ---
 
@@ -2656,7 +2676,7 @@ Copyright (c) 2026 ikeno
 
 ## 8. 開発時の検証 (Development & Testing)
 
-Bun は 1.4 以上を使います（CI は 1.4.2）。1.3 系では後読みのある正規表現が遅く、ハイライトを選ぶ処理に、実際のページで 1.4.2 の約 5 倍の時間がかかります。
+Bun は 1.4.4 以上を使います（CI も 1.4.4）。1.4.3 以前には、2026-10 に公表された 3 件の勧告（同梱の brotli の範囲外書き込み CVE-2026-111497、漏れた eMudhra の中間 CA を信頼する同梱 root、HTTP/3 の QPACK）があり、どれも 1.4.4 で修正されています。1.3 系では後読みのある正規表現が遅く、ハイライトを選ぶ処理に、実際のページで 1.4.2 の約 5 倍の時間がかかります。
 
 ```bash
 bun install --frozen-lockfile

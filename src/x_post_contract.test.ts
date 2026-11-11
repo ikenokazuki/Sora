@@ -21,18 +21,19 @@ function stubProvider(calls: string[]): XPostDetailProvider {
   };
 }
 
-describe('fetch_x_post contract', () => {
-  test('registers one deferred tool without changing core count', () => {
+// X の個別投稿の取得（v5.0.0 で fetch_social_post に統合。REST は /realtime/post のまま）
+describe('fetch_social_post (X) contract', () => {
+  test('the X post fetch is part of the core fetch_social_post, without its own tool', () => {
     const deferred = createMcpServer({ deferTools: true });
     const handles = (deferred as any)._registeredTools;
-    expect(handles['fetch_x_post']).toBeDefined();
-    expect(handles['fetch_x_post'].enabled).toBe(false);
+    expect(handles['fetch_social_post'].enabled).toBe(true);
+    expect(Object.keys(handles).some((name) => name.endsWith('fetch_x_post'))).toBe(false);
     const all = createMcpServer({ deferTools: false });
     const names = Object.entries((all as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    expect(names).toContain('fetch_x_post');
-    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(53);
+    expect(names).toContain('fetch_social_post');
+    expect(names.filter((name: string) => !name.startsWith('default.')).length).toBe(33);
   });
 
   test('search_tools discovers the tool by ツイート', async () => {
@@ -79,7 +80,7 @@ describe('fetch_x_post contract', () => {
         }),
       }),
     );
-    expect(await searchRes.text()).toContain('fetch_x_post');
+    expect(await searchRes.text()).toContain('fetch_social_post');
   });
 
   test('invocation returns verified detail and flags misses', async () => {
@@ -90,16 +91,16 @@ describe('fetch_x_post contract', () => {
     await Promise.all([server.connect(serverTransport), client.connect(clientTransport)]);
     try {
       const ok: any = await client.callTool({
-        name: 'fetch_x_post',
+        name: 'fetch_social_post',
         arguments: { statusId: '2100871827090501852' },
       });
       const parsed = JSON.parse(ok.content[0].text);
       expect(parsed.found).toBe(true);
       expect(parsed.detail.text).toContain('18:00スタート');
       expect(ok.isError).toBeUndefined();
-      const missing: any = await client.callTool({ name: 'fetch_x_post', arguments: { statusId: '999' } });
+      const missing: any = await client.callTool({ name: 'fetch_social_post', arguments: { statusId: '999' } });
       expect(missing.isError).toBe(true);
-      const invalid: any = await client.callTool({ name: 'fetch_x_post', arguments: { statusId: 'abc' } });
+      const invalid: any = await client.callTool({ name: 'fetch_social_post', arguments: { statusId: 'abc' } });
       expect(invalid.isError).toBe(true);
       expect(calls).toEqual(['2100871827090501852', '999']);
     } finally {

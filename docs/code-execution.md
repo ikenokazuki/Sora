@@ -6,7 +6,7 @@ Anthropic の記事「[Code execution with MCP](https://www.anthropic.com/engine
 
 | 記事の考え | Sora の対応 |
 |---|---|
-| ツール定義を全部読み込まず、必要なときに探す（段階的開示） | 既定で 14 ツールだけを公開し、残りは `search_tools` で探す。`detail`（`names` / `summary` / `schema`）と `activate:false` で、有効化せずに名前や入力スキーマだけを調べられる。REST では `GET /tools`（一覧）と `GET /tools/<name>`（1 つの定義）が同じ役目をする。 |
+| ツール定義を全部読み込まず、必要なときに探す（段階的開示） | 既定で 13 ツールだけを公開し、残りは `search_tools` で探す。`detail`（`names` / `summary` / `schema`）と `activate:false` で、有効化せずに名前や入力スキーマだけを調べられる。REST では `GET /tools`（一覧）と `GET /tools/<name>`（1 つの定義）が同じ役目をする。 |
 | ツールをコードの API として扱い、結果をコードで絞る | REST を直接呼ぶ。言語は問わない（curl・Python・Node など、HTTP が話せればよい）。結果の絞り込み・集計・連鎖をコード側で行い、モデルには必要な分だけ返す。 |
 | コードの実行環境はクライアント側に置く | Sora はコードを実行しない。サンドボックスは利用者側で用意する。 |
 
@@ -18,7 +18,7 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
 - **スキル `sora-client`**: つなぎ方、`GET /tools` → `GET /tools/<name>` → 呼ぶ、の 3 手、curl と Python の例、絞り方の原則、エラーの扱い。次の 3 か所に同じ内容で置いてある。
   - プラグイン `plugins/sora-deep-research/skills/sora-client/`（Skills 対応環境に自動で認識される）
   - MCP リソース `sora-skill://sora-client`（`resources/list` に出る）
-  - `client/SKILL.md`（`GET /client/SKILL.md` で取れる）
+  - リポジトリの `client/SKILL.md`（`bun run gen:client` がプラグインのものを写す）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
 どれも `tools/list` を増やさない。
@@ -74,12 +74,11 @@ for h in official:
     print(sora("POST", "/scrape", {"url": h["url"]})["content"][:500])
 ```
 
-## 型付き TypeScript クライアント（`GET /client`）
+## 型付き TypeScript クライアント
 
-v2.40.0 から配っていた型付き TypeScript クライアント（`client/`）は、REST の直接呼び出しに置き換わった。**案内はやめた。当面は残すが、v5.0.0 で廃止する予定。** 言語や、TypeScript・bun の有無に依存するため。
+v2.40.0 から型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>` は、v5.0.0 で廃止した。言語や、TypeScript・bun の有無に依存するため。エージェントは REST を直接呼ぶ（`GET /tools` → `GET /tools/<name>` → 呼ぶ）。
 
-- `GET /client` が配布するファイルの一覧（`manifest.json`）を返し、`GET /client/<path>` が一覧に載ったファイルを返す。認証は他の REST と同じ。
-- `client/` は OpenAPI と `REST_MAP` から `bun run gen:client` で生成し、リポジトリにコミットしている。ツールや引数を変えたら再生成する（`src/client_sync.test.ts` が、コミット済みの内容との差を検出する）。
+- 生成した型付きクライアントは、リポジトリの `client/` にだけある。OpenAPI と `REST_MAP` から `bun run gen:client` で生成してコミットしている（`src/client_sync.test.ts` が、コミット済みの内容との差を検出する）。
 
 ## 実測
 
@@ -87,15 +86,15 @@ v2.40.0 から配っていた型付き TypeScript クライアント（`client/`
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
-2026-11-11 に測り直した（案内を REST に書き換えた後。前の値は 2026-11-09 の既定 22,269・全ツール（53 ツール）63,529・`instructions` 8,948）。
+2026-11-12 に測り直した（v5.0.0 で MCP のツールを 33 個にまとめた後。前の値は 2026-11-11 の既定（14 ツール）22,273・全ツール（53 ツール）63,607・`instructions` 8,989）。
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 22,273 |
-| 全ツール（53 ツール） | 63,607 |
-| `instructions` | 8,989 |
+| 既定（13 ツール） | 23,060 |
+| 全ツール（33 ツール） | 57,227 |
+| `instructions` | 8,685 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 649、`names` 390、`summary` 594、`schema` 2,624 文字（末尾の案内の一文が 30 字長くなった。前の値は既定 619、`names` 360、`summary` 564、`schema` 2,574）。
+`search_tools` の応答（クエリ「住所」）: 既定 681、`names` 377、`summary` 626、`schema` 3,649 文字（前の値は既定 649、`names` 390、`summary` 594、`schema` 2,624。当たるのは `get_place_info`・`search_poi`・`lookup_address`）。
 
 以下の `search_deep` の表は、2026-10-26 に実際の通信で測った値（測り直していない）。
 

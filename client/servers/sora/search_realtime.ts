@@ -112,7 +112,7 @@ export type SearchRealtimeOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報把握に最適。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors) */
+/** Yahoo! リアルタイム検索 (X/Twitter 生の声) */
 export function searchRealtime(input: SearchRealtimeInput): Promise<SearchRealtimeOutput> {
   return callSora<SearchRealtimeOutput>({ method: 'POST', path: '/search/realtime' }, input);
 }

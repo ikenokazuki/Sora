@@ -1303,7 +1303,80 @@ export type GetCountryContextOutput = {
   };
 };
 
-/** 【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。返却: CountryContextReport */
+/** 永続化済み国地域コンテキスト取得 */
 export function getCountryContext(input: GetCountryContextInput): Promise<GetCountryContextOutput> {
   return callSora<GetCountryContextOutput>({ method: 'GET', path: '/intelligence/context/:contextId' }, input);
+}
+
+export type GetCountryContextEvidenceInput = {
+  /** コンテキストID */
+  contextId: string;
+  /** 根拠IDのカンマ区切り (MCP の evidenceIds に当たる。省略時はページ走査) */
+  ids?: string;
+  /** 次ページカーソル */
+  cursor?: string;
+  /** 取得件数 (1〜100, デフォルト: 40) */
+  limit?: number;
+};
+
+export type GetCountryContextEvidenceOutput = {
+  contextId: string;
+  items: {
+    evidenceId: string;
+    providerId: string;
+    providerItemId: string;
+    sourceRecordUrl: string;
+    contentKind: "title_only" | "excerpt" | "extracted_text" | "structured_record";
+    resolvedTitle?: string;
+    language?: string;
+    blocks: {
+      index: number;
+      text: string;
+    }[];
+    structuredData?: Record<string, unknown>;
+    occurredAt?: string;
+    publishedAt?: string;
+    updatedAt?: string;
+    retrievedAt: string;
+    validFrom?: string;
+    validUntil?: string;
+    timeBasis: string;
+    geographyBasis: string;
+    sourceStatus: "unverified" | "verified" | "corrected" | "retracted" | "deleted";
+    contentTruncated: boolean;
+  }[];
+  totalStored: number;
+  /** ids 指定で、この報告に無かった ID */
+  missingIds?: string[];
+  nextCursor?: string;
+};
+
+/** 根拠原文・構造化データのページ取得 */
+export function getCountryContextEvidence(input: GetCountryContextEvidenceInput): Promise<GetCountryContextEvidenceOutput> {
+  return callSora<GetCountryContextEvidenceOutput>({ method: 'GET', path: '/intelligence/context/:contextId/evidence' }, input);
+}
+
+export type GetCountryContextUpdatesInput = {
+  /** コンテキストID */
+  contextId: string;
+  /** 差分カーソル */
+  cursor?: string;
+};
+
+export type GetCountryContextUpdatesOutput = {
+  contextId: string;
+  changes: {
+    id: string;
+    contextId: string;
+    observedAt: string;
+    changeKind: string;
+    evidenceId?: string;
+    summary?: Record<string, unknown>;
+  }[];
+  nextCursor?: string;
+};
+
+/** 追加・訂正・削除・取得障害の差分取得 */
+export function getCountryContextUpdates(input: GetCountryContextUpdatesInput): Promise<GetCountryContextUpdatesOutput> {
+  return callSora<GetCountryContextUpdatesOutput>({ method: 'GET', path: '/intelligence/context/:contextId/updates' }, input);
 }

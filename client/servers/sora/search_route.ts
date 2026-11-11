@@ -95,7 +95,7 @@ export type SearchRouteOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] } */
+/** Yahoo! 路線情報スクレイピング (乗換案内・料金・所要時間) */
 export function searchRoute(input: SearchRouteInput): Promise<SearchRouteOutput> {
   return callSora<SearchRouteOutput>({ method: 'POST', path: '/transit/route' }, input);
 }

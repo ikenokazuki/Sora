@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
+import { parseYouTubeChannelRef, parseYouTubeUrl } from '../html_parser.js';
 import { YoutubeTranscriptRequestSchema, YoutubeTranscriptResultSchema } from '../types.js';
-import { attachVideoTranscripts, getYoutubeExcerpt, getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
+import { attachVideoTranscripts, classifyYoutubeUrl, getYoutubeExcerpt, getYoutubeTranscript, YoutubeInputError, type YoutubeDeps } from './youtube.js';
 
 // 字幕・題名・説明文はすべてテスト用の作り物。実在の動画の字幕は使わない。
 let seq = 0;
@@ -532,5 +533,59 @@ describe('attachVideoTranscripts: video search results with transcripts', () => 
     const untouched = await attachVideoTranscripts(search(), 'q', { count: 0, maxChars: 2000 }, { excerpt: (async () => { called = true; }) as unknown as typeof getYoutubeExcerpt });
     expect(called).toBe(false);
     expect(untouched.items.some((i) => 'transcript' in i)).toBe(false);
+  });
+});
+
+describe('classifyYoutubeUrl: get_youtube の url が動画か、チャンネルか', () => {
+  const ID = 'UCBR8-60-B28hp2BmDPdntcQ';
+  test('旧 get_youtube_transcript が動画として読んだ形は、どれも video', () => {
+    for (const input of [
+      'https://www.youtube.com/watch?v=5Jq35KcE8vI&t=367s',
+      'https://youtu.be/5Jq35KcE8vI?si=abc&t=6m7s',
+      'https://www.youtube.com/shorts/Ab-_0123456',
+      'https://m.youtube.com/live/Ab-_0123456?t=1h2m3s',
+      'https://www.youtube-nocookie.com/embed/Ab-_0123456?start=90',
+      'https://www.youtube.com/v/Ab-_0123456',
+      'https://music.youtube.com/watch?v=Ab-_0123456&list=PL1',
+      'www.youtube.com/watch?v=Ab-_0123456',
+      ' Ab-_0123456 ',
+    ]) {
+      expect(classifyYoutubeUrl(input), input).toBe('video');
+      // classifyYoutubeUrl は動画の解釈を先に試す。チャンネルの解釈と重なると、チャンネルが読めなくなる
+      expect(parseYouTubeChannelRef(input), `${input}（動画の形は、チャンネルとしては読めない）`).toBeUndefined();
+    }
+  });
+
+  test('旧 get_youtube_channel がチャンネルとして読んだ形は、どれも channel', () => {
+    for (const input of [
+      ID,
+      `https://www.youtube.com/channel/${ID}/videos`,
+      'https://www.youtube.com/@YouTube',
+      'youtube.com/@You.Tube_-1?si=abc',
+      ' @YouTube ',
+      '@おはよう',
+      'https://m.youtube.com/@YouTube/videos',
+      'https://www.youtube.com/c/YouTubeCreators',
+      'https://www.youtube.com/user/Google/featured',
+    ]) {
+      expect(classifyYoutubeUrl(input), input).toBe('channel');
+      expect(parseYouTubeUrl(input), `${input}（チャンネルの形は、動画としては読めない）`).toBeUndefined();
+    }
+  });
+
+  test('どちらの旧ツールも読まなかった形は undefined', () => {
+    for (const input of [
+      '',
+      '  ',
+      '@',
+      'Ab-_012345',
+      `${ID}x`,
+      'https://www.youtube.com/playlist?list=PL1234567890',
+      'https://www.youtube.com/embed/videoseries?list=PL1234567890',
+      'https://www.youtube.com/channel/UCshort',
+      'https://music.youtube.com/@YouTube',
+      'https://example.com/watch?v=Ab-_0123456',
+      'https://example.com/@YouTube',
+    ]) expect(classifyYoutubeUrl(input), input).toBeUndefined();
   });
 });

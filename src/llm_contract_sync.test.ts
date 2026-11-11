@@ -192,9 +192,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('C. no highlight algorithm switch', () => {
-    it('MCP scrape, scrape_batch, search_deep, crawl_site no longer take highlightAlgorithm or highlightOverheadTokens', () => {
+    it('MCP scrape, search_deep, crawl_site no longer take highlightAlgorithm or highlightOverheadTokens', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch', 'search_deep', 'crawl_site']) {
+      for (const toolName of ['scrape', 'search_deep', 'crawl_site']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
@@ -216,9 +216,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch・crawl_site・search_deep にも無い', () => {
+    it('MCP の scrape・crawl_site・search_deep にも無い', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch', 'crawl_site', 'search_deep']) {
+      for (const toolName of ['scrape', 'crawl_site', 'search_deep']) {
         const tool = (server as any)._registeredTools[toolName];
         expect(tool).toBeDefined();
         const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
@@ -242,15 +242,13 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch にも無い', () => {
+    it('MCP の scrape にも無い', () => {
       const server = createMcpServer({ deferTools: false });
-      for (const toolName of ['scrape', 'scrape_batch']) {
-        const tool = (server as any)._registeredTools[toolName];
-        expect(tool).toBeDefined();
-        const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
-        for (const field of removed) {
-          expect(schema[field], `${toolName}.${field}`).toBeUndefined();
-        }
+      const tool = (server as any)._registeredTools['scrape'];
+      expect(tool).toBeDefined();
+      const schema = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+      for (const field of removed) {
+        expect(schema[field], `scrape.${field}`).toBeUndefined();
       }
     });
 
@@ -273,19 +271,15 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('scrape の REST の形と MCP の入力に、webhookUrl・retries・retryDelayMs が無い', () => {
-      const server = createMcpServer({ deferTools: false });
-      const tool = (server as any)._registeredTools['scrape'];
-      const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
+    it('scrape の REST の形（/scrape）に webhookUrl・retries・retryDelayMs が無い', () => {
       for (const field of ['webhookUrl', 'retries', 'retryDelayMs']) {
         expect((ScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
-        expect(mcpShape[field], `MCP.${field}`).toBeUndefined();
       }
     });
 
-    it('scrape_batch は retries・retryDelayMs が無く、完了の通知先 webhookUrl は残る', () => {
+    it('/scrape/batch と MCP の scrape は retries・retryDelayMs が無く、urls のときの完了の通知先 webhookUrl は残る', () => {
       const server = createMcpServer({ deferTools: false });
-      const tool = (server as any)._registeredTools['scrape_batch'];
+      const tool = (server as any)._registeredTools['scrape'];
       const mcpShape = tool.inputSchema?.shape || tool.inputSchema || tool.schema;
       for (const field of ['retries', 'retryDelayMs']) {
         expect((BatchScrapeRequestSchema.shape as any)[field], `REST.${field}`).toBeUndefined();
@@ -303,7 +297,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   describe('C5. onlyHighlights・evidenceMode・extractHighlights は responseMode にまとまった', () => {
     const removed = ['onlyHighlights', 'evidenceMode', 'extractHighlights'];
     // CrawlRequestSchema に evidenceMode は元から無いが、無いことは同じに確かめる
-    const scrapeTools = ['scrape', 'scrape_batch', 'crawl_site'];
+    const scrapeTools = ['scrape', 'crawl_site'];
 
     it('scrape・batch・crawl の REST の形に古い 3 項目が無く、responseMode がある', () => {
       for (const schema of [ScrapeRequestSchema, BatchScrapeRequestSchema, CrawlRequestSchema]) {
@@ -319,7 +313,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       }
     });
 
-    it('MCP の scrape・scrape_batch・crawl_site に古い 3 項目が無く、responseMode がある', () => {
+    it('MCP の scrape・crawl_site に古い 3 項目が無く、responseMode がある', () => {
       const server = createMcpServer({ deferTools: false });
       for (const toolName of scrapeTools) {
         const tool = (server as any)._registeredTools[toolName];
@@ -356,14 +350,14 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('D. deferred tool discovery', () => {
-    it('initial tools/list with deferTools:true has exactly 14 core tools', () => {
+    it('initial tools/list with deferTools:true has exactly 13 core tools', () => {
       const server = createMcpServer({ deferTools: true });
       const registered = (server as any)._registeredTools;
       const enabledTools = Object.entries(registered)
         .filter(([_, handle]: [string, any]) => handle.enabled !== false)
         .map(([name]) => name);
 
-      expect(enabledTools.length).toBe(14);
+      expect(enabledTools.length).toBe(13);
       const expectedCore = [
         'scrape',
         'search_web',
@@ -374,8 +368,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         'search_route',
         'search_chiebukuro',
         'search_realtime',
-        'search_disaster_warnings',
-        'search_earthquake',
+        'get_disaster_info',
         'search_laws',
         'search_social_posts',
         'fetch_social_post',
@@ -450,7 +443,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
   });
 
   describe('F. Progressive disclosure & E2E tool-list refresh', () => {
-    it('initial tools/list budget is bounded to exactly 14 core tools and measured character limits', () => {
+    it('initial tools/list budget is bounded to exactly 13 core tools and measured character limits', () => {
       const server = createMcpServer({ deferTools: true });
       const registered = (server as any)._registeredTools;
       const initialTools = Object.entries(registered)
@@ -460,7 +453,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           descLength: t.description?.length || 0,
         }));
 
-      expect(initialTools.length).toBe(14);
+      expect(initialTools.length).toBe(13);
       const totalDescChars = initialTools.reduce((acc, t) => acc + t.descLength, 0);
       expect(totalDescChars).toBeLessThan(3500);
       for (const t of initialTools) {
@@ -482,7 +475,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       ]);
 
       const initialTools = await client.listTools();
-      expect(initialTools.tools.length).toBe(14);
+      expect(initialTools.tools.length).toBe(13);
 
       const serializedTools = JSON.stringify(initialTools.tools);
       const toolChars = serializedTools.length;
@@ -492,7 +485,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // Regression guards with healthy safety margin
       expect(toolChars).toBeLessThan(30000);
       // 2026-10-25 に YouTube の指示（10 番目）を足して 8,443 → 8,706 字になり、上限を 8,500 から 8,800 に上げた
-      // v4.0.0 で get_youtube_channel の案内を 10 番目に足して 8,756 → 8,881 字になり、上限を 8,800 から 9,000 に上げた（instructions の見直しは別の PR）
+      // v4.0.0 で YouTube のチャンネルのツール（v5.0.0 からは get_youtube）の案内を 10 番目に足して 8,756 → 8,881 字になり、上限を 8,800 から 9,000 に上げた（instructions の見直しは別の PR）
       expect(instructionChars).toBeLessThan(9000);
       expect(estimatedTokens).toBeLessThan(10000);
 
@@ -540,9 +533,9 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
           client.connect(clientTransport),
         ]);
 
-        // 1. Initial list has 12 tools
+        // 1. Initial list has 13 tools
         const initialTools = await client.listTools();
-        expect(initialTools.tools.length).toBe(14);
+        expect(initialTools.tools.length).toBe(13);
         expect(initialTools.tools.some((t: any) => t.name === 'track_package')).toBe(false);
 
         // 2. Discover and activate track_package
@@ -555,7 +548,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
         // 4. Refreshed tools/list now includes track_package
         const refreshedTools = await client.listTools();
-        expect(refreshedTools.tools.length).toBe(16);
+        expect(refreshedTools.tools.length).toBe(15);
         expect(refreshedTools.tools.some((t: any) => t.name === 'default.track_package')).toBe(true);
         expect(refreshedTools.tools.some((t: any) => t.name === 'track_package')).toBe(true);
 
@@ -620,7 +613,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       });
       await manager.handleRequest(notifyReq);
 
-      // 2. Initial tools/list (should be 12 core tools)
+      // 2. Initial tools/list (should be 13 core tools)
       const listReq1 = new Request('http://localhost/mcp', {
         method: 'POST',
         headers: {
@@ -634,7 +627,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes1 = await manager.handleRequest(listReq1);
       const listBody1: any = await parseRes(listRes1);
       const names1 = listBody1.result.tools.map((t: any) => t.name);
-      expect(names1.length).toBe(14);
+      expect(names1.length).toBe(13);
       expect(names1).toContain('scrape');
       expect(names1).toContain('search_deep');
       expect(names1).toContain('search_tools');
@@ -719,7 +712,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const listRes2 = await manager.handleRequest(listReq2);
       const listBody2: any = await parseRes(listRes2);
       const names2 = listBody2.result.tools.map((t: any) => t.name);
-      expect(names2.length).toBe(16);
+      expect(names2.length).toBe(15);
       expect(names2).toContain('default.track_package');
       expect(names2).toContain('track_package');
 
@@ -734,8 +727,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const registered = (server as any)._registeredTools;
 
       // music module tools must not exist at all in registered tools
-      expect(registered['search_song']).toBeUndefined();
-      expect(registered['search_artist']).toBeUndefined();
+      expect(registered['search_music']).toBeUndefined();
 
       // search_tools should not be able to find music tools
       const searchTools = registered['search_tools'];
@@ -757,12 +749,10 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       expect(lifeInstructions).toContain('track_package');
       expect(lifeInstructions).toContain("Discovery keywords: '荷物追跡'");
       // Excluded tools:
-      expect(lifeInstructions).not.toContain('search_disaster_warnings');
-      expect(lifeInstructions).not.toContain('search_earthquake');
+      expect(lifeInstructions).not.toContain('get_disaster_info');
       expect(lifeInstructions).not.toContain('search_road_traffic');
-      expect(lifeInstructions).not.toContain('get_elevation');
-      expect(lifeInstructions).not.toContain('search_song');
-      expect(lifeInstructions).not.toContain('search_artist');
+      expect(lifeInstructions).not.toContain('get_place_info');
+      expect(lifeInstructions).not.toContain('search_music');
       expect(lifeInstructions).not.toContain('search_laws');
       expect(lifeInstructions).not.toContain('check_product_compliance');
       expect(lifeInstructions).not.toContain('search_web');
@@ -771,16 +761,15 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       // 2. Disaster module only
       const disasterInstructions = buildSoraMcpInstructions(['disaster']);
       // Included tools:
-      expect(disasterInstructions).toContain('search_disaster_warnings');
-      expect(disasterInstructions).toContain('search_earthquake');
+      expect(disasterInstructions).toContain('get_disaster_info');
       expect(disasterInstructions).toContain('search_road_traffic');
-      expect(disasterInstructions).toContain('get_elevation');
+      expect(disasterInstructions).toContain('get_place_info');
       // Excluded tools:
       expect(disasterInstructions).not.toContain('get_weather');
       expect(disasterInstructions).not.toContain('search_route');
       expect(disasterInstructions).not.toContain('get_flight_status');
       expect(disasterInstructions).not.toContain('track_package');
-      expect(disasterInstructions).not.toContain('search_song');
+      expect(disasterInstructions).not.toContain('search_music');
       expect(disasterInstructions).not.toContain('search_laws');
       expect(disasterInstructions).not.toContain('search_web');
       expect(disasterInstructions).not.toContain('search_deep');
@@ -789,17 +778,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const allInstructions = buildSoraMcpInstructions(['all']);
       expect(allInstructions).toContain('search_deep');
       expect(allInstructions).toContain('search_web');
-      expect(allInstructions).toContain('search_song');
+      expect(allInstructions).toContain('search_music');
       expect(allInstructions).toContain('search_laws');
       expect(allInstructions).toContain('check_product_compliance');
       expect(allInstructions).toContain('get_weather');
       expect(allInstructions).toContain('search_route');
       expect(allInstructions).toContain('get_flight_status');
       expect(allInstructions).toContain('track_package');
-      expect(allInstructions).toContain('search_disaster_warnings');
-      expect(allInstructions).toContain('search_earthquake');
+      expect(allInstructions).toContain('get_disaster_info');
       expect(allInstructions).toContain('search_road_traffic');
-      expect(allInstructions).toContain('get_elevation');
+      expect(allInstructions).toContain('get_place_info');
     });
 
     it('prefers host discovery and does not require activation before visible domain tools', () => {
@@ -837,22 +825,22 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
 
       // natural language music
       const resSong = await searchTools.handler({ query: '曲の検索' });
-      expect(resSong.content?.[0]?.text).toContain('search_song');
+      expect(resSong.content?.[0]?.text).toContain('search_music');
 
       // natural language artist
       const resArtist = await searchTools.handler({ query: '歌手' });
-      expect(resArtist.content?.[0]?.text).toContain('search_artist');
+      expect(resArtist.content?.[0]?.text).toContain('search_music');
     });
 
     it('prevents false-positive 1-character reverse containment while activating intended tools', async () => {
       const server = createMcpServer({ deferTools: true });
       const searchTools = (server as any)._registeredTools['search_tools'];
 
-      // "歌手" must activate search_artist, but NOT search_song via 1-char "歌"
-      const resArtist = await searchTools.handler({ query: '歌手' });
-      const artistText = resArtist.content?.[0]?.text || '';
-      expect(artistText).toContain('search_artist');
-      expect(artistText).not.toContain('search_song');
+      // "雷門 周辺施設" must activate search_poi via "周辺施設", but NOT get_disaster_info via 1-char "雷"
+      const resPoi = await searchTools.handler({ query: '雷門 周辺施設' });
+      const poiText = resPoi.content?.[0]?.text || '';
+      expect(poiText).toContain('search_poi');
+      expect(poiText).not.toContain('get_disaster_info');
 
       // "ヤマトの追跡" must activate track_package via 3-char "ヤマト"
       const resTracking = await searchTools.handler({ query: 'ヤマトの追跡' });
@@ -917,7 +905,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       try {
         const first = await initialize();
         const initial = await rpc('tools/list', {}, first.sessionId);
-        expect(initial.result.tools).toHaveLength(14);
+        expect(initial.result.tools).toHaveLength(13);
         expect(initial.result.tools.some((tool: any) => tool.name === 'track_package')).toBe(false);
         expect(initial.result.tools.some((tool: any) => tool.name === 'default.track_package')).toBe(false);
 
@@ -938,14 +926,14 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
         const names = list.result.tools.map((tool: any) => tool.name);
         expect(names).not.toContain('track_package');
         expect(names).not.toContain('default.track_package');
-        expect(names).toHaveLength(14);
+        expect(names).toHaveLength(13);
 
         await rpc('tools/call', {
           name: 'search_tools', arguments: { query: 'track_package' },
         }, second.sessionId);
         const rediscovered = await rpc('tools/list', {}, second.sessionId);
         expect(rediscovered.result.tools.map((tool: any) => tool.name)).toContain('default.track_package');
-        expect(rediscovered.result.tools).toHaveLength(16);
+        expect(rediscovered.result.tools).toHaveLength(15);
 
         // This tracking number has no carrier candidate, so the real handler performs no external I/O.
         const call = await rpc('tools/call', {
@@ -1019,7 +1007,7 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const server = createMcpServer({ modules: ['yahoo'], deferTools: true });
       const reg = (server as any)._registeredTools;
       await reg.search_tools.handler({ query: 'yahoo' });
-      for (const name of ['search_news', 'search_image', 'search_video', 'search_trend', 'suggest_keywords']) {
+      for (const name of ['search_media', 'search_keywords']) {
         expect(reg[name].enabled).toBe(true);
       }
       await server.close();
@@ -1030,17 +1018,16 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const reg = (server as any)._registeredTools;
       const searchTools = reg['search_tools'];
 
-      // When LLM queries "トレンド trend 検索", it should target search_trend without flood
+      // When LLM queries "トレンド trend 検索", it should target search_keywords without flood
       const res = await searchTools.handler({ query: 'トレンド trend 検索' });
       const text = res.content[0].text;
-      expect(text).toContain('search_trend');
-      expect(text).not.toContain('search_image');
-      expect(text).not.toContain('search_video');
-      expect(text).not.toContain('predict_hts_code');
+      expect(text).toContain('search_keywords');
+      expect(text).not.toContain('search_media');
+      expect(text).not.toContain('lookup_hts');
 
       // Discovery returns the canonical MCP name even for model-prefixed queries.
-      expect(reg['search_trend'].enabled).toBe(true);
-      expect(reg['default.search_trend']?.enabled).toBe(true);
+      expect(reg['search_keywords'].enabled).toBe(true);
+      expect(reg['default.search_keywords']?.enabled).toBe(true);
     });
 
     it('tolerates default. prefix in search_tools query', async () => {
@@ -1048,11 +1035,11 @@ describe('Sora v2.23.0 LLM Contract Synchronization', () => {
       const reg = (server as any)._registeredTools;
       const searchTools = reg['search_tools'];
 
-      const res = await searchTools.handler({ query: 'default.search_trend' });
+      const res = await searchTools.handler({ query: 'default.search_keywords' });
       const text = res.content[0].text;
-      expect(text).toContain('search_trend');
-      expect(reg['search_trend'].enabled).toBe(true);
-      expect(reg['default.search_trend']?.enabled).toBe(true);
+      expect(text).toContain('search_keywords');
+      expect(reg['search_keywords'].enabled).toBe(true);
+      expect(reg['default.search_keywords']?.enabled).toBe(true);
     });
   });
 });

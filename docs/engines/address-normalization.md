@@ -12,10 +12,10 @@
 
 ## 使うツール
 
-- MCP: `normalize_address`
+- MCP: `lookup_address` に `address` を指定する（応答の `mode` は `normalize`）
 - REST: `POST /geo/address/normalize`、`GET /geo/address/normalize`
 
-引数は、`address`（必須、300 文字まで）、`level`（正規化する最大の段階。1 から 8、既定 8）、`zipcode`（突き合わせる郵便番号）、`lat` と `lon`（突き合わせる座標。組で指定）、`compareAddress`（名寄せの相手の住所）です。
+引数は、`address`（必須、300 文字まで）、`level`（正規化する最大の段階。1 から 8、既定 8）、`zipcode`（突き合わせる郵便番号）、`lat` と `lon`（突き合わせる座標。組で指定）、`compareAddress`（名寄せの相手の住所）です。MCP の `lookup_address` では、`address` があればこの処理になり、`lat`・`lon` は突き合わせに使います（`address` なしの `lat`・`lon` は[逆引き](reverse-geocoding.md)）。`address` なしで `level`・`compareAddress` を指定すると、正しい使い方を示す入力の誤りです。
 
 住所のツールは、使われたときだけデータを取得します（`SORA_ADDRESS` が `lazy`、既定）。`SORA_ADDRESS=off` ではツールを登録せず、REST は 404 を返します。この処理は、郵便番号の逆引き（[postal-code.md](postal-code.md)）と座標の解決（[coordinate-resolution.md](coordinate-resolution.md)）の中でも使われます。
 

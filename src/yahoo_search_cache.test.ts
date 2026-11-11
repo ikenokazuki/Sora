@@ -1,4 +1,4 @@
-// MCP の Yahoo の 6 ツール（画像・動画・ニュース・知恵袋・サジェスト・リアルタイム）は、REST と同じキー・同じ時間のキャッシュを共有する。
+// MCP の Yahoo の検索（search_media の画像・動画・ニュース、知恵袋、search_keywords のサジェスト、リアルタイム）は、REST と同じキー・同じ時間のキャッシュを共有する。
 // Yahoo は送り先（同梱のバイナリの呼び出しと、リアルタイムの JSON の取得）を偽物にする。
 import { afterAll, afterEach, beforeAll, describe, expect, setSystemTime, spyOn, test } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -51,17 +51,20 @@ async function callMcp(name: string, args: Record<string, unknown>): Promise<any
 const ttlOf = (key: string) => setSpy.mock.calls.filter(([k]) => k === key).map(([, , ttl]) => ttl);
 
 describe('MCP page', () => {
-  test('search_image・search_video・search_chiebukuro は page を受けて Yahoo に渡し、page ごとに別に残す', async () => {
+  test('search_media の image・video と search_chiebukuro は page を受けて Yahoo に渡し、page ごとに別に残す（news は page を断る）', async () => {
     fakeYahoo();
     const tools = (await client.listTools()).tools as any[];
     const props = (name: string) => tools.find((t) => t.name === name).inputSchema.properties;
-    expect(props('search_news').page).toBeUndefined();
-    for (const [name, binaryTool] of [['search_image', 'yahoo_image_search'], ['search_video', 'yahoo_video_search'], ['search_chiebukuro', 'yahoo_chiebukuro_search']]) {
-      expect(props(name).page).toMatchObject({ type: 'integer', minimum: 1, maximum: 100 });
-      const query = `yahoo cache page ${name}`;
-      const first = await callMcp(name, { query, page: 2 });
-      const again = await callMcp(name, { query, page: 2 });
-      const next = await callMcp(name, { query, page: 3 });
+    const news: any = await client.callTool({ name: 'search_media', arguments: { type: 'news', query: 'yahoo cache page news', page: 2 } });
+    expect(news.isError).toBe(true);
+    expect(sent).toHaveLength(0);
+    for (const [name, type, binaryTool] of [['search_media', 'image', 'yahoo_image_search'], ['search_media', 'video', 'yahoo_video_search'], ['search_chiebukuro', undefined, 'yahoo_chiebukuro_search']]) {
+      expect(props(name!).page).toMatchObject({ type: 'integer', minimum: 1, maximum: 100 });
+      const query = `yahoo cache page ${type ?? name}`;
+      const args = type ? { type, query } : { query };
+      const first = await callMcp(name!, { ...args, page: 2 });
+      const again = await callMcp(name!, { ...args, page: 2 });
+      const next = await callMcp(name!, { ...args, page: 3 });
       expect(sent.filter((s) => s.tool === binaryTool).map((s) => s.args)).toEqual([{ query, page: 2 }, { query, page: 3 }]);
       expect(first.cached).toBeUndefined();
       expect(again.cached).toBe(true);
@@ -71,12 +74,12 @@ describe('MCP page', () => {
 });
 
 describe('MCP の Yahoo の検索のキャッシュ', () => {
-  test('search_news・suggest_keywords も 2 回目はキャッシュから返る（30 分）', async () => {
+  test('search_media の news・search_keywords のサジェストも 2 回目はキャッシュから返る（30 分）', async () => {
     fakeYahoo();
-    for (const [name, key] of [['search_news', 'search:news:yahoo cache news:'], ['suggest_keywords', 'search:suggest:yahoo cache suggest:']]) {
+    for (const [name, key, extra] of [['search_media', 'search:news:yahoo cache news:', { type: 'news' }], ['search_keywords', 'search:suggest:yahoo cache suggest:', {}]] as const) {
       const query = key.split(':')[2];
-      await callMcp(name, { query });
-      expect((await callMcp(name, { query })).cached).toBe(true);
+      await callMcp(name, { ...extra, query });
+      expect((await callMcp(name, { ...extra, query })).cached).toBe(true);
       expect(ttlOf(key)).toEqual([cache.CACHE_TTL_DEFAULT]);
     }
     expect(sent.map((s) => s.tool)).toEqual(['yahoo_news_search', 'yahoo_suggest_keywords']);
@@ -89,7 +92,7 @@ describe('MCP の Yahoo の検索のキャッシュ', () => {
       app.request('/search/image', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query, ...body }) });
     expect((await rest({ limit: 5, page: 2 })).status).toBe(200);
     expect(ttlOf(`search:image:${query}:5:2`)).toEqual([cache.CACHE_TTL_EMPTY]);
-    expect((await callMcp('search_image', { query, limit: 5, page: 2 })).cached).toBe(true);
+    expect((await callMcp('search_media', { type: 'image', query, limit: 5, page: 2 })).cached).toBe(true);
     expect(sent).toHaveLength(1);
     expect(((await (await rest({ limit: 5, page: 2, noCache: true })).json()) as any).cached).toBeUndefined();
     expect(sent).toHaveLength(2);
@@ -107,12 +110,12 @@ describe('MCP の Yahoo の検索のキャッシュ', () => {
     setSpy = spyOn(cache, 'setToCache');
     spies.push(setSpy);
     const query = 'yahoo cache raw error';
-    const first = await callMcp('search_image', { query });
+    const first = await callMcp('search_media', { type: 'image', query });
     expect(first.raw).toContain('HTTP 503');
     expect(ttlOf(`search:image:${query}::`)).toEqual([cache.CACHE_TTL_EMPTY]);
     setSystemTime(new Date(Date.now() + 61_000));
     try {
-      expect((await callMcp('search_image', { query })).items).toHaveLength(1);
+      expect((await callMcp('search_media', { type: 'image', query })).items).toHaveLength(1);
     } finally {
       setSystemTime();
     }

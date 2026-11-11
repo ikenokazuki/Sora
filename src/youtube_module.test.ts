@@ -41,16 +41,16 @@ const fakeResult = {
   availableTracks: [],
 };
 
-describe('MCP tool', () => {
+describe('MCP tool get_youtube', () => {
   test('is registered by default as a deferred youtube tool, and absent when the module is left out', () => {
     delete process.env.ENABLED_MODULES;
-    const entry = toolCatalogOf(createMcpServer()).get('get_youtube_transcript');
+    const entry = toolCatalogOf(createMcpServer()).get('get_youtube');
     expect(entry?.category).toBe('youtube');
     expect(entry?.handle.enabled).toBe(false);
-    expect(toolCatalogOf(createMcpServer({ modules: ['web'], deferTools: false })).has('get_youtube_transcript')).toBe(false);
+    expect(toolCatalogOf(createMcpServer({ modules: ['web'], deferTools: false })).has('get_youtube')).toBe(false);
   });
 
-  test('lists with a required url, and a call returns the transcript as JSON or a YouTube error', async () => {
+  test('lists with a required url, and a video URL returns the transcript as JSON with mode: video, or a usage error', async () => {
     const saved = globalThis.fetch;
     globalThis.fetch = (async (url: string) => {
       if (String(url).includes('/youtubei/v1/player')) {
@@ -68,18 +68,20 @@ describe('MCP tool', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_youtube_transcript') as any;
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_youtube') as any;
       expect(tool.inputSchema.required).toEqual(['url']);
-      const res = await client.callTool({ name: 'get_youtube_transcript', arguments: { url: 'https://youtu.be/mcpTest0001' } }) as any;
+      const res = await client.callTool({ name: 'get_youtube', arguments: { url: 'https://youtu.be/mcpTest0001' } }) as any;
       expect(JSON.parse(res.content[0].text)).toMatchObject({
+        mode: 'video',
         found: true,
         videoId: 'mcpTest0001',
         title: 'テストの動画MCP',
         transcript: { status: 'ok', source: 'auto', language: 'ja', text: '[0:00] てすと' },
       });
-      const bad = await client.callTool({ name: 'get_youtube_transcript', arguments: { url: 'https://example.com/x' } }) as any;
+      const bad = await client.callTool({ name: 'get_youtube', arguments: { url: 'https://example.com/x' } }) as any;
       expect(bad.isError).toBe(true);
-      expect(bad.content[0].text).toContain('YouTube error');
+      expect(bad.content[0].text).toContain('url が YouTube の動画でもチャンネルでもありません');
+      expect(bad.content[0].text).toContain('使い方');
     } finally {
       globalThis.fetch = saved;
       await client.close();
@@ -94,10 +96,10 @@ describe('MCP tool', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube_transcript');
+      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube');
       const found = await client.callTool({ name: 'search_tools', arguments: { query: 'YouTube 字幕' } }) as any;
-      expect(found.content[0].text).toContain('get_youtube_transcript');
-      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube_transcript');
+      expect(found.content[0].text).toContain('get_youtube');
+      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube');
     } finally {
       await client.close();
       await server.close();
@@ -105,16 +107,15 @@ describe('MCP tool', () => {
   });
 
   test('the instructions mention it only when the module is active', () => {
-    expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube_transcript');
+    expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube with the URL');
     // 動画を探すときと調べものでは、検索の側の指定（既定は 0）を使うよう案内する
-    expect(buildSoraMcpInstructions(['all'])).toContain('search_video transcripts');
+    expect(buildSoraMcpInstructions(['all'])).toContain('search_media type:video transcripts');
     expect(buildSoraMcpInstructions(['all'])).toContain('search_deep videos');
-    expect(buildSoraMcpInstructions(['youtube'])).not.toContain('search_video');
-    expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube_transcript');
-    // チャンネルの最新動画のツールも案内する
-    expect(buildSoraMcpInstructions(['all'])).toContain('get_youtube_channel');
-    expect(buildSoraMcpInstructions(['youtube'])).toContain('get_youtube_channel');
-    expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube_channel');
+    expect(buildSoraMcpInstructions(['youtube'])).not.toContain('search_media');
+    expect(buildSoraMcpInstructions(['web'])).not.toContain('get_youtube');
+    // チャンネルの最新動画の読み方も案内する
+    expect(buildSoraMcpInstructions(['all'])).toContain("A channel's latest videos: get_youtube");
+    expect(buildSoraMcpInstructions(['youtube'])).toContain("A channel's latest videos: get_youtube");
   });
 });
 
@@ -187,16 +188,8 @@ describe('REST /youtube/channel', () => {
   });
 });
 
-describe('MCP tool get_youtube_channel', () => {
-  test('is registered by default as a deferred youtube tool, and absent when the module is left out', () => {
-    delete process.env.ENABLED_MODULES;
-    const entry = toolCatalogOf(createMcpServer()).get('get_youtube_channel');
-    expect(entry?.category).toBe('youtube');
-    expect(entry?.handle.enabled).toBe(false);
-    expect(toolCatalogOf(createMcpServer({ modules: ['web'], deferTools: false })).has('get_youtube_channel')).toBe(false);
-  });
-
-  test('lists with a required url, and a call returns the videos as JSON or a YouTube error', async () => {
+describe('MCP tool get_youtube with a channel', () => {
+  test('a channel id returns the videos as JSON with mode: channel, or a YouTube error', async () => {
     const saved = globalThis.fetch;
     const channelId = 'UCmcpTest0000000000000a1';
     globalThis.fetch = (async (url: string) => {
@@ -216,18 +209,17 @@ describe('MCP tool get_youtube_channel', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'get_youtube_channel') as any;
-      expect(tool.inputSchema.required).toEqual(['url']);
-      const res = await client.callTool({ name: 'get_youtube_channel', arguments: { url: channelId, limit: 5 } }) as any;
+      const res = await client.callTool({ name: 'get_youtube', arguments: { url: channelId, limit: 5 } }) as any;
       expect(JSON.parse(res.content[0].text)).toMatchObject({
+        mode: 'channel',
         found: true,
         channelId,
         title: 'テストチャンネルMCP',
         videos: [{ videoId: 'mcpTest0001', title: 'テストの動画MCP', description: '説明です', views: 42 }],
       });
-      const bad = await client.callTool({ name: 'get_youtube_channel', arguments: { url: 'https://example.com/x' } }) as any;
-      expect(bad.isError).toBe(true);
-      expect(bad.content[0].text).toContain('YouTube error');
+      // フィードが 404（チャンネルが無い）は、旧ツールと同じ found: false
+      const missing = await client.callTool({ name: 'get_youtube', arguments: { url: 'UCmcpTest0000000000000z9' } }) as any;
+      expect(JSON.parse(missing.content[0].text)).toMatchObject({ mode: 'channel', found: false, reason: 'channel-not-found' });
     } finally {
       globalThis.fetch = saved;
       await client.close();
@@ -235,18 +227,17 @@ describe('MCP tool get_youtube_channel', () => {
     }
   });
 
-  test('search_tools finds it by YouTube チャンネル, without matching the transcript tool, and enables it for the session', async () => {
+  test('search_tools finds it by YouTube チャンネル and enables it for the session', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer();
     const client = new Client({ name: 'youtube-channel-defer-test', version: '1.0.0' });
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube_channel');
+      expect((await client.listTools()).tools.map((t) => t.name)).not.toContain('get_youtube');
       const found = await client.callTool({ name: 'search_tools', arguments: { query: 'YouTube チャンネル' } }) as any;
-      expect(found.content[0].text).toContain('get_youtube_channel');
-      expect(found.content[0].text).not.toContain('get_youtube_transcript');
-      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube_channel');
+      expect(found.content[0].text).toContain('get_youtube');
+      expect((await client.listTools()).tools.map((t) => t.name)).toContain('get_youtube');
     } finally {
       await client.close();
       await server.close();

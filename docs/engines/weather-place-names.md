@@ -14,11 +14,11 @@
 | 用途 | MCP | REST |
 |---|---|---|
 | 天気予報 | `get_weather` | `POST /weather`、`GET /weather`、`GET /weather/:city` |
-| 警報・注意報 | `search_disaster_warnings` | `POST /disaster/warnings` |
+| 警報・注意報 | `get_disaster_info`（`include: ["warnings"]`。`city` か `areaCode` があれば既定） | `POST /disaster/warnings` |
 
 - 天気は、地名を予報区に直して、その予報区の予報を返します。市町村の単位では返しません。`city` には 6 桁の予報区の番号も書けます。
 - 警報は、市町村に当たればその市町村の警報だけを返します。`areaCode`（7 桁の市町村、6 桁の予報区か気象台、2 桁の都道府県）でも指定できます。
-- `GET /weather` で `city` を省くと東京です。警報で `city` も `areaCode` も省くと東京地方です。
+- `GET /weather` で `city` を省くと東京です。REST の警報（`POST /disaster/warnings`）で `city` も `areaCode` も省くと東京地方です。MCP の `get_disaster_info` は、`city` も `areaCode` も無ければ地震を返し、`include: ["warnings"]` だけを指定したときは、地域を求める入力の誤りです。
 
 ## 手元のデータと外への問い合わせ
 

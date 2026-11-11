@@ -131,7 +131,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
   - `--markdown` を付けて呼びます。付けないと、本文の HTML からリンクが落ちます。
   - 本文の HTML は Sora の変換（turndown）に通します。rs-trafilatura 自身の Markdown は、一覧のページで字下げが残り、トークンが 15〜42% 多くなるためです。
   - 変換の前に、見えない要素や Cookie の案内を除きます（元のページと同じ処理）。
-  - rs-trafilatura の本文の HTML には画像が入りません。記事以外の種類で画像のあるページでは、画像の後ろに目印の 1 字を置いた HTML でもう一度取り出し、本文の文字が 1 回目と同じときだけ、目印を画像に戻します（`src/extractor/rs_images.ts`）。`includeMedia: false` のときは戻しません（`scrape`・`scrape_batch`・`crawl_site` は、この引数を取って渡します。`search_deep` は、`includeMedia` が false のときだけ、ページを取る `scrape` にも false を渡します。`search_deep` の `includeMedia` の既定は true で、省いたときも true として扱います）。画像の一覧（`images`）は、今までどおりページ全体から取ります。
+  - rs-trafilatura の本文の HTML には画像が入りません。記事以外の種類で画像のあるページでは、画像の後ろに目印の 1 字を置いた HTML でもう一度取り出し、本文の文字が 1 回目と同じときだけ、目印を画像に戻します（`src/extractor/rs_images.ts`）。`includeMedia: false` のときは戻しません（`scrape`（`url`・`urls`）・`crawl_site` は、この引数を取って渡します。`search_deep` は、`includeMedia` が false のときだけ、ページを取る `scrape` にも false を渡します。`search_deep` の `includeMedia` の既定は true で、省いたときも true として扱います）。画像の一覧（`images`）は、今までどおりページ全体から取ります。
 - 振り分け:
   - 「記事」と判定されたページでは、Readability の本文を使います。Readability の本文が 200 字未満のときだけ、rs-trafilatura の本文に替えます。
   - ほかの種類と判定されたページでは、rs-trafilatura の本文を使います。一覧・予定・掲示板・商品のページでは、rs-trafilatura が強いためです。
@@ -229,7 +229,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 - `scrapeDeadlineMs`（任意、既定は無効）は遅いページの打ち切りです。半数が
   揃ってから 5 秒、または上限で打ち切り、`deadlineExceeded` とスニペットで
   返します。発動した応答はキャッシュせず、補充・追加取得も行いません。
-- MCP のツールの応答は整形なし（字下げなし）の JSON です。`verbose` を持つツール（`scrape`・`scrape_batch`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します（v2.38.0。以前は `search_deep` と `search_realtime` だけが整形なしでした）。
+- MCP のツールの応答は整形なし（字下げなし）の JSON です。`verbose` を持つツール（`scrape`・`search_deep`・`search_realtime`・`research_country_context`）は `verbose: true` のときだけ整形します（v2.38.0。以前は `search_deep` と `search_realtime` だけが整形なしでした）。
   別の結果と同じハイライト（PC版とスマホ版など）は、2つ目以降の `highlights` を省いて
   `highlightsSameAs` に先の結果の URL を入れます（`verbose` では省きません）。
 - `contextSufficiency` は、要件語（`extractQueryRequirements`）の言及と

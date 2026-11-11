@@ -118,6 +118,14 @@ RUN set -eu; \
     done; \
     test -e /out$L/libnss3.so; test -e /out$L/libsoftokn3.so
 
+# Stage 3c: 静的取得（wreq-js）が信頼する root の一覧。wreq-js の既定（同梱の root + システムの root）は、同梱の root が wreq-js を
+# 作った時点のままで、あとから信頼を外された root が残る（2026-10 に鍵が漏れた eMudhra の emSign ECC Root CA - G3 など）。
+# この Bun（builder と同じもの）が持つ最新の root に、Debian の root を合わせ、信頼を外した root（src/tls_trust.ts の DISTRUSTED_ROOTS）を除く。
+# 最終段で /etc/ssl/certs/ca-certificates.crt をこれに置き換え、SORA_FETCH_TRUST_STORE=defaultPaths で、wreq-js にこれだけを使わせる。
+FROM builder AS ca-bundle
+COPY --from=browser-harvester /etc/ssl/certs/ca-certificates.crt /tmp/system-ca.crt
+RUN bun scripts/build-ca-bundle.ts /tmp/system-ca.crt /tmp/ca-bundle.pem
+
 # Stage 4: Final Minimal Distroless Image
 FROM gcr.io/distroless/cc-debian12:latest
 WORKDIR /app
@@ -139,6 +147,8 @@ COPY --from=browser-libs /out/ /
 COPY --from=browser-harvester /usr/share/fonts /usr/share/fonts
 COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
+# wreq-js が既定のファイルとして読む一覧を、Stage 3c で作ったものに置き換える（Chromium は NSS の組み込みの root を使うので、これは読まない）
+COPY --from=ca-bundle /tmp/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
 # 本文の取り出し（src/extractor/rs_trafilatura.ts が RS_TRAFILATURA_PATH から呼ぶ）
 COPY --from=rs-trafilatura /src/target/release/extract_stdin /usr/local/bin/rs-trafilatura
 COPY --from=rs-trafilatura /src/LICENSE-MIT /src/LICENSE-APACHE /usr/share/licenses/rs-trafilatura/
@@ -150,7 +160,8 @@ ENV PORT=8000 \
     NODE_ENV=production \
     CHROME_PATH=/usr/lib/chromium/chromium \
     YAHOO_MCP_PATH=/app/yahoo-search-mcp \
-    RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura
+    RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura \
+    SORA_FETCH_TRUST_STORE=defaultPaths
 
 # 静的取得とブラウザが名乗る Chrome の版の上限（src/http_fetcher.ts）。Stage 1b の native が持つ最新のプロファイル。
 # 下げれば、その版の UA・TLS・ヘッダに戻せる（例: docker run -e SORA_FETCH_MAX_CHROME_PROFILE=149 …。npm の wreq-js が持っていた最新）

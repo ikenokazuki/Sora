@@ -16,7 +16,7 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_route',
     'life',
-    '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }',
+    '【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測せず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }',
     TRANSIT_ROUTE_INPUT_SHAPE,
     async (opts) => {
       try {
@@ -41,7 +41,7 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'get_weather',
     'life',
-    '【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }',
+    '【公式直結・推測厳禁】日本国内の天気予報・予想気温・降水確率・概況は、推測せず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "石垣島"）・都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }',
     {
       city: z.string().trim().min(1).describe('市区町村名・地名または都道府県名（例: "天童市", "軽井沢", "箱根", "浦安", "東京", "大阪", "福岡", "那覇"）、もしくは6桁の予報区の番号（例: "130010"）。都道府県名は県の代表の予報区。気象台が複数ある北海道・鹿児島・沖縄は予報区か市町村の名前で（"北海道" だけはエラー）。見つからない地名と、複数の市町村に当たる名前（例: "府中"）はエラー'),
       days: z.number().int().min(1).max(8).optional().describe('取得する予報日数 (1〜8日, デフォルト: 7)').meta({ default: 7 }),

@@ -3,65 +3,46 @@ import { getLawData, searchDietMinutes, searchLaws } from '../scraper.js';
 import { errorMessage } from '../errors.js';
 import { DIET_MINUTES_INPUT_RULE } from '../types.js';
 import { registerTool, toolJson } from './registry.js';
+import { exactlyOne, onlyForMode, usageError } from './args.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
 /** 🏛️ Category 8: Government & Law Data (モジュール: 'gov') */
 export function registerGovTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
-  // Tool 25: search_laws (e-Gov キーワード法令検索) - CORE (defaultEnabled: true)
+  // Tool 25: search_laws (e-Gov 法令の検索と条文の全文。keyword か lawId) - CORE (defaultEnabled: true)
+  const LAWS_USAGE = '使い方: keyword で法令を検索する（limit で件数）か、lawId（検索結果の id）で条文の全文を取る。keyword・lawId はどちらか 1 つ。';
+  // onlyForMode に渡す語句。エラーの文にそのまま出る。入力の形で言う
+  const WITH_KEYWORD = 'keyword を指定したとき';
+  const WITH_LAW_ID = 'lawId を指定したとき';
+  // 既定値（説明・既定値の比較）。補うのはサービス（searchLaws）
+  const LAWS_LIMIT_DEFAULT = 20;
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
     'search_laws',
     'gov',
-    '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }',
+    '【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }',
     {
-      keyword: z.string().min(1).describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数 (1〜50, デフォルト: 20)').meta({ default: 20 }),
+      keyword: z.string().optional().describe('法令検索キーワード (例: "著作権法", "労働基準法", "民法")。現行法令名・法令番号・公布年月日の一覧を返す。keyword か lawId のどちらか 1 つ'),
+      lawId: z.string().optional().describe('e-Gov 法令ID (例: "129AC0000000089"。検索結果の id)。架空の条文を創作せず、章・節・条・項・号を構造化した公式の条文 Markdown を返す: { id, title, lawNum, markdown, articleCount, source }'),
+      limit: z.number().int().min(1).max(50).optional().describe(`取得件数 (1〜50, デフォルト: ${LAWS_LIMIT_DEFAULT})。keyword のときだけ`).meta({ default: LAWS_LIMIT_DEFAULT }),
     },
-    async (opts) => {
+    async (args) => {
+      const invalid = exactlyOne(args, ['keyword', 'lawId'], LAWS_USAGE)
+        ?? onlyForMode(args.keyword ? WITH_KEYWORD : WITH_LAW_ID, [WITH_KEYWORD], args, ['limit'], LAWS_USAGE, { limit: LAWS_LIMIT_DEFAULT });
+      if (invalid) return usageError(invalid);
+      // 応答とエラーの文は、統合前の 2 ツールのまま（REST の /gov/laws・/gov/law-text と同じ応答）
+      const { keyword, lawId, limit } = args;
       try {
-        const result = await searchLaws(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
+        const result = keyword ? await searchLaws({ keyword, limit }) : await getLawData({ lawId: lawId! });
+        return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Law search error: ${errorMessage(err) || err}` }],
-        };
+        return { isError: true, content: [{ type: 'text', text: `${keyword ? 'Law search' : 'Law data'} error: ${errorMessage(err) || err}` }] };
       }
     },
-    { defaultEnabled: true, keywords: ['法令検索', '法律', '政令', 'e-Gov', '条文検索'] },
-  );
-
-  // Tool 26: get_law_text (e-Gov 法令条文詳細取得) - DEFERRED
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'get_law_text',
-    'gov',
-    '【公式条文直結・創作厳禁】日本の法令条文の確認では、架空の条文・条項を創作（法律ハルシネーション）せず、必ず本ツールで公式e-Govの正確な条文Markdownを取得してください。章・節・条・項・号が正確に構造化された本文を返します。返却: { id, title, lawNum, markdown, articleCount, source }',
-    {
-      lawId: z.string().min(1).describe('e-Gov 法令ID (例: "129AC0000000089")'),
-    },
-    async (opts) => {
-      try {
-        const result = await getLawData(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Law data error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: deferredDefault, keywords: ['法令条文取得', '条文', 'e-Gov', '法律本文'] },
+    { defaultEnabled: true, keywords: ['法令検索', '法律', '政令', 'e-Gov', '条文検索', '法令条文取得', '条文', '法律本文', 'get_law_text'] },
   );
 
   // Tool: search_diet_minutes (国会会議録 発言・答弁全文検索) - DEFERRED

@@ -3,7 +3,7 @@
  * - OpenAPI の各操作に operationId・タグ・認証・エラー応答を足す（finalizeOpenApi）。
  * - GET /tools（言語に依存しない、操作の一覧と 1 つ分の定義）の元になる（listRestTools・describeRestTool）。
  *
- * 名前（id）はいまの MCP のツール名と同じ。MCP のツールを統合する v5.0.0 のあとも、REST は変えない決定なので、
+ * 名前（id）は v4 までの MCP のツール名と同じ。MCP のツールを統合した v5.0.0 のあとも、REST は変えない決定なので、
  * この名前はそのまま使う（docs/superpowers/specs/2026-11-11-tool-consolidation-design.md の「REST と client」）。
  * 一覧に載せるのは「正本」の操作だけ。別名・GET で呼ぶ形・進行状況の SSE・システムの経路は、正本の定義の
  * alternatives に載せる（GET /tools/<name>）か、一覧に出さない。
@@ -89,7 +89,7 @@ export const REST_TOOLS: readonly RestTool[] = [
 
 /**
  * alias: 同じ処理の別のパス。get: 同じ処理を GET（path・query）で呼ぶ形。stream: 進行状況を SSE で返す形。
- * system・page: 一覧に載せない（サービスの情報・ヘルスチェック・配布・HTML のページなど）。
+ * system・page: 一覧に載せない（サービスの情報・ヘルスチェック・操作の一覧・HTML のページなど）。
  */
 export type OtherKind = 'alias' | 'get' | 'stream' | 'system' | 'page';
 export interface OtherOperation { id: string; kind: OtherKind; of?: string }
@@ -99,8 +99,6 @@ export const OTHER_OPERATIONS: Readonly<Record<string, OtherOperation>> = {
   'GET /health': { id: 'get_health', kind: 'system' },
   'GET /metrics': { id: 'get_metrics', kind: 'system' },
   'POST /cache/clear': { id: 'clear_cache', kind: 'system' },
-  'GET /client': { id: 'list_client_files', kind: 'system' },
-  'GET /client/{path}': { id: 'get_client_file', kind: 'system' },
   'GET /tools': { id: 'list_tools', kind: 'system' },
   'GET /tools/{name}': { id: 'get_tool', kind: 'system' },
   'GET /t/{carrier}/{number}': { id: 'get_tracking_page', kind: 'page' },
