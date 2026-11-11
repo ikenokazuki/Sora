@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { exactlyOne, onlyWith, usageError } from './args.js';
+import { exactlyOne, onlyForMode, onlyWith, usageError } from './args.js';
 
 const USAGE = '使い方: 1 ページは url、複数は urls。';
 
@@ -54,6 +54,37 @@ describe('onlyWith', () => {
 
   test('the condition key missing is reported as 未指定', () => {
     expect(onlyWith({ limit: 5 }, 'part', 'evidence', ['limit'])).toContain('未指定');
+  });
+});
+
+describe('onlyForMode', () => {
+  test('passes in an allowed mode, whatever the keys', () => {
+    expect(onlyForMode('batch', ['batch'], { concurrency: 3 }, ['concurrency'], USAGE)).toBeUndefined();
+    expect(onlyForMode('channel', ['video', 'channel'], { limit: 5 }, ['limit'], USAGE)).toBeUndefined();
+  });
+
+  test('a given key outside its modes names the given keys, the allowed modes, the current mode and the usage', () => {
+    const message = onlyForMode('single', ['batch', 'stream'], { concurrency: 3, delay: undefined }, ['concurrency', 'delay'], USAGE);
+    expect(message).toContain('concurrency');
+    expect(message).not.toContain('delay');
+    expect(message).toContain('batch');
+    expect(message).toContain('stream');
+    expect(message).toContain('single');
+    expect(message).toContain(USAGE);
+  });
+
+  test('passes outside the modes when none of the keys is given (undefined, null, empty string, empty array)', () => {
+    expect(onlyForMode('single', ['batch'], {}, ['concurrency'], USAGE)).toBeUndefined();
+    expect(onlyForMode('single', ['batch'], { a: undefined, b: null, c: '', d: [] }, ['a', 'b', 'c', 'd'], USAGE)).toBeUndefined();
+  });
+
+  test('false and 0 are given values', () => {
+    expect(onlyForMode('single', ['batch'], { flag: false }, ['flag'], USAGE)).toContain('flag');
+    expect(onlyForMode('single', ['batch'], { count: 0 }, ['count'], USAGE)).toContain('count');
+  });
+
+  test('keys not in the list are ignored', () => {
+    expect(onlyForMode('single', ['batch'], { url: 'https://example.com' }, ['concurrency'], USAGE)).toBeUndefined();
   });
 });
 

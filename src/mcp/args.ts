@@ -17,7 +17,7 @@ export function exactlyOne(args: Record<string, unknown>, keys: string[], usage:
 
 /**
  * keys のどれかが指定されているのに、args[key] が allowedWhen でないときの、エラーの文。
- * モードを入力の有無や形で決めるツールは、決めたモードを足した写し（{ ...args, mode }）を渡す。
+ * モードが引数の値（action・type など）で決まるときだけ使う。入力の有無や形でモードを決めるツールは onlyForMode を使う。
  * 既定値（zod の default）のある引数を keys に入れると、いつも指定されたことになる。
  */
 export function onlyWith(args: Record<string, unknown>, key: string, allowedWhen: string, keys: string[]): string | undefined {
@@ -26,6 +26,18 @@ export function onlyWith(args: Record<string, unknown>, key: string, allowedWhen
   if (set.length === 0) return undefined;
   const now = given(args[key]) ? String(args[key]) : '未指定';
   return `${set.join(', ')} は ${key} が "${allowedWhen}" のときだけ指定できます（いまの ${key}: ${now}）。`;
+}
+
+/**
+ * mode（ハンドラが入力から決めた文字列。url か urls か、動画かチャンネルか、など）が allowedModes に含まれないのに、
+ * keys のどれかが指定されているとき、usage を添えたエラーの文。モードに合わない引数を、黙って無視せずに知らせる。
+ * 既定値（zod の default）のある引数を keys に入れると、いつも指定されたことになる。
+ */
+export function onlyForMode(mode: string, allowedModes: string[], args: Record<string, unknown>, keys: string[], usage: string): string | undefined {
+  if (allowedModes.includes(mode)) return undefined;
+  const set = keys.filter((k) => given(args[k]));
+  if (set.length === 0) return undefined;
+  return `${set.join(', ')} は ${allowedModes.map((m) => `"${m}"`).join('・')} モードのときだけ指定できます（いまのモード: ${mode}）。${usage}`;
 }
 
 /** MCP のエラー応答（入力の誤り）。 */

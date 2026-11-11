@@ -14,7 +14,7 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
     'search_tools',
     '【追加ツール検索・動的有効化】tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
       '一致したツールをこのセッションで有効化する。表示済みのツールは直接実行してください。' +
-      '例: 荷物追跡（track_package）、フライト情報（get_flight_status）、音楽詳細、国会会議録。' +
+      '非表示の例: 荷物追跡（track_package）、フライト情報（get_flight_status）、音楽詳細、国会会議録。' +
       '見つからなければ該当モジュールが無効か利用不可。返却: 有効化したツールの一覧（テキスト）',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
