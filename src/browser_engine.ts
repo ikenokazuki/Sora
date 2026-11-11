@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
-import { envBool, envInt, envPath, envRaw, envStr, envUrl, type Env } from './config.js';
+import { envBool, envInt, envPath, envRaw, envStr, envUrl, envWithoutSecrets, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 
@@ -92,7 +92,7 @@ export function parseChromiumMajorVersion(output: string): number | undefined {
  */
 export function readChromiumMajorVersion(executablePath: string): number | undefined {
   try {
-    const out = execFileSync(executablePath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] });
+    const out = execFileSync(executablePath, ['--version'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: envWithoutSecrets() });
     return parseChromiumMajorVersion(out);
   } catch {
     return undefined;
@@ -268,7 +268,8 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
     ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
     // コンテナは UTC のため、ロケールが ja-JP でも時刻が UTC になる。日本の IP と ja-JP に合わせる（Worker にも届く）。
-    env: { ...process.env, TZ: STEALTH_TIMEZONE },
+    // Sora の秘密（API キー・運送会社の鍵・プロキシの資格情報など）は渡さない（ページから乗っ取られたレンダラーが環境を読める）。プロキシは --proxy-server で渡す。
+    env: { ...envWithoutSecrets(), TZ: STEALTH_TIMEZONE },
   });
 }
 

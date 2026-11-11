@@ -27,6 +27,7 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
+import { envWithoutSecrets } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
@@ -199,8 +200,10 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
     let timer: any = null;
     let isSettled = false;
 
+    // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る
     const child = spawn(YAHOO_MCP_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: envWithoutSecrets(),
     });
 
     timer = setTimeout(() => {
