@@ -68,7 +68,7 @@ export type SearchDietMinutesOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式議事録直結】国会（衆議院・参議院）の本会議・委員会における議員・閣僚・総理大臣の発言・答弁は推測せず、国立国会図書館公式APIにより戦後〜最新（2026年）までの公式議事録全文を検索してください。法律の立法趣旨や政策議論のファクトチェックに必須です。keyword・speaker・nameOfMeeting のどれか1つは必須。返却: { count, totalHits, items: [{ speaker, date, meeting, speech, speechUrl }], source } */
+/** 国会会議録検索 API (衆参両院の本会議・委員会発言記録・議員答弁全文検索) */
 export function searchDietMinutes(input: SearchDietMinutesInput): Promise<SearchDietMinutesOutput> {
   return callSora<SearchDietMinutesOutput>({ method: 'POST', path: '/gov/diet-minutes' }, input);
 }

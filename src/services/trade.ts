@@ -36,7 +36,7 @@ export interface CpscCertificateCheckOptions {
   batteryType?: 'button_coin' | 'other';
   fabricSurface?: 'plain' | 'raised';
   fabricWeightOzPerSqYd?: number;
-  /** 内部用。生地の引数を持たない predict_hts_code は false（衣料の 1610 の質問を出さない） */
+  /** 内部用。生地の引数を持たない HTS の推測（lookup_hts の htsCode なし）は false（衣料の 1610 の質問を出さない） */
   askFabricSpec?: boolean;
 }
 /** 81 FR 12587 の題・掲載・効力の日（Federal Register の本文から写した） */
@@ -314,7 +314,7 @@ function cpscCategoryRegulation(category: string, targetAge: CpscCertificateChec
   );
 }
 
-/** hasBattery: false と batteryType: button_coin は両立しない（check_cpsc_certificate・check_product_compliance・GCC で同じ文） */
+/** hasBattery: false と batteryType: button_coin は両立しない（check_regulations の cpsc・check_product_compliance・GCC で同じ文） */
 export const BATTERY_CONTRADICTION = 'batteryType が button_coin なのに hasBattery が false です。どちらかを直してください';
 
 /** HTSコードおよび横断製品属性（電池・年齢・生地仕様）からCPSC適合証明書(GCC/CCC)の要否とeFiling義務を判定 */
@@ -490,7 +490,7 @@ export async function checkCpscCertificate(
         : d.exemption
           ? '条件に当たらないときは、16 CFR 1610.1(d) の試験の免除に当たらないので、16 CFR 1610 の試験と GCC・eFiling が要ります。'
           : `条件に当たらないときは、16 CFR 1610.1(d) の試験の免除に当たるかで決まります。${
-              askFabric ? d.clarifyingQuestions.join('') : 'check_cpsc_certificate に繊維の組成・生地の表面・重さを渡すと決まります。'
+              askFabric ? d.clarifyingQuestions.join('') : 'check_regulations に繊維の組成・生地の表面・重さを渡すと決まります。'
             }`;
       return {
         certificateRequired: 'unknown',
@@ -564,7 +564,7 @@ export async function checkCpscCertificate(
       clarifyingQuestions: askFabric ? d.clarifyingQuestions : undefined,
       impactExplanation: askFabric
         ? '16 CFR 1610.1(d) の免除に当たるかで、GCC が要るか（Disclaim B か）が変わります。'
-        : '16 CFR 1610.1(d) の免除に当たるかで、GCC が要るか（Disclaim B か）が変わります。check_cpsc_certificate に繊維の組成・生地の表面・重さを渡すと決まります。',
+        : '16 CFR 1610.1(d) の免除に当たるかで、GCC が要るか（Disclaim B か）が変わります。check_regulations に繊維の組成・生地の表面・重さを渡すと決まります。',
     };
   }
 
@@ -1115,7 +1115,7 @@ export async function verifyHtsCode(options: {
     inputCompleteness: 'partial',
     missingInputs: ['validHtsCode'],
     clarifyingQuestions: [
-      '指定されたHTSコードはUSITC公式データに見つかりませんでした。商品の素材・用途・品名から推測ツール（predict_hts_code）を実行するか、最新のHTSコード番号をご確認いただけますか？',
+      '指定されたHTSコードはUSITC公式データに見つかりませんでした。商品の素材・用途・品名から推測（lookup_hts の htsCode を省く）を実行するか、最新のHTSコード番号をご確認いただけますか？',
     ],
     impactExplanation:
       '無効または未存在のHTSコードでは通関時にCBPシステム（ACE）でエラーとなり貨物が保留されるリスクがあります。',

@@ -83,7 +83,7 @@ describe('番地・号まで照合した住所', () => {
     return createAddressContext(built.data);
   };
 
-  test('normalize_address は level 8・numberSource・番地の座標・郵便番号を返す', async () => {
+  test('住所の正規化（normalizeAddressTool）は level 8・numberSource・番地の座標・郵便番号を返す', async () => {
     const result = await normalizeAddressTool({ address: '東京都千代田区永田町1-7-1', zipcode: '100-0014' }, setup8());
     expect(result).toMatchObject({
       level: 8, normalized: '東京都千代田区永田町一丁目7-1', numberSource: 'rsdt', keys: { blk: '7', rsdt: '1' },
@@ -92,7 +92,7 @@ describe('番地・号まで照合した住所', () => {
     });
   });
 
-  test('search_postal_code の逆引きも、番地まで照合した住所で働く', async () => {
+  test('住所から郵便番号の逆引き（searchPostalCode）も、番地まで照合した住所で働く', async () => {
     const result = (await searchPostalCode({ address: '札幌市中央区北1条西2丁目12-3' }, setup8())) as SearchPostalCodeByAddress;
     expect(result).toMatchObject({ level: 8, normalized: '北海道札幌市中央区北１条西二丁目12-3', postalCodes: [{ zipcode: '0600001', exact: true }] });
   });

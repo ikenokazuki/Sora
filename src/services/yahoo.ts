@@ -2344,7 +2344,7 @@ export async function searchYahooVideo(options: YahooVideoSearchOptions): Promis
   if (splitQueryUrls(options.query).urls.length > 0) {
     return {
       source: 'video', query: options.query, count: 0, items: [],
-      message: '検索語が URL です。URL の動画は、YouTube なら get_youtube_transcript、ほかは scrape で読んでください。',
+      message: '検索語が URL です。URL の動画は、YouTube なら get_youtube、ほかは scrape で読んでください。',
     };
   }
   if ((options.updated && options.updated !== 'all') || (options.platform && options.platform !== 'all')) {

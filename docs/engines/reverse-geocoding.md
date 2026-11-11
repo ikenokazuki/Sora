@@ -10,10 +10,10 @@
 
 ## 使うツール
 
-- MCP: `reverse_geocode`
+- MCP: `lookup_address` に `address` なしで `lat` と `lon` を指定する（応答の `mode` は `reverse`）
 - REST: `POST /geo/reverse`、`GET /geo/reverse`
 
-引数は、`lat`（緯度）、`lon`（経度）、`maxDistanceMeters`（番地・号の点を探す範囲。1 から 2000、既定 300）です。
+引数は、`lat`（緯度）、`lon`（経度）、`maxDistanceMeters`（番地・号の点を探す範囲。1 から 2000、既定 300）です。MCP の `lookup_address` では、`lat`・`lon` と `zipcode` を一緒に指定したり、`address` があるのに `maxDistanceMeters` を指定したりすると、正しい使い方を示す入力の誤りです（`address` と `lat`・`lon` は、住所との突き合わせ）。
 
 ## 手元のデータと外への問い合わせ
 

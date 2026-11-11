@@ -65,7 +65,54 @@ export type CheckCpscCertificateOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・即時推測厳禁】米国CPSC適合証明書（GCC/CPC）要否および2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務を判定する際は、推測せず必ず本ツールを実行してください。非対象時のACE免責申告コード(Disclaimer)や根拠条文（16 CFR）を提示します。素材や年齢層が不明な場合は推測で埋めず未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation } */
+/** 米国CPSC適合証明書 (GCC/CCC) eFiling完全義務化 & ACE免責判定 (動的ヒアリング誘導対応) */
 export function checkCpscCertificate(input: CheckCpscCertificateInput): Promise<CheckCpscCertificateOutput> {
   return callSora<CheckCpscCertificateOutput>({ method: 'POST', path: '/trade/cpsc-check' }, input);
+}
+
+export type CheckFdaRegulatedInput = {
+  /** HTSコード（例: "3004.90.0000", "2106.90.9998"） */
+  htsCode: string;
+  /** 食品・飲料接触用途か（true: 接触, false: 非接触）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。ツール側が判定影響と確認質問を返却します */
+  foodContact?: boolean;
+};
+
+export type CheckFdaRegulatedOutput = {
+  /** 米国 FDA 規制対象の可能性が高いか */
+  fdaRegulatedLikely: boolean | "unknown";
+  /** CBP ACE FDA 申告フラグ: "FD1"(条件付き要事前届出/Prior Notice不要), "FD2"(要FDA申告), "FD3"(事前届出・FDA申告双方必要), "FD4"(必須), "none"(非対象) */
+  fdFlag: "FD1" | "FD2" | "FD3" | "FD4" | "none";
+  /** 該当する FDA 監視プログラムコード一覧 (FOO=食品, COS=化粧品, DEV=医療機器, DRU=医薬品等) */
+  possiblePrograms: string[];
+  /** 輸入前の事前通知 (Prior Notice) 義務が発生する可能性があるか */
+  priorNoticeMayApply: boolean;
+  /** Prior Notice が明確に必須か */
+  priorNoticeRequired?: boolean;
+  /** 合致した HTS 6桁コードプレフィックス */
+  matchedSubheading?: string;
+  /** 合致した HTS 類 (Chapter 01〜97) */
+  matchedChapter: string;
+  /** 判定信頼度区分 */
+  confidence: "hts-flag-match" | "chapter-level-estimate";
+  /** 必須となる手続要件一覧 (DUNS番号登録、製造所登録、事前届出等) */
+  requiredActions?: string[];
+  /** 判定精度向上のための不足情報 */
+  missingInfo: string[];
+  /** 輸入手続き上の推奨アクション一覧 */
+  nextActions: string[];
+  /** 免責事項文 */
+  disclaimer: string;
+  /** 入力充足度 */
+  inputCompleteness?: "complete" | "partial";
+  /** 未指定項目一覧 */
+  missingInputs?: string[];
+  /** ユーザーへの確認質問リスト */
+  clarifyingQuestions?: string[];
+  /** 判定分岐の影響説明 */
+  impactExplanation?: string;
+};
+
+/** 米国FDA規制対象 実務判定（PGAフラグ FD1〜FD4・Prior Notice・MoCRA要件・動的ヒアリング誘導対応） */
+export function checkFdaRegulated(input: CheckFdaRegulatedInput): Promise<CheckFdaRegulatedOutput> {
+  return callSora<CheckFdaRegulatedOutput>({ method: 'POST', path: '/trade/fda-check' }, input);
 }

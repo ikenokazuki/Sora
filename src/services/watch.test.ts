@@ -173,7 +173,7 @@ describe('webhookSent は送信の成否を表す', () => {
     expect(changed.webhookSent).toBeUndefined();
   });
 
-  test('watch_check (全件) は変化のあった対象の Webhook をまとめて送り、結果は対象ごと', async () => {
+  test('checkAllWatchTargets（全件の check）は変化のあった対象の Webhook をまとめて送り、結果は対象ごと', async () => {
     process.env.ALLOW_LOCAL_FETCH = 'true';
     // 受け口は、3 件の通知がそろうまでどれにも応答しない。時間に頼らず、同時に来た数で確かめる（1 件ずつ送る作りは止まり、テストの時間切れで落ちる）
     let inFlight = 0;

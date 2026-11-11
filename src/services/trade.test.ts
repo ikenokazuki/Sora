@@ -827,7 +827,7 @@ describe('HTS prediction and product compliance', () => {
       expect(listed.applicableRegulations[0].cfr).toContain('CPSC HTS Guidance List');
     });
 
-    it('does not ask fabric questions from predict_hts_code, which has no fabric arguments', async () => {
+    it('does not ask fabric questions from the HTS prediction (lookup_hts without htsCode), which has no fabric arguments', async () => {
       const res = await predictHtsCode({ productName: "Men's Thermal Undershirt", description: 'cotton knit thermal undershirt', material: 'cotton', targetAge: 'adult' });
       for (const k of ['fabricSurface', 'fabricWeightOzPerSqYd', 'material']) expect(res.missingInputs ?? [], k).not.toContain(k);
     });

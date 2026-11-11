@@ -48,7 +48,7 @@ export type SearchRoadTrafficOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・道路交通情報】日本全国の高速道路・都市高速・主要有料道路のリアルタイム道路交通情報（事故・渋滞・通行止め・車線規制・チェーン規制・工事等）は、推測せず、Yahoo! 道路交通情報のページを読む本ツールで取得してください（応答の source は yahoo-roadway）。返却: { pref, road, updatedAt, hasIssues, summary, items: [{ roadName, direction, status, section, cause }] } */
+/** Yahoo! 道路交通情報 リアルタイム道路交通情報取得 (事故・渋滞・通行止め・車線規制) */
 export function searchRoadTraffic(input: SearchRoadTrafficInput): Promise<SearchRoadTrafficOutput> {
   return callSora<SearchRoadTrafficOutput>({ method: 'POST', path: '/traffic/road' }, input);
 }

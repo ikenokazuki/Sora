@@ -29,7 +29,7 @@ function datasetField(ctx: AddressContext, ids: Iterable<string>): DatasetField 
 }
 
 
-// ---------- search_postal_code ----------
+// ---------- 郵便番号 ⇄ 住所（REST /geo/postal-code。MCP は lookup_address の zipcode だけ） ----------
 
 export interface SearchPostalCodeByZip extends Incomplete {
   zipcode: string;
@@ -89,7 +89,7 @@ export async function searchPostalCode(
   };
 }
 
-// ---------- normalize_address ----------
+// ---------- 住所の正規化（REST /geo/address/normalize。MCP は lookup_address の address） ----------
 
 export interface NormalizeAddressInput {
   address: string;
@@ -177,7 +177,7 @@ export async function normalizeAddressTool(input: NormalizeAddressInput, ctx: Ad
   return result;
 }
 
-// ---------- reverse_geocode ----------
+// ---------- 逆ジオコーディング（REST /geo/reverse。MCP は lookup_address の lat・lon だけ） ----------
 
 export type ReverseGeocodeInput = Omit<ReverseInput, 'waitMs'>;
 export type ReverseGeocodeResult = ReverseResult & { dataset: DatasetField; attribution: string };

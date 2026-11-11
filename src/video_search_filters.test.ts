@@ -123,7 +123,7 @@ describe('the period and platform reach the video search', () => {
     expect((await post({ query: '君と見るそら', platform: 'vimeo' })).status).toBe(400);
   });
 
-  test('the MCP search_video tool lists them and passes them on', async () => {
+  test('the MCP search_media tool (type: video) lists them and passes them on', async () => {
     const video = spyVideo();
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
@@ -131,10 +131,10 @@ describe('the period and platform reach the video search', () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
     try {
-      const tool = (await client.listTools()).tools.find((t) => t.name === 'search_video') as any;
+      const tool = (await client.listTools()).tools.find((t) => t.name === 'search_media') as any;
       expect(tool.inputSchema.properties.updated.enum).toEqual(['all', 'hour', 'day', 'week', 'month', 'year']);
       expect(tool.inputSchema.properties.platform.enum).toEqual(['all', 'youtube', 'tiktok', 'x', 'instagram', 'niconico', 'dailymotion']);
-      await client.callTool({ name: 'search_video', arguments: { query: '君と見るそら MCP', updated: 'day', platform: 'youtube' } });
+      await client.callTool({ name: 'search_media', arguments: { type: 'video', query: '君と見るそら MCP', updated: 'day', platform: 'youtube' } });
       expect(video).toHaveBeenCalledWith(expect.objectContaining({ updated: 'day', platform: 'youtube' }));
     } finally {
       await client.close();

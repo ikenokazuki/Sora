@@ -6,11 +6,11 @@
 
 選ぶ処理を使うのは、次の 3 つです。どれも、`youtube` モジュールが有効なときだけ使えます。`ENABLED_MODULES` が未設定か `all` なら有効です。
 
-- `scrape`（`scrape_batch`・`search_web` の `formats`・`search_deep` の本文取得も同じ）に YouTube の動画 URL を渡したとき。字幕が `maxChars` に収まらなければ、`query` に関係する段落を選びます。
-- `search_video` の `transcripts`（上位の YouTube 動画の何本に字幕を付けるか。0〜5、既定 0）と `transcriptChars`（1 本あたりの最大字数。500〜10,000、既定 2,000）。REST は `POST /search/video` です。
+- `scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` の本文取得も同じ）に YouTube の動画 URL を渡したとき。字幕が `maxChars` に収まらなければ、`query` に関係する段落を選びます。
+- `search_media`（`type: "video"`）の `transcripts`（上位の YouTube 動画の何本に字幕を付けるか。0〜5、既定 0）と `transcriptChars`（1 本あたりの最大字数。500〜10,000、既定 2,000）。REST は `POST /search/video` です。
 - `search_deep` の `videos`（0〜5、既定 0）。
 
-`get_youtube_transcript`（REST は `POST /youtube/transcript`）は、問いで選びません。`fromSec`（既定 0）から `maxChars`（既定 30,000）までを返し、続きは `nextFromSec` で読みます。`get_youtube_channel` は動画の一覧を返すだけで、字幕は読みません。
+`get_youtube` に動画の URL を渡したとき（REST は `POST /youtube/transcript`）は、問いで選びません。`fromSec`（既定 0）から `maxChars`（既定 30,000）までを返し、続きは `nextFromSec` で読みます。チャンネルの URL を渡したとき（REST は `POST /youtube/channel`）は動画の一覧を返すだけで、字幕は読みません。
 
 ## 手元のデータと外への問い合わせ
 
@@ -18,7 +18,7 @@
 
 外へは、呼ばれたときに YouTube へ問い合わせます。動画の題名・説明文・チャプターと、字幕の一覧、字幕の本文を取ります。取り方は YouTube の公開 API ではないため、YouTube の変更で止まることがあります。結果は 30 分、手元のキャッシュに残します。字幕がなかった結果は 60 秒だけ、取得に失敗した結果は残しません。
 
-`search_video` と `search_deep` の `videos` では、動画を見つけるために Yahoo! の動画検索も使います。
+`search_media` の動画と `search_deep` の `videos` では、動画を見つけるために Yahoo! の動画検索も使います。
 
 ## 決め方
 
@@ -46,7 +46,7 @@
 4. **チャプターがあれば、HMM は使わず、点の順に選ぶ。** チャプター名の加点のほうが当たります。HMM を使うと精度が下がりました（「限界」を見てください）。
 5. **予算まで選ぶ。** 順位の高い段落から、字数の予算に収まる限り選びます。収まらない長い段落は飛ばして、次の段落を試します。最初に選ぶ段落は、予算を超えても入れます。選んだ段落は、時刻の順に並べます。
 
-`search_video` の予算は `transcriptChars` です。`scrape` では、字幕全体が `maxChars` に収まれば全部を載せ、収まらないときだけ選びます。そのとき、字幕は `### 1m23s` の見出しの段落にして本文に載せ、チャプターがあればその見出しの下に並べます。字幕の節の先頭に、字幕全体の字数と、選んだことを示す注意を入れます。この本文から、さらに [検索結果から答えの根拠を選ぶ](search-evidence.md) の仕組みで、ハイライトを選びます。
+`search_media` の動画の予算は `transcriptChars` です。`scrape` では、字幕全体が `maxChars` に収まれば全部を載せ、収まらないときだけ選びます。そのとき、字幕は `### 1m23s` の見出しの段落にして本文に載せ、チャプターがあればその見出しの下に並べます。字幕の節の先頭に、字幕全体の字数と、選んだことを示す注意を入れます。この本文から、さらに [検索結果から答えの根拠を選ぶ](search-evidence.md) の仕組みで、ハイライトを選びます。
 
 ## 決められないとき
 
@@ -61,9 +61,9 @@
 | `unavailable` | `blocked`・`request-failed` | YouTube が拒否した、または通信に失敗した。時間をおいて再試行します |
 | `unavailable` | `video-unavailable` | 再生できない動画 |
 
-`get_youtube_transcript` では、再生できない動画は `transcript` がなく、`found: false` と `reason: "video-unavailable"` になります。`ok` 以外のときの `message` には、話している内容を推測で補わないでください、と書いてあります。自動字幕には `note` が付き、聞き間違いを含むことと、引用するときは自動字幕と伝えることを求めます。
+`get_youtube` の動画では、再生できない動画は `transcript` がなく、`found: false` と `reason: "video-unavailable"` になります。`ok` 以外のときの `message` には、話している内容を推測で補わないでください、と書いてあります。自動字幕には `note` が付き、聞き間違いを含むことと、引用するときは自動字幕と伝えることを求めます。
 
-例（架空）: `search_video` に `query: "サンプル講座 第3回 試験範囲"`、`transcripts: 1` を渡したときの、1 本目の `transcript` です。
+例（架空）: `search_media` に `type: "video"`、`query: "サンプル講座 第3回 試験範囲"`、`transcripts: 1` を渡したときの、1 本目の `transcript` です。
 
 ```json
 {
@@ -77,7 +77,7 @@
 }
 ```
 
-字幕全体は 41,200 字あり、問いに関係する 3 段落（1,480 字）を時刻順に返した、という意味です（数字は架空です）。全体は `get_youtube_transcript` で読めます。`excerpt` が `head` なら、問いの語がどの段落にもなく、先頭から返しています。
+字幕全体は 41,200 字あり、問いに関係する 3 段落（1,480 字）を時刻順に返した、という意味です（数字は架空です）。全体は `get_youtube` で読めます。`excerpt` が `head` なら、問いの語がどの段落にもなく、先頭から返しています。
 
 ## 限界
 
@@ -103,7 +103,7 @@
 - 字幕の取得・段落化・選び方・`scrape` 用の本文づくり: `src/services/youtube.ts`
 - 点: `src/extractor/hierarchical_bm25.ts`
 - チャプターの読み取り: `src/html_parser.ts`
-- 動画 URL の振り分け: `src/scraper.ts`、`src/yahoo_search_cache.ts`（`search_video` の字幕）
+- 動画 URL の振り分け: `src/scraper.ts`、`src/yahoo_search_cache.ts`（`search_media` の動画の字幕）
 - ツール: `src/mcp/tools_youtube.ts`、`src/mcp/tools_yahoo.ts`
 - テスト: `src/services/youtube.test.ts`、`src/youtube_module.test.ts`、`src/youtube_search.test.ts`
 - 評価: `eval/youtube_excerpt_cases.json`、`scripts/eval-youtube-excerpt.ts`（YouTube に問い合わせます）、`docs/evaluations/youtube-excerpt/results.md`

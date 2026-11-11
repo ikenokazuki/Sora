@@ -9,7 +9,7 @@
 
 ## 使うツール
 
-- MCP: `get_elevation`（`address` を座標にして標高を返す）、`search_poi`（`center` の地名を座標にして周辺の施設を返す。`withAddress` で施設の住所も調べる）
+- MCP: `get_place_info`（`address` を座標にして、`include` で選んだ情報を返す。既定は標高。座標解決の欄は `location`、標高の欄は `elevation` の節）、`search_poi`（`center` の地名を座標にして周辺の施設を返す。`withAddress` で施設の住所も調べる）
 - REST: `POST /geo/elevation`、`GET /geo/elevation`、`POST /geo/poi`、`GET /geo/poi`
 
 `lat` と `lon` を直接渡したときは、座標の解決をしません。
@@ -55,17 +55,17 @@
 
 ## 決められないとき
 
-- 候補が複数あるときは、先頭を返して `needsVerification: true` にします。呼び出し側は、`matchedTitle`（標高）か `centerResolved.address`（周辺施設）を見て、意図した場所かを確かめます。違うときは、地域名を足して、もう一度呼びます。
-- 座標が決まらないときは、エラーです。`get_elevation` は、REST で 500（`GEO_ERROR`）、MCP でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。広域の検索には切り替えません。
+- 候補が複数あるときは、先頭を返して `needsVerification: true` にします。呼び出し側は、`matchedTitle`（標高。MCP の `get_place_info` では `location.matchedTitle`）か `centerResolved.address`（周辺施設）を見て、意図した場所かを確かめます。違うときは、地域名を足して、もう一度呼びます。
+- 座標が決まらないときは、エラーです。標高は、REST（`/geo/elevation`）で 500（`GEO_ERROR`）、MCP の `get_place_info` でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。広域の検索には切り替えません。
 - 地名・駅名・施設名で Nominatim が HTTP エラーを返したときは、国土地理院に切り替えず、エラーにします。国土地理院は部分一致で別の地名（例: 「渋谷駅」に福島県の「渋谷」）を返すので、国土地理院に回るのは、Nominatim が「該当なし」と答えたときだけです。番地まである住所で国土地理院が使えないときは、Nominatim で探します。
-- 標高が取れなかったときは、`elevationMeters` が `null` で、`formatted` が「測定不能」になります。
+- 標高が取れなかったときは、`elevationMeters` が `null` で、`formatted` が「測定不能」になります（MCP の `get_place_info` では `elevation` の節）。
 - `withAddress` で、住所データが待ち時間に間に合わなかった施設には、`addressIncomplete: true` が付きます。住所を解釈できない施設には、`addressInfo` が付かず、この印も付きません。時間切れと解釈できないことは、この印で区別します。
 
 ## 限界
 
 - Nominatim は OpenStreetMap のデータです。番地まで書いた住所には弱いので、番地まである住所は国土地理院を先に引きます。国土地理院は施設名や駅名が当たらないので、地名・駅名・施設名では補いにだけ使います。OpenStreetMap のデータには出典の表示が必要です。
 - 先頭の候補を採るだけです。同じ名前の別の場所が選ばれることがあります。`needsVerification` が立つのは、上位 3 件が複数の都道府県にまたがるとき、国土地理院で候補が複数のとき、郵便番号が複数の町にまたがるとき、郵便番号の座標が町でなく市区町村の代表点のときだけです。同じ都道府県の中にある同名の地名では、立ちません。
-- 自前のデータは、取得済みの市区町村の分だけです。住所のツール（`normalize_address` など）で一度使った市区町村が対象です。座標の解決は、自前のデータの取得を待たないので、初めて使う市区町村は外部の経路になります。同じ入力でも、時期によって取得元と座標が変わることがあります。
+- 自前のデータは、取得済みの市区町村の分だけです。住所のツール（`lookup_address` など）で一度使った市区町村が対象です。座標の解決は、自前のデータの取得を待たないので、初めて使う市区町村は外部の経路になります。同じ入力でも、時期によって取得元と座標が変わることがあります。
 - 自前のデータの座標は、町や番地の代表点です。建物の位置とは限りません。
 - 地名・駅名・施設名は、自前のデータでは決められません。外部のサービスが使えないときは、決められません。
 - 外部の経路には、入力した地名や住所が送られます。

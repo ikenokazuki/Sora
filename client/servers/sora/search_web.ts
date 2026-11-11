@@ -61,7 +61,7 @@ export type SearchWebOutput = {
   ageSeconds?: number;
 };
 
-/** 【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索します（URL/スニペット探索）。formats を指定すると上位結果を追加スクレイプし、本文や指定形式を同じ呼び出しで返します（同一呼出での本文抽出）。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] } */
+/** 万能Web検索・候補探索 (タイトル・URL・概要スニペット取得) */
 export function searchWeb(input: SearchWebInput): Promise<SearchWebOutput> {
   return callSora<SearchWebOutput>({ method: 'POST', path: '/search/web' }, input);
 }

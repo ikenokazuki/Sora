@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createMcpServer } from '../../src/mcp.js';
 import { generateOpenApiDocument } from '../../src/types.js';
-import { REST_MAP } from '../tool-health/catalog.js';
+import { REST_MAP, restRoutesOf, type RestMap } from '../tool-health/catalog.js';
 import { NOTATION_ALLOWLIST } from './allowlist.js';
 
 export type Surface = 'mcp' | 'rest';
@@ -48,7 +48,7 @@ const sortedEnum = (s: any) => { const e = enumOf(s); return e?.length ? [...e].
 
 export function findNotationIssues(
   params: Param[],
-  pairs: Record<string, { method: string; path: string } | null>,
+  pairs: RestMap,
   allow: Record<string, string> = {},
 ): Finding[] {
   const out: Finding[] = [];
@@ -83,12 +83,16 @@ export function findNotationIssues(
   }
   const restByOwner = new Map<string, Param[]>();
   for (const p of params) if (p.surface === 'rest') restByOwner.set(p.owner, [...(restByOwner.get(p.owner) ?? []), p]);
+  // 複数のルートを持つツールは、同じ名前の引数を持つ最初のルートと比べる。どのルートにも無い引数（モードにだけ効く引数）は比べない。
   for (const p of params) {
     if (p.surface !== 'mcp') continue;
-    const route = pairs[p.owner];
-    if (!route) continue;
-    const owner = `${route.method.toUpperCase()} ${route.path.replace(/:(\w+)/g, '{$1}')}`;
-    const twin = (restByOwner.get(owner) ?? []).find((r) => r.path === p.path || r.path === `query:${p.path}` || r.path === `path:${p.path}`);
+    let owner = '';
+    let twin: Param | undefined;
+    for (const route of restRoutesOf(p.owner, pairs)) {
+      owner = `${route.method.toUpperCase()} ${route.path.replace(/:(\w+)/g, '{$1}')}`;
+      twin = (restByOwner.get(owner) ?? []).find((r) => r.path === p.path || r.path === `query:${p.path}` || r.path === `path:${p.path}`);
+      if (twin) break;
+    }
     if (!twin) continue;
     const a = p.schema ?? {}, b = twin.schema ?? {};
     const diffs: string[] = [];
@@ -210,13 +214,14 @@ export async function scanReturnNotes(): Promise<Finding[]> {
     const doc: any = generateOpenApiDocument();
     for (const tool of (await client.listTools()).tools) {
       const note = (tool.description ?? '').match(/返却[:：]\s*(\{.*)$/s)?.[1];
-      const route = REST_MAP[tool.name];
-      if (!note || !route) continue;
-      const op = doc.paths[route.path.replace(/:(\w+)/g, '{$1}')]?.[route.method.toLowerCase()];
-      const schema = op?.responses?.['200']?.content?.['application/json']?.schema;
-      const props = Object.keys(schema?.properties ?? {});
+      if (!note) continue;
+      // 複数のルートを持つツールは、どれかのルートの応答にあればよい。
+      const schemas = restRoutesOf(tool.name)
+        .map((route) => doc.paths[route.path.replace(/:(\w+)/g, '{$1}')]?.[route.method.toLowerCase()]?.responses?.['200']?.content?.['application/json']?.schema)
+        .filter((schema) => Object.keys(schema?.properties ?? {}).length);
+      const props = schemas.flatMap((schema) => Object.keys(schema.properties));
       if (!props.length) continue;
-      const missing = noteKeyPaths(note).filter((path) => !schemaHasPath(schema, path));
+      const missing = noteKeyPaths(note).filter((path) => !schemas.some((schema) => schemaHasPath(schema, path)));
       const key = `${tool.name} 返却`;
       if (missing.length && !NOTATION_ALLOWLIST[`return_note_mismatch ${key}`]) {
         out.push({ kind: 'return_note_mismatch', key, detail: `missing ${JSON.stringify(missing)} in ${JSON.stringify(props)}` });

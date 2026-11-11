@@ -3,7 +3,7 @@ import { app } from './index.js';
 import * as httpFetcher from './http_fetcher.js';
 import { clearCache, fetchRealtimeTrends, resolveTrendLimit } from './scraper.js';
 
-// search_trend のキャッシュ。以前は固定キー（trends:realtime）に、件数で切ったあとの配列を保存していた。
+// 急上昇トレンド（search_keywords の query なし・REST の /search/trend）のキャッシュ。以前は固定キー（trends:realtime）に、件数で切ったあとの配列を保存していた。
 // limit=5 で呼んだ直後に limit=50 で呼ぶと 5 件しか返らず、REST では limit に負数や文字列を渡すだけで
 // 他の利用者の結果も 2 分間おかしくなった（負数は slice(0, -n) で末尾を落とし、文字列の NaN は 0 件になる）。
 

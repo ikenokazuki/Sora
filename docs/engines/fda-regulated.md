@@ -2,15 +2,15 @@
 
 米国へ輸入する品は、食品・医薬品・化粧品・医療機器・タバコ・食品に触れる器具などだと、FDA（米国食品医薬品局）の規制がかかります。通関の実務では、CBP（米国税関）の通関システム ACE で、FDA への申告の要否を PGA（Partner Government Agency。FDA など他省庁向けの申告項目）フラグ（FDA 向けは FD1〜FD4）で分けます。HTS コード（米国の関税率表の番号）を見ても、どのフラグになるかは書かれていません。
 
-`check_fda_regulated` は、HTS コードから、FDA の規制対象の可能性・FD フラグ・関係する FDA のプログラム・事前通知（Prior Notice）の要否を決めます。食器のように、用途で答えが変わる品は、推測せず質問にします。
+`check_regulations` の `fda` は、HTS コードから、FDA の規制対象の可能性・FD フラグ・関係する FDA のプログラム・事前通知（Prior Notice）の要否を決めます。食器のように、用途で答えが変わる品は、推測せず質問にします。
 
 FD フラグは、FD1 が用途により該当（食品に触れる物質）、FD2 が食品以外で必須（医薬品・化粧品・医療機器・タバコ）、FD3 が用途により食品、FD4 が食品で必須（事前通知が要る）です。
 
 ## 使うツール
 
-- MCP: `check_fda_regulated`（モジュール `trade` の遅延ツールです。`search_tools` で有効化します）。
+- MCP: `check_regulations`（モジュール `trade` の遅延ツールです。`search_tools` で有効化します）。`agencies` に `fda` を含むと（既定は `cpsc` と `fda` の両方）、応答の `fda` の節がこの判定です。FDA だけなら `agencies: ["fda"]` です。
 - REST: `POST /trade/fda-check`。
-- 内部では、`predict_hts_code`（[hts-prediction.md](hts-prediction.md)）、`check_product_compliance`（[product-compliance.md](product-compliance.md)）、`generate_gcc_certificate` の FDA の注記（[gcc-certificate.md](gcc-certificate.md)）が同じ判定を使います。
+- 内部では、HTS の推測（`lookup_hts`。[hts-prediction.md](hts-prediction.md)）、`check_product_compliance`（[product-compliance.md](product-compliance.md)）、`generate_gcc_certificate` の FDA の注記（[gcc-certificate.md](gcc-certificate.md)）が同じ判定を使います。
 
 ## 手元のデータと外への問い合わせ
 
@@ -59,7 +59,7 @@ FD フラグは、FD1 が用途により該当（食品に触れる物質）、F
 - 章の表は、章の全体を同じに扱います。第 3〜23 類は、その章の中の食品でない品も、食品（FD4・事前通知）の案内になります。第 33 類のうち表にない 3306（歯磨き）は、章の推定で化粧品になります。第 90 類は、光学機器など対象外の品も混ざるので、個別の確認が要ります。
 - 施設登録・事前通知・個別の承認など、FDA の要件の中身は、案内の 1 行です。詳細は FDA の公式で確かめてください。
 - 食品に触れる物質の案内文にある CPG の番号（Sec. 545.400・545.450）と 21 CFR 175〜177 は、公式の最新の条文と突き合わせていません。Prior Notice の免除の条文（21 CFR 1.276(b)(5)(i)(A)）は、公式の条文で確かめてあります。
-- HTS コードが実在するかは確かめません。実在の確認は `verify_hts_code` です。
+- HTS コードが実在するかは確かめません。実在の確認は `lookup_hts`（`htsCode` を渡す）です。
 - 参考情報で、法的助言ではありません（応答の `disclaimer`）。
 
 ## 実装とテスト

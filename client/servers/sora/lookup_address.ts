@@ -104,7 +104,127 @@ export type NormalizeAddressOutput = {
   attribution: string;
 };
 
-/** 【住所正規化・番地号照合・突き合わせ】与えられた住所を番地・号（level 8）まで照合・正規化し、緯度経度・結合キーを付与します（デジタル庁ABR一次データ）。郵便番号・別座標・相手住所との突き合わせ（名寄せ）にも対応。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。返却: { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution } */
+/** 住所の正規化と、郵便番号・座標・住所同士の突き合わせ API (番地・号まで照合) */
 export function normalizeAddress(input: NormalizeAddressInput): Promise<NormalizeAddressOutput> {
   return callSora<NormalizeAddressOutput>({ method: 'POST', path: '/geo/address/normalize' }, input);
+}
+
+export type ReverseGeocodeInput = {
+  /** 緯度 */
+  lat: number;
+  /** 経度 */
+  lon: number;
+  /** 番地・号の点を探す範囲m (既定 300、最大 2000) */
+  maxDistanceMeters?: number;
+};
+
+export type ReverseGeocodeOutput = {
+  lat: number;
+  lon: number;
+  found: boolean;
+  /** found が false の理由 */
+  reason?: string;
+  /** 見つけた住所の構成要素 */
+  address?: {
+    pref: string;
+    city: string;
+    town?: string;
+    /** 番地・号 (level 8 のみ) */
+    addr?: string;
+  };
+  normalized?: string;
+  /** 8 番地・号 / 3 町字 / 2 市区町村 / 0 見つからない */
+  level: number;
+  /** 番地・号の点の出所。mlit は国土交通省の街区の点で、ABR の点が範囲内に無いときだけ (point.level は 7、号は無い) */
+  numberSource: "rsdt" | "chiban" | "mlit" | null;
+  /** 見つけた点 (番地・号、街区、町字、市区町村の代表点) */
+  point?: {
+    lat: number;
+    lon: number;
+    level: number;
+  };
+  /** 最寄りの点までの距離。ポリゴンの包含判定ではなく代表点による最寄り判定 */
+  distanceMeters?: number;
+  approximate?: boolean;
+  keys: Record<string, unknown>;
+  postalCodes?: {
+    zipcode: string;
+  }[];
+  alternatives?: Record<string, unknown>[];
+  /** 待ち時間までにデータが揃わず、取れている範囲で答えた。数秒後の再呼び出しで完全になる */
+  incomplete?: boolean;
+  /** 取得中のデータ */
+  pending?: string[];
+  /** 答えに使ったデータの新しさ */
+  dataset: {
+    source: string;
+    /** 使ったデータのうち最も古い取得元の最終更新日 (YYYY-MM-DD) */
+    updatedAt: string | null;
+    /** 確認日時が期限の2倍を超えたデータを使った */
+    stale: boolean;
+  };
+  /** 出典・加工の明記。結果を表示・公開する際に必ず併記する */
+  attribution: string;
+};
+
+/** 緯度経度 → 住所 (逆ジオコーディング) API。代表点による最寄り判定 */
+export function reverseGeocode(input: ReverseGeocodeInput): Promise<ReverseGeocodeOutput> {
+  return callSora<ReverseGeocodeOutput>({ method: 'POST', path: '/geo/reverse' }, input);
+}
+
+export type SearchPostalCodeInput = {
+  /** 郵便番号 (例: "100-0014", "〒100-0014")。住所候補を引く。address とは排他 */
+  zipcode?: string;
+  /** 住所 (例: "東京都千代田区永田町1-7-1")。郵便番号を引く。zipcode とは排他 */
+  address?: string;
+};
+
+export type SearchPostalCodeOutput = {
+  /** 順引き時の 7 桁の郵便番号 */
+  zipcode?: string;
+  /** 順引き時の候補数。該当なしは 0 */
+  count?: number;
+  candidates?: {
+    kind: "general" | "office" | "po_box";
+    prefecture: string;
+    city: string;
+    town: string;
+    /** 事業所の小字・丁目・番地等 */
+    detail?: string;
+    /** 事業所名 (office / po_box のみ) */
+    office?: string;
+    lgCode?: string;
+    lat?: number;
+    lon?: number;
+    /** 座標の細かさ。2 市区町村 / 3 町字 / 8 番地 */
+    locationLevel?: number;
+  }[];
+  address?: string;
+  normalized?: string;
+  level?: number;
+  /** 逆引き時の郵便番号。fallback は市区町村の既定番号 */
+  postalCodes?: {
+    zipcode: string;
+    exact: boolean;
+    fallback: boolean;
+  }[];
+  /** 待ち時間までにデータが揃わず、取れている範囲で答えた。数秒後の再呼び出しで完全になる */
+  incomplete?: boolean;
+  /** 取得中のデータ */
+  pending?: string[];
+  /** 答えに使ったデータの新しさ */
+  dataset: {
+    source: string;
+    /** 使ったデータのうち最も古い取得元の最終更新日 (YYYY-MM-DD) */
+    updatedAt: string | null;
+    /** 確認日時が期限の2倍を超えたデータを使った */
+    stale: boolean;
+  };
+  /** 出典・加工の明記。結果を表示・公開する際に必ず併記する */
+  attribution: string;
+};
+
+/** 郵便番号 ⇄ 住所候補 API (ABR・日本郵便データを必要な範囲だけ取得して使う) */
+export function searchPostalCode(input: SearchPostalCodeInput): Promise<SearchPostalCodeOutput> {
+  return callSora<SearchPostalCodeOutput>({ method: 'POST', path: '/geo/postal-code' }, input);
 }

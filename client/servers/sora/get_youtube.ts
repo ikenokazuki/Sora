@@ -96,7 +96,59 @@ export type GetYoutubeTranscriptOutput = {
   ageSeconds?: number;
 };
 
-/** 【YouTube 動画の字幕・説明文】YouTube の URL か動画 ID から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。返却: { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks } */
+/** YouTube 動画の題名・説明文・チャプターと時刻つきの字幕 (手動の字幕、無ければ YouTube の自動字幕) */
 export function getYoutubeTranscript(input: GetYoutubeTranscriptInput): Promise<GetYoutubeTranscriptOutput> {
   return callSora<GetYoutubeTranscriptOutput>({ method: 'POST', path: '/youtube/transcript' }, input);
+}
+
+export type GetYoutubeChannelInput = {
+  /** YouTube のチャンネルの URL (/@ハンドル・/channel/UC…・/c/名前・/user/名前)、@ハンドル、UC で始まる 24 文字のチャンネル ID */
+  url: string;
+  /** 返す動画の最大数 (デフォルト: 10, 最大: 15) */
+  limit?: number;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type GetYoutubeChannelOutput = {
+  /** チャンネルを見つけたか */
+  found: boolean;
+  /** found が false の理由: "channel-not-found"(チャンネルが無い・削除された) */
+  reason?: "channel-not-found";
+  /** found が false のときの説明 */
+  message?: string;
+  /** チャンネル ID (UC で始まる 24 文字) */
+  channelId?: string;
+  /** チャンネル名 */
+  title?: string;
+  /** チャンネルの URL (https://www.youtube.com/channel/UC...) */
+  url?: string;
+  /** 最新の動画。新しい順 (found が true のときのみ。動画が無いチャンネルは空) */
+  videos?: {
+    /** 動画 ID */
+    videoId: string;
+    /** 動画の URL (https://www.youtube.com/watch?v=...) */
+    url: string;
+    /** 動画の題名 */
+    title: string;
+    /** 公開日時 (ISO 8601) */
+    publishedAt?: string;
+    /** 更新日時 (ISO 8601。題名や説明文を直すと変わる) */
+    updatedAt?: string;
+    /** 説明文の先頭 500 字 */
+    description?: string;
+    /** 視聴回数 (フィードに載っていたときのみ。少し古いことがある) */
+    views?: number;
+  }[];
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** YouTube チャンネルの最新の動画 (題名・公開日・説明文・視聴回数。新しい順に最大 15 件。字幕は /youtube/transcript で読む) */
+export function getYoutubeChannel(input: GetYoutubeChannelInput): Promise<GetYoutubeChannelOutput> {
+  return callSora<GetYoutubeChannelOutput>({ method: 'POST', path: '/youtube/channel' }, input);
 }

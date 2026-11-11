@@ -36,7 +36,46 @@ export type SearchLawsOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source } */
+/** e-Gov 法令 API v2 キーワード法令検索 */
 export function searchLaws(input: SearchLawsInput): Promise<SearchLawsOutput> {
   return callSora<SearchLawsOutput>({ method: 'POST', path: '/gov/laws' }, input);
+}
+
+export type GetLawTextInput = {
+  /** e-Gov 法令 ID (例: "129AC0000000089") */
+  lawId: string;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type GetLawTextOutput = {
+  /** e-Gov 法令 ID */
+  id: string;
+  /** 正式法令名称 */
+  title: string;
+  /** 法令番号 */
+  lawNum: string;
+  /** 制定元号 (明治、大正、昭和、平成、令和) */
+  era?: string;
+  /** 法令種別 */
+  lawType?: string;
+  /** 施行期日・施行年月日 */
+  enforcementDate?: string;
+  /** 法令条文全文 Markdown (章・条・項・号階層化) */
+  markdown: string;
+  /** 収録条文数 */
+  articleCount?: number;
+  /** ソース ("e-gov") */
+  source: "e-gov";
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** e-Gov 法令 API v2 法令条文・本文詳細取得 (Markdown 構造化) */
+export function getLawText(input: GetLawTextInput): Promise<GetLawTextOutput> {
+  return callSora<GetLawTextOutput>({ method: 'POST', path: '/gov/law-text' }, input);
 }

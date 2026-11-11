@@ -99,7 +99,7 @@ export type GetWeatherOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: "天童市", "軽井沢", "石垣島"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] } */
+/** 気象庁公式オープンデータ 天気予報・概況文 */
 export function getWeather(input: GetWeatherInput): Promise<GetWeatherOutput> {
   return callSora<GetWeatherOutput>({ method: 'POST', path: '/weather' }, input);
 }

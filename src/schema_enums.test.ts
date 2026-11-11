@@ -23,7 +23,7 @@ describe('enumerated inputs', () => {
       };
       for (const t of tools) walk(t.inputSchema, t.name);
       expect(bad).toEqual([]);
-      const eq = await client.callTool({ name: 'search_earthquake', arguments: { minIntensity: 35 } });
+      const eq = await client.callTool({ name: 'get_disaster_info', arguments: { minIntensity: 35 } });
       expect(eq.isError).toBe(true);
     } finally {
       await client.close();
