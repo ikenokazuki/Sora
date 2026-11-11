@@ -31,6 +31,7 @@ const expected: Record<string, string[]> = {
   search_keywords: ['query', 'limit'],
   lookup_address: ['address', 'zipcode', 'lat', 'lon', 'level', 'compareAddress', 'maxDistanceMeters'],
   get_place_info: ['address', 'lat', 'lon', 'noCache', 'include'],
+  get_disaster_info: ['city', 'areaCode', 'limit', 'minIntensity', 'include'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -51,7 +52,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info）の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords・lookup_address・get_place_info・get_disaster_info）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -876,6 +877,134 @@ describe('get_place_info: address か lat・lon の地点の情報を、include 
   });
 });
 
+describe('get_disaster_info: 警報・注意報（city・areaCode）と地震（limit・minIntensity）を、include で選んで返す（旧 search_disaster_warnings・search_earthquake）', () => {
+  const WARNINGS = { areaCode: '1310400', areaName: '新宿区', prefecture: '東京都', reportTime: '2026-11-11T05:00:00+09:00', warnings: [], advisories: [{ code: '14', name: '雷注意報', status: '発表' }] };
+  const QUAKES = { count: 1, earthquakes: [{ id: '20261111125704', time: '2026/11/11 12:57:00', maxScale: '震度1', maxScaleRaw: 10, tsunami: '津波の心配なし', source: 'jma' }] };
+  /** 2 つのサービスを差し替える（外には問い合わせない） */
+  const mockAll = () => {
+    const warnings = spyOn(scraper, 'fetchWeatherWarnings').mockResolvedValue(WARNINGS as any);
+    const quakes = spyOn(scraper, 'fetchRecentEarthquakes').mockResolvedValue(QUAKES as any);
+    restore.push(() => { warnings.mockRestore(); quakes.mockRestore(); });
+    return { warnings, quakes };
+  };
+  const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'get_disaster_info', arguments: args })) as Promise<any>;
+  const body = (res: any) => JSON.parse(textOf(res));
+
+  test('city があれば警報だけ: warnings の節は旧 search_disaster_warnings の応答のまま（地震は取らない）', async () => {
+    const { warnings, quakes } = mockAll();
+    const res = await call({ city: '新宿区' });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    const out = body(res);
+    expect(Object.keys(out)).toEqual(['include', 'warnings']);
+    expect(out).toEqual({ include: ['warnings'], warnings: WARNINGS });
+    expect(warnings.mock.calls[0][0]).toEqual({ city: '新宿区' });
+    expect(quakes).not.toHaveBeenCalled();
+  });
+
+  test('areaCode だけでも警報。サービスには旧ツールの引数だけを渡す', async () => {
+    const { warnings, quakes } = mockAll();
+    expect(body(await call({ areaCode: '13' })).include).toEqual(['warnings']);
+    expect(warnings.mock.calls[0][0]).toEqual({ areaCode: '13' });
+    expect(quakes).not.toHaveBeenCalled();
+  });
+
+  test('city も areaCode も無ければ地震だけ: earthquake の節は旧 search_earthquake の応答（{ count, earthquakes }）のまま', async () => {
+    const { warnings, quakes } = mockAll();
+    const out = body(await call({}));
+    expect(out).toEqual({ include: ['earthquake'], earthquake: QUAKES });
+    expect(quakes.mock.calls[0][0]).toEqual({});
+    expect(warnings).not.toHaveBeenCalled();
+    await call({ limit: 3, minIntensity: 40 });
+    expect(quakes.mock.calls[1][0]).toEqual({ limit: 3, minIntensity: 40 });
+  });
+
+  test('両方は include: ["warnings","earthquake"] で、節を 2 つ返す（順序は登録順、重複は 1 つ）', async () => {
+    const { warnings, quakes } = mockAll();
+    const out = body(await call({ include: ['earthquake', 'warnings', 'earthquake'], areaCode: '13', limit: 2 }));
+    expect(Object.keys(out)).toEqual(['include', 'warnings', 'earthquake']);
+    expect(out).toEqual({ include: ['warnings', 'earthquake'], warnings: WARNINGS, earthquake: QUAKES });
+    expect(warnings.mock.calls[0][0]).toEqual({ areaCode: '13' });
+    expect(quakes.mock.calls[0][0]).toEqual({ limit: 2 });
+  });
+
+  test('include: ["earthquake"] を明示すれば、city が無くても地震（既定と同じ）', async () => {
+    mockAll();
+    expect(body(await call({ include: ['earthquake'], limit: 1 }))).toEqual({ include: ['earthquake'], earthquake: QUAKES });
+  });
+
+  test('取得の失敗は、旧ツールと同じ文（Disaster warnings error・Earthquake search error）', async () => {
+    const w = spyOn(scraper, 'fetchWeatherWarnings').mockRejectedValue(new Error('地名「ほげほげ」が見つかりません'));
+    const q = spyOn(scraper, 'fetchRecentEarthquakes').mockRejectedValue(new Error('unavailable'));
+    restore.push(() => { w.mockRestore(); q.mockRestore(); });
+    const bad = await call({ city: 'ほげほげ' });
+    expect(bad.isError).toBe(true);
+    expect(textOf(bad)).toBe('Disaster warnings error: 地名「ほげほげ」が見つかりません');
+    const down = await call({ limit: 2 });
+    expect(down.isError).toBe(true);
+    expect(textOf(down)).toBe('Earthquake search error: unavailable');
+  });
+
+  // 誤った組み合わせ・使えない include: 取得しない（外に問い合わせない）
+  const WITH_WARNINGS = 'include に warnings を含むとき';
+  const WITH_EARTHQUAKE = 'include に earthquake を含むとき';
+  const wrong: Array<[string, Record<string, unknown>, string[]]> = [
+    ['include: ["warnings"] で地域なし', { include: ['warnings'] }, ['include の warnings には city か areaCode が必要です']],
+    ['include: ["warnings"] で空の city・areaCode', { include: ['warnings'], city: '', areaCode: '' }, ['include の warnings には city か areaCode が必要です']],
+    ['include が空', { city: '新宿区', include: [] }, ['include に、返す情報を 1 つ以上指定してください']],
+    ['include に使えない値', { include: ['earthquake', 'typhoon'] }, ['include に使えない値があります: typhoon']],
+    ['city と limit: 3（既定値の 5 と違う）', { city: '新宿区', limit: 3 }, [`limit は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
+    ['areaCode と minIntensity: 40', { areaCode: '13', minIntensity: 40 }, [`minIntensity は ${WITH_EARTHQUAKE}だけ指定できます（いま: include: ["warnings"]）`]],
+    ['include: ["earthquake"] と city', { include: ['earthquake'], city: '新宿区' }, [`city は ${WITH_WARNINGS}だけ指定できます（いま: include: ["earthquake"]）`]],
+    ['include: ["earthquake"] と city・areaCode', { include: ['earthquake'], city: '新宿区', areaCode: '13' }, [`city, areaCode は ${WITH_WARNINGS}だけ指定できます（いま: include: ["earthquake"]）`]],
+  ];
+  for (const [label, args, mentions] of wrong) {
+    test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
+      const spies = mockAll();
+      const res = await call(args);
+      expect(res.isError).toBe(true);
+      const text = textOf(res);
+      expect(text).toContain('入力の誤り');
+      for (const m of mentions) expect(text).toContain(m);
+      expect(text).not.toContain('モード');
+      // 正しい使い方（include の値と、それぞれの引数）を添える
+      for (const key of ['include', 'warnings', 'earthquake', 'city', 'areaCode', 'limit', 'minIntensity']) expect(text).toContain(key);
+      for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
+    });
+  }
+
+  test('空の city は、指定しなかったのと同じ（地震を返す）', async () => {
+    const { warnings, quakes } = mockAll();
+    expect(body(await call({ city: '' })).include).toEqual(['earthquake']);
+    expect(warnings).not.toHaveBeenCalled();
+    expect(quakes).toHaveBeenCalledTimes(1);
+  });
+
+  // LLM は、スキーマの default をそのまま引数に入れることがある。地震を返さないときでも、既定値と同じ値は断らない（使わない）
+  test('city + limit: 5・minIntensity: 10（既定値と同じ）は通り、地震は取らない', async () => {
+    const { warnings, quakes } = mockAll();
+    const res = await call({ city: '新宿区', limit: 5, minIntensity: 10 });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(body(res).include).toEqual(['warnings']);
+    expect(warnings.mock.calls[0][0]).toEqual({ city: '新宿区' });
+    expect(quakes).not.toHaveBeenCalled();
+  });
+
+  test('スキーマの limit・minIntensity の既定値は 5・10 で、警報だけのときにその値をそのまま入れても通る', async () => {
+    mockAll();
+    await withClient(async (client) => {
+      const props = ((await client.listTools()).tools.find((t) => t.name === 'get_disaster_info')!.inputSchema as any).properties;
+      expect([props.limit.default, props.minIntensity.default]).toEqual([5, 10]);
+      // Gemini は数の enum を受けない: MCP は範囲だけを出す（値は refine で確かめる）
+      expect([props.minIntensity.minimum, props.minIntensity.maximum, props.minIntensity.enum]).toEqual([10, 70, undefined]);
+      for (const key of ['limit', 'minIntensity']) {
+        const res: any = await client.callTool({ name: 'get_disaster_info', arguments: { areaCode: '13', [key]: props[key].default } });
+        expect(res.isError, `${key}: ${textOf(res)}`).toBeFalsy();
+      }
+      expect((await client.callTool({ name: 'get_disaster_info', arguments: { minIntensity: 35 } })).isError).toBe(true);
+    });
+  });
+});
+
 describe('旧名で search_tools を引くと、統合先が見つかる', () => {
   test.each([
     ['scrape_batch', 'scrape', 'web'],
@@ -892,6 +1021,10 @@ describe('旧名で search_tools を引くと、統合先が見つかる', () =>
     ['get_elevation', 'get_place_info', 'disaster'],
     ['標高', 'get_place_info', 'disaster'],
     ['海抜', 'get_place_info', 'disaster'],
+    ['search_disaster_warnings', 'get_disaster_info', 'disaster'],
+    ['search_earthquake', 'get_disaster_info', 'disaster'],
+    ['特別警報', 'get_disaster_info', 'disaster'],
+    ['震度', 'get_disaster_info', 'disaster'],
   ])('%s → %s', async (oldName, newName, category) => {
     const server = createMcpServer({ deferTools: true });
     const res = await (server as any)._registeredTools['search_tools'].handler({ query: oldName, detail: 'names', activate: false });

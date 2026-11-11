@@ -68,7 +68,69 @@ export type SearchDisasterWarningsOutput = {
   ageSeconds?: number;
 };
 
-/** 【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、古いWeb情報に頼らず必ず本ツールで市区町村単位にリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] } */
+/** 【気象庁公式・防災速報直結】特別警報・危険警報・警報・注意報（大雨・土砂災害・暴風・大雪・波浪等。河川の氾濫は含まない）と最新の地震（震源・マグニチュード・最大震度・津波）は推測せず本ツールで取得。includeで選ぶ（既定はcity/areaCodeがあればwarnings、無ければearthquake）。返却: { include, warnings: { areaName, warnings }, earthquake: { count, earthquakes } } */
 export function searchDisasterWarnings(input: SearchDisasterWarningsInput): Promise<SearchDisasterWarningsOutput> {
   return callSora<SearchDisasterWarningsOutput>({ method: 'POST', path: '/disaster/warnings' }, input);
+}
+
+export type SearchEarthquakeInput = {
+  /** 取得件数 (1〜20, デフォルト: 5) */
+  limit?: number;
+  /** 最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10) */
+  minIntensity?: 10 | 20 | 30 | 40 | 45 | 50 | 55 | 60 | 70;
+  /** キャッシュをバイパスするか */
+  noCache?: boolean;
+};
+
+export type SearchEarthquakeOutput = {
+  /** 取得件数 */
+  count: number;
+  /** 地震情報履歴配列 (新着順) */
+  earthquakes: {
+    /** 地震情報 ID */
+    id: string;
+    /** 発生日時 (例: "2026/09/10 12:00:00") */
+    time: string;
+    /** 震源情報 */
+    hypocenter: {
+      /** 震央地名 (例: "茨城県南部", "能登半島沖") */
+      name: string;
+      /** マグニチュード (M) */
+      magnitude: number;
+      /** 震源の深さ (km) */
+      depthKm?: number;
+      /** 震源の緯度 */
+      latitude?: number;
+      /** 震源の経度 */
+      longitude?: number;
+    };
+    /** 最大震度表示名 (例: "震度3", "震度5弱") */
+    maxScale: string;
+    /** 最大震度コード (10=震度1, 45=震度5弱, 70=震度7等) */
+    maxScaleRaw: number;
+    /** 津波の有無・影響 (例: "この地震による津波の心配はありません。") */
+    tsunami: string;
+    /** 情報ソース */
+    source: "p2pquake" | "jma";
+    /** 各地の観測震度一覧 */
+    points?: {
+      /** 都道府県 */
+      pref: string;
+      /** 観測地点名 */
+      addr: string;
+      /** 観測震度 */
+      scale: string;
+    }[];
+  }[];
+  /** キャッシュから返したか（キャッシュから返した時だけ true） */
+  cached?: boolean;
+  /** キャッシュに保存した日時 (ISO 8601。キャッシュから返した時のみ) */
+  cachedAt?: string;
+  /** キャッシュに保存してからの経過秒数（キャッシュから返した時のみ） */
+  ageSeconds?: number;
+};
+
+/** 【気象庁公式・防災速報直結】特別警報・危険警報・警報・注意報（大雨・土砂災害・暴風・大雪・波浪等。河川の氾濫は含まない）と最新の地震（震源・マグニチュード・最大震度・津波）は推測せず本ツールで取得。includeで選ぶ（既定はcity/areaCodeがあればwarnings、無ければearthquake）。返却: { include, warnings: { areaName, warnings }, earthquake: { count, earthquakes } } */
+export function searchEarthquake(input: SearchEarthquakeInput): Promise<SearchEarthquakeOutput> {
+  return callSora<SearchEarthquakeOutput>({ method: 'POST', path: '/disaster/earthquake' }, input);
 }

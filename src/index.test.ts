@@ -995,7 +995,7 @@ describe('Sora REST & MCP Endpoints', () => {
     ]);
   });
 
-  it('POST /mcp should respond to initial tools/list with 14 core tools', async () => {
+  it('POST /mcp should respond to initial tools/list with 13 core tools', async () => {
     const req = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1037,12 +1037,11 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(toolNames).toContain('search_route');
     expect(toolNames).toContain('search_chiebukuro');
     expect(toolNames).toContain('search_realtime');
-    expect(toolNames).toContain('search_disaster_warnings');
-    expect(toolNames).toContain('search_earthquake');
+    expect(toolNames).toContain('get_disaster_info');
     expect(toolNames).toContain('search_laws');
     expect(toolNames).toContain('search_social_posts');
     expect(toolNames).toContain('fetch_social_post');
-    expect(toolNames.length).toBe(14);
+    expect(toolNames.length).toBe(13);
   });
 
   it('McpSessionManager should dynamically enable standby tools via search_tools in stateful session', async () => {
@@ -1092,7 +1091,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
     await manager.handleRequest(notifyReq);
 
-    // 2. Initial tools/list (should be 11 core tools)
+    // 2. Initial tools/list (should be 13 core tools)
     const listReq1 = new Request('http://localhost/mcp', {
       method: 'POST',
       headers: {
@@ -1108,7 +1107,7 @@ describe('Sora REST & MCP Endpoints', () => {
     const names1 = listBody1.result.tools.map((t: any) => t.name);
     expect(names1).toContain('search_social_posts');
     expect(names1).toContain('fetch_social_post');
-    expect(names1.length).toBe(14);
+    expect(names1.length).toBe(13);
     expect(names1).toContain('scrape');
     expect(names1).toContain('search_deep');
     expect(names1).toContain('search_web');
@@ -3631,7 +3630,7 @@ describe('Sora REST & MCP Endpoints', () => {
     }
     expect(body?.result).toBeDefined();
     expect(Array.isArray(body.result.tools)).toBe(true);
-    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(45);
+    expect(body.result.tools.filter((tool: any) => !tool.name.startsWith('default.')).length).toBe(44);
     expect(body.result.tools.filter((tool: any) => tool.name.startsWith('default.')).length).toBe(31);
 
     // 全登録ツールの inputSchema に非互換フィールドが含まれないことを再帰検査
@@ -4097,12 +4096,12 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(resFlightGet.status).toBe(200);
   }, 15000);
 
-  it('MCP server should register all 45 tools and enable 14 core hybrid tools by default', () => {
+  it('MCP server should register all 44 tools and enable 13 core hybrid tools by default', () => {
     const serverDeferred = createMcpServer({ deferTools: true });
     const enabledTools = Object.entries((serverDeferred as any)._registeredTools)
       .filter(([_, handle]: [string, any]) => handle.enabled !== false)
       .map(([name]) => name);
-    // Core 12 tools are enabled by default for seamless 1-hop autonomous invocation
+    // Core 13 tools are enabled by default for seamless 1-hop autonomous invocation
     expect(enabledTools).toContain('scrape');
     expect(enabledTools).toContain('search_web');
     expect(enabledTools).toContain('search_deep');
@@ -4112,12 +4111,11 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledTools).toContain('search_route');
     expect(enabledTools).toContain('search_chiebukuro');
     expect(enabledTools).toContain('search_realtime');
-    expect(enabledTools).toContain('search_disaster_warnings');
-    expect(enabledTools).toContain('search_earthquake');
+    expect(enabledTools).toContain('get_disaster_info');
     expect(enabledTools).toContain('search_laws');
     expect(enabledTools).toContain('search_social_posts');
     expect(enabledTools).toContain('fetch_social_post');
-    expect(enabledTools.length).toBe(14);
+    expect(enabledTools.length).toBe(13);
 
     const serverAll = createMcpServer({ deferTools: false });
     const enabledToolsAll = Object.entries((serverAll as any)._registeredTools)
@@ -4142,7 +4140,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(enabledToolsAll).toContain('get_youtube_transcript');
     expect(enabledToolsAll).toContain('get_youtube_channel');
     expect(enabledToolsAll).toContain('generate_gcc_certificate');
-    expect(enabledToolsAll.length).toBe(45);
+    expect(enabledToolsAll.length).toBe(44);
   });
 
   it('checkCpscCertificate should require CCC eFiling for an exact-match toy HTS code', async () => {
@@ -4908,8 +4906,7 @@ describe('Sora REST & MCP Endpoints', () => {
         'get_law_text',
         'search_diet_minutes',
         'get_weather',
-        'search_disaster_warnings',
-        'search_earthquake',
+        'get_disaster_info',
         'search_road_traffic',
         'search_route',
         'get_flight_status',

@@ -72,19 +72,19 @@ describe('MCP session activation isolation', () => {
       try {
         await first.initialize();
         await second.initialize();
-        expect(await first.names()).toHaveLength(14);
-        expect(await second.names()).toHaveLength(14);
+        expect(await first.names()).toHaveLength(13);
+        expect(await second.names()).toHaveLength(13);
         await first.discover('search_keywords');
         const firstNames = await first.names();
-        expect(firstNames).toHaveLength(16);
+        expect(firstNames).toHaveLength(15);
         expect(firstNames).toContain('search_keywords');
         expect(firstNames).toContain('default.search_keywords');
-        expect(await second.names()).toHaveLength(14);
+        expect(await second.names()).toHaveLength(13);
         const hiddenCall = await second.call('default.search_keywords', {});
         expect(hiddenCall.result.isError).toBe(true);
         expect(hiddenCall.result.content[0].text).toContain('disabled');
         await third.initialize();
-        expect(await third.names()).toHaveLength(14);
+        expect(await third.names()).toHaveLength(13);
       } finally {
         manager.clearAllSessions();
       }
@@ -101,7 +101,7 @@ describe('MCP session activation isolation', () => {
       expect(await first.names()).toContain('get_country_context');
       expect(await first.names()).toContain('default.get_country_context');
       await second.initialize();
-      expect(await second.names()).toHaveLength(14);
+      expect(await second.names()).toHaveLength(13);
     } finally {
       manager.clearAllSessions();
     }
@@ -118,12 +118,12 @@ describe('MCP session activation isolation', () => {
       expect((await first.close()).status).toBe(200);
       expect((await first.request('tools/list')).status).toBe(404);
       await second.initialize();
-      expect(await second.names()).toHaveLength(14);
+      expect(await second.names()).toHaveLength(13);
       await second.discover('search_keywords');
       manager.clearAllSessions();
       expect((await second.request('tools/list')).status).toBe(404);
       await third.initialize();
-      expect(await third.names()).toHaveLength(14);
+      expect(await third.names()).toHaveLength(13);
     } finally {
       manager.clearAllSessions();
     }
@@ -138,14 +138,14 @@ describe('MCP session activation isolation', () => {
       const sameOwner = await first.request('tools/list', {}, { 'x-api-key': 'session-owner-key' });
       expect(sameOwner.status).toBe(200);
       const sameOwnerBody = await sameOwner.json() as any;
-      expect(sameOwnerBody.result.tools).toHaveLength(16);
+      expect(sameOwnerBody.result.tools).toHaveLength(15);
       const otherOwners: Record<string, string>[] = [{ Authorization: 'Bearer different-owner-key' }, {}];
       for (const auth of otherOwners) {
         const response = await first.request('tools/list', {}, auth);
         expect(response.status).toBe(404);
         expect((await response.json() as any).error.message).toBe('Session not found');
       }
-      expect(await first.names()).toHaveLength(16);
+      expect(await first.names()).toHaveLength(15);
     } finally {
       manager.clearAllSessions();
     }
@@ -158,12 +158,12 @@ describe('MCP session activation isolation', () => {
     try {
       const discovery = await stateless.discover('search_keywords');
       expect(discovery.result.content[0].text).toContain('search_keywords');
-      expect(await stateless.names()).toHaveLength(14);
+      expect(await stateless.names()).toHaveLength(13);
       await stateful.initialize();
-      expect(await stateful.names()).toHaveLength(14);
+      expect(await stateful.names()).toHaveLength(13);
       await stateful.discover('search_keywords');
-      expect(await stateful.names()).toHaveLength(16);
-      expect(await stateless.names()).toHaveLength(14);
+      expect(await stateful.names()).toHaveLength(15);
+      expect(await stateless.names()).toHaveLength(13);
     } finally {
       manager.clearAllSessions();
     }
@@ -180,7 +180,7 @@ describe('MCP session activation isolation', () => {
         expect(JSON.parse(result.result.content[0].text)).toMatchObject({
           trackingNumber: '123', carrier: 'unknown', status: 'not_found',
         });
-        expect(await stateless.names()).toHaveLength(14);
+        expect(await stateless.names()).toHaveLength(13);
       }
       const unknown = await stateless.call('default.nonexistent_tool', {});
       expect(unknown.result.isError).toBe(true);

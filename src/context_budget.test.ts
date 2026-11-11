@@ -16,9 +16,9 @@ const LIMITS = { defaultToolsListChars: 25_000, allToolsListChars: 64_000 };
 describe('context budget', () => {
   test('tools/list over HTTP stays within the pinned size', async () => {
     const measured = await measureContext();
-    expect(measured.defaultToolsList.tools).toBe(14);
+    expect(measured.defaultToolsList.tools).toBe(13);
     expect(measured.defaultToolsList.chars).toBeLessThanOrEqual(LIMITS.defaultToolsListChars);
-    expect(measured.allToolsList.tools).toBe(45);
+    expect(measured.allToolsList.tools).toBe(44);
     expect(measured.allToolsList.chars).toBeLessThanOrEqual(LIMITS.allToolsListChars);
   });
 });

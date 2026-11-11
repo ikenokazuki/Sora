@@ -47,7 +47,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
   'search_social_posts', 'fetch_social_post', 'browser_action', 'search_media',
   'search_chiebukuro', 'search_keywords', 'search_realtime',
   'search_route', 'get_weather', 'get_flight_status', 'track_package',
-  'search_road_traffic', 'search_disaster_warnings', 'search_earthquake',
+  'search_road_traffic', 'get_disaster_info',
   'get_place_info', 'search_poi', 'lookup_address',
   'watch_register', 'watch_check', 'watch_list', 'watch_delete',
   'search_song', 'search_artist', 'search_music', 'search_laws', 'get_law_text', 'search_diet_minutes',
@@ -95,8 +95,10 @@ export const REST_MAP: RestMap = {
   get_flight_status: { method: 'POST', path: '/traffic/flight' },
   track_package: { method: 'POST', path: '/tracking' },
   search_road_traffic: { method: 'POST', path: '/traffic/road' },
-  search_disaster_warnings: { method: 'POST', path: '/disaster/warnings' },
-  search_earthquake: { method: 'POST', path: '/disaster/earthquake' },
+  get_disaster_info: [
+    { method: 'POST', path: '/disaster/warnings', fn: 'searchDisasterWarnings' },
+    { method: 'POST', path: '/disaster/earthquake', fn: 'searchEarthquake' },
+  ],
   get_place_info: { method: 'POST', path: '/geo/elevation', fn: 'getElevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
   lookup_address: [
@@ -808,20 +810,21 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'search_road_traffic');
     return mustContain(raw, ['東名'], 'yahoo-traffic');
   }),
-  toolCase('disaster.warnings', ['search_disaster_warnings'], ['jma:warning'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_disaster_warnings', { city: '東京', noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_disaster_warnings');
-    return mustContain(raw, ['東京'], 'jma-warning');
+  toolCase('disaster.warnings', ['get_disaster_info'], ['jma:warning'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_disaster_info', { city: '東京', noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_disaster_info') as { warnings?: unknown };
+    if (!raw.warnings) throw new LiveFail('get_disaster_info returned no warnings section for city');
+    return mustContain(raw.warnings, ['東京'], 'jma-warning');
   }),
-  toolCase('quake.latest', ['search_earthquake'], ['jma:quake'], true, 90000, async (ctx) => {
-    const { text: rawJsonText } = await mcpJson(ctx, 'search_earthquake', { limit: 1, noCache: true }, 60000);
-    const raw = toolPayload(rawJsonText, 'search_earthquake');
-    mustHaveItems(raw, 'search_earthquake');
+  toolCase('quake.latest', ['get_disaster_info'], ['jma:quake'], true, 90000, async (ctx) => {
+    const { text: rawJsonText } = await mcpJson(ctx, 'get_disaster_info', { limit: 1, noCache: true }, 60000);
+    const raw = toolPayload(rawJsonText, 'get_disaster_info') as { earthquake?: { earthquakes?: Array<{ source?: string }> } };
+    if (!raw.earthquake) throw new LiveFail('get_disaster_info returned no earthquake section by default');
+    mustHaveItems(raw.earthquake, 'get_disaster_info');
     // 気象庁の一覧が使えないと P2P地震情報に切り替わって答え続けるので、取得元を確かめて切り替わりを見逃さない
-    const parsed = parseFirstJson(textOf(raw), 'search_earthquake') as unknown as { earthquakes?: Array<{ source?: string }> };
-    const source = parsed.earthquakes?.[0]?.source;
-    if (source !== 'jma') throw new LiveFail(`search_earthquake answered from ${source} instead of the JMA quake feed`);
-    return mustContain(raw, ['20'], 'jma-quake');
+    const source = raw.earthquake.earthquakes?.[0]?.source;
+    if (source !== 'jma') throw new LiveFail(`get_disaster_info answered from ${source} instead of the JMA quake feed`);
+    return mustContain(raw.earthquake, ['20'], 'jma-quake');
   }),
   toolCase('geo.elevation', ['get_place_info'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),

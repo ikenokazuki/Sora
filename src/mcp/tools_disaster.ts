@@ -41,66 +41,86 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     { defaultEnabled: deferredDefault, keywords: ['道路交通情報', '通行止め', '渋滞', '高速道路', '規制', 'JARTIC'] },
   );
 
-  // Tool 17: search_disaster_warnings (気象警報・注意報) - CORE (defaultEnabled: true)
+  // Tool: get_disaster_info (気象警報・注意報と地震。include で選ぶ) - CORE (defaultEnabled: true)
+  // include の種類ごとの節。種類を足すときは、ここに 1 項目足す（args はその種類だけの引数、defaults はその既定値、
+  // check は足りない引数の検査）。節の中身は、統合前のツールの応答のまま
+  const EARTHQUAKE_LIMIT_DEFAULT = 5;
+  const MIN_INTENSITY_DEFAULT = 10;
+  type DisasterArgs = { city?: string; areaCode?: string; limit?: number; minIntensity?: number };
+  type DisasterSection = {
+    label: string;
+    usage: string;
+    args: Array<keyof DisasterArgs>;
+    defaults?: Partial<DisasterArgs>;
+    check?: (args: DisasterArgs) => string | undefined;
+    build: (args: DisasterArgs) => Promise<unknown>;
+  };
+  const DISASTER_SECTIONS: Record<string, DisasterSection> = {
+    warnings: {
+      label: 'Disaster warnings',
+      usage: '気象警報・注意報。city か areaCode で地域を指定',
+      args: ['city', 'areaCode'],
+      check: ({ city, areaCode }) => (city || areaCode ? undefined : 'include の warnings には city か areaCode が必要です。'),
+      build: ({ city, areaCode }) => fetchWeatherWarnings({ city, areaCode }),
+    },
+    earthquake: {
+      label: 'Earthquake search',
+      usage: '最近の地震。limit・minIntensity で絞る',
+      args: ['limit', 'minIntensity'],
+      defaults: { limit: EARTHQUAKE_LIMIT_DEFAULT, minIntensity: MIN_INTENSITY_DEFAULT },
+      build: ({ limit, minIntensity }) => fetchRecentEarthquakes({ limit, minIntensity }),
+    },
+  };
+  const DISASTER_KINDS = Object.keys(DISASTER_SECTIONS);
+  const DISASTER_USAGE = `使い方: include で返す情報を選ぶ（${DISASTER_KINDS.map((kind) => `${kind}: ${DISASTER_SECTIONS[kind].usage}`).join('。')}）。既定は city か areaCode があれば ["warnings"]、無ければ ["earthquake"]。両方は ["warnings","earthquake"]。`;
   registerTool(
     mcpServer,
     toolCatalog,
     sessionActivated,
-    'search_disaster_warnings',
+    'get_disaster_info',
     'disaster',
-    '【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、古いWeb情報に頼らず必ず本ツールで市区町村単位にリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] }',
+    '【気象庁公式・防災速報直結】特別警報・危険警報・警報・注意報（大雨・土砂災害・暴風・大雪・波浪等。河川の氾濫は含まない）と最新の地震（震源・マグニチュード・最大震度・津波）は推測せず本ツールで取得。includeで選ぶ（既定はcity/areaCodeがあればwarnings、無ければearthquake）。返却: { include, warnings: { areaName, warnings }, earthquake: { count, earthquakes } }',
     {
-      city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方'),
-      areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可'),
-    },
-    async (opts) => {
-      try {
-        const result = await fetchWeatherWarnings(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Disaster warnings error: ${errorMessage(err) || err}` }],
-        };
-      }
-    },
-    { defaultEnabled: true, keywords: ['気象警報', '注意報', '特別警報', '防災', '気象庁', '大雨', '台風'] },
-  );
-
-  // Tool 18: search_earthquake (リアルタイム地震速報・履歴) - CORE (defaultEnabled: true)
-  registerTool(
-    mcpServer,
-    toolCatalog,
-    sessionActivated,
-    'search_earthquake',
-    'disaster',
-    '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せず気象庁公式データ直結の本ツールで取得してください（不調時はP2P地震情報）。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }',
-    {
-      limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
+      city: z.string().optional().describe('市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。知らない地名はエラー。warnings のときだけ'),
+      areaCode: z.string().optional().describe('気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27")。北海道・鹿児島・沖縄は気象台が複数あり6桁で指定。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可。warnings のときだけ'),
+      limit: z.number().int().min(1).max(20).optional().describe(`地震の取得件数 (1〜20, デフォルト: ${EARTHQUAKE_LIMIT_DEFAULT})。earthquake のときだけ`).meta({ default: EARTHQUAKE_LIMIT_DEFAULT }),
       // Gemini の関数宣言は enum を文字列にしか許さず、数の enum が 1 つあるとツール一覧ごと 400 になる。
       // MCP には範囲だけを出し、震度コードかどうかは refine で確かめる（REST の OpenAPI には enum を残す）
       minIntensity: z.number().int().min(10).max(70)
         .refine((v) => (EARTHQUAKE_SCALE_CODES as readonly number[]).includes(v), { message: `震度コードは ${EARTHQUAKE_SCALE_CODES.join('・')} のどれかです` })
         .optional()
-        .describe('最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: 10)')
-        .meta({ default: 10 }),
+        .describe(`最小震度コード (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強, 55=震度6弱, 60=震度6強, 70=震度7, デフォルト: ${MIN_INTENSITY_DEFAULT})。earthquake のときだけ`)
+        .meta({ default: MIN_INTENSITY_DEFAULT }),
+      include: z.array(z.string()).optional().describe(`返す情報 (${DISASTER_KINDS.join('・')})。既定は city か areaCode があれば ["warnings"]、無ければ ["earthquake"]。両方は ["warnings","earthquake"]`),
     },
-    async (opts) => {
-      try {
-        const result = await fetchRecentEarthquakes(opts);
-        return {
-          content: [{ type: 'text', text: toolJson(result) }],
-        };
-      } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Earthquake search error: ${errorMessage(err) || err}` }],
-        };
+    async (args) => {
+      const requested = args.include ?? (args.city || args.areaCode ? ['warnings'] : ['earthquake']);
+      if (requested.length === 0) return usageError(`include に、返す情報を 1 つ以上指定してください。${DISASTER_USAGE}`);
+      const unknown = requested.filter((kind) => !DISASTER_KINDS.includes(kind));
+      if (unknown.length > 0) return usageError(`include に使えない値があります: ${unknown.join(', ')}。${DISASTER_USAGE}`);
+      const kinds = DISASTER_KINDS.filter((kind) => requested.includes(kind));
+      // 頼んだ種類は足りない引数を、頼まなかった種類はその種類だけの引数を断る（既定値と同じ値は断らない）
+      for (const kind of DISASTER_KINDS) {
+        const section = DISASTER_SECTIONS[kind];
+        if (kinds.includes(kind)) {
+          const missing = section.check?.(args);
+          if (missing) return usageError(`${missing}${DISASTER_USAGE}`);
+        } else {
+          const invalid = onlyForMode(`include: ${JSON.stringify(kinds)}`, [`include に ${kind} を含むとき`], args, section.args, DISASTER_USAGE, section.defaults);
+          if (invalid) return usageError(invalid);
+        }
       }
+      const answer: Record<string, unknown> = { include: kinds };
+      for (const kind of kinds) {
+        try {
+          answer[kind] = await DISASTER_SECTIONS[kind].build(args);
+        } catch (err) {
+          return { isError: true, content: [{ type: 'text', text: `${DISASTER_SECTIONS[kind].label} error: ${errorMessage(err) || err}` }] };
+        }
+      }
+      return { content: [{ type: 'text', text: toolJson(answer) }] };
     },
-    { defaultEnabled: true, keywords: ['地震情報', '震度', '震源地', '津波', '気象庁', '地震'] },
+    { defaultEnabled: true, keywords: ['気象警報', '警報', '注意報', '特別警報', '危険警報', '防災', '気象庁', '大雨', '土砂災害', '暴風', '大雪', '波浪', '雷', '台風', '地震情報', '地震', '震度', '震源地', 'マグニチュード', '津波', 'P2P地震情報', 'search_disaster_warnings', 'search_earthquake'] },
   );
 
   // Tool: get_place_info (地点の情報。include で選ぶ。いまは標高だけ) - DEFERRED
