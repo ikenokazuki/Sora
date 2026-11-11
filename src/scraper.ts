@@ -1783,7 +1783,6 @@ export async function integratedSearch(options: {
   const mediaOption = includeMedia ? {} : { includeMedia: false };
   const highlightMaxCount = options.highlightMaxCount;
   const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
-  const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const videos = isModuleActive('youtube') && !readQueryUrls ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
@@ -1816,7 +1815,7 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v13:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}`;
+  const cacheKey = `search:integrated:v13:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1904,7 +1903,7 @@ export async function integratedSearch(options: {
   // 上位3件はRRF/provider順保証、残り枠はcoverage/diversityで選択する
   const candidatePoolSize = adaptiveScrape ? Math.max(scrapeBudget, limit * 2, 10) : Math.max(limit * 2, 10);
   const candidatePool = searchResults.slice(0, candidatePoolSize);
-  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.queryUnion || webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
+  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
   const topItems = selected.targets;
   const sparePool = selected.spares;
   const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];

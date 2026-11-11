@@ -450,11 +450,10 @@ export interface YahooWebSearchDeps {
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
-/** Stable coalescing key for one Yahoo Web search (flags included). */
+/** Stable coalescing key for one Yahoo Web search. */
 export function yahooWebSearchFlightKey(options: YahooWebSearchOptions): string {
-  const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
   const v = options.verbose === true ? 'verbose' : 'compact';
-  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + v;
+  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + v;
 }
 
 /**
@@ -506,158 +505,6 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
   const verboseDiag = options.verbose === true;
 
   let lastParsedData: any = { items: [], count: 0, source: 'web' };
-
-  const queryUnionEnabled =
-    process.env.SORA_WEB_QUERY_UNION === 'true' &&
-    options.disableFallback !== true;
-
-  if (queryUnionEnabled) {
-    const boundedQueries = candidateQueries.slice(0, Math.min(2, yahooQueryBudget));
-    const batches: YahooWebQueryBatch[] = [];
-    const retrievalQueries: string[] = [];
-    let webUnionThrottled = false;
-
-    for (let i = 0; i < boundedQueries.length; i++) {
-      const q = boundedQueries[i];
-      if (!q) continue;
-      if (isYahooBreakerOpen()) {
-        webUnionThrottled = true;
-        break;
-      }
-      if (!yahooWebPressure.canRequest()) {
-        webUnionThrottled = true;
-        break;
-      }
-      if (i > 0) await paceForYahooPressure();
-      retrievalQueries.push(q);
-
-      let effectiveWebQuery = q;
-      let webSiteArg: string | undefined = undefined;
-
-      if (options.includeDomains && options.includeDomains.length > 0) {
-        if (options.includeDomains.length === 1) {
-          webSiteArg = options.includeDomains[0];
-        } else {
-          effectiveWebQuery += ` (${options.includeDomains
-            .map((d) => `site:${d}`)
-            .join(' OR ')})`;
-        }
-      }
-
-      if (options.excludeDomains && options.excludeDomains.length > 0) {
-        effectiveWebQuery += ` ${options.excludeDomains
-          .map((d) => `-site:${d}`)
-          .join(' ')}`;
-      }
-
-      try {
-        let batchJson: any = null;
-        try {
-          const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
-          if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
-        } catch (err) {
-          providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
-          recordYahooWebResult(err);
-        }
-        if (!batchJson) {
-          const mcpRes = await callMcp('yahoo_web_search', {
-            query: effectiveWebQuery,
-            ...(webSiteArg ? { site: webSiteArg } : {}),
-            ...(options.updated && options.updated !== 'all'
-              ? { updated: options.updated }
-              : {}),
-          });
-
-          const content = mcpRes?.content?.[0]?.text || '[]';
-          if (mcpRes?.isError) {
-            providerErrors.push({ query: q, message: String(content).slice(0, 300) });
-            if (recordYahooWebResult(new Error(String(content).slice(0, 300)))) {
-              webUnionThrottled = true;
-              break;
-            }
-            if (i < boundedQueries.length - 1) await paceForYahooPressure();
-            continue;
-          }
-          batchJson = JSON.parse(content);
-        }
-
-        if (batchJson && Array.isArray(batchJson.items)) {
-          lastParsedData = batchJson;
-          if (batchJson.items.length > 0) {
-            recordYahooWebSuccess();
-            batches.push({
-              query: q,
-              queryIndex: i,
-              items: batchJson.items,
-            });
-          }
-        }
-      } catch (unionErr) {
-        const message = ((unionErr as Error)?.message ?? String(unionErr)).slice(0, 300);
-        providerErrors.push({ query: q, message });
-        const unionLimited = recordYahooWebResult(unionErr);
-        if (unionLimited || isYahooRateLimitedError(unionErr)) {
-          webUnionThrottled = true;
-          break;
-        }
-        // One failed rescue query must not discard sibling results.
-        if (i < boundedQueries.length - 1) await paceForYahooPressure();
-      }
-    }
-
-    const ranked = mergeYahooWebQueryBatches(
-      batches,
-      options.query,
-      options.includeDomains,
-      options.excludeDomains,
-    );
-
-    if (ranked.length > 0) {
-      const contributedFallback = ranked.some(
-        (item: any) => (item.retrievalQueryIndex ?? 0) > 0,
-      );
-
-      try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
-      return {
-        items: ranked,
-        count: ranked.length,
-        source: 'web',
-        originalQuery: options.query,
-        bindingQuery: options.query,
-        retrievalQueries,
-        effectiveQuery: options.query,
-        isFallback: contributedFallback,
-        queryUnion: true,
-        ...(webUnionThrottled ? { throttled: true, partial: true, stopReason: 'provider_rate_limited' } : {}),
-        ...(providerErrors.length > 0 ? { providerErrors } : {}),
-        ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
-      };
-    }
-
-    if (webUnionThrottled || providerErrors.length > 0) {
-      const staleUnion = getYahooStaleCache<any>(flightKey);
-      if (staleUnion) {
-        try { incrementSecurityCounter('yahoo_stale_hit_total'); } catch {}
-        return { ...staleUnion, stale: true, throttled: webUnionThrottled ? true : undefined, stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined };
-      }
-    }
-    return {
-      ...lastParsedData,
-      items: [],
-      count: 0,
-      source: 'web',
-      originalQuery: options.query,
-      bindingQuery: options.query,
-      retrievalQueries,
-      effectiveQuery: options.query,
-      isFallback: false,
-      queryUnion: true,
-      throttled: webUnionThrottled ? true : undefined,
-      stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined,
-      providerErrors,
-      ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
-    };
-  }
 
   let webSequentialThrottled = false;
   for (let i = 0; i < candidateQueries.length; i++) {

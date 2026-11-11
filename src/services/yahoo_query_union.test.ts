@@ -176,28 +176,15 @@ describe('Phase 3 bounded Web query union', () => {
     ]);
   });
 
-  test('union is opt-in and bounded to original plus one fallback', () => {
-    const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
-    expect(source).toContain("process.env.SORA_WEB_QUERY_UNION === 'true'");
-    expect(source).toContain('candidateQueries.slice(0, Math.min(2, yahooQueryBudget))');
-  });
-
   test('realtime retrieval v1 uses wave union instead of first-nonempty-wins', () => {
     const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
     const start = source.indexOf('export async function searchYahooRealtime');
     const end = source.indexOf('/** X (Twitter)', start);
     const realtimeSource = source.slice(start, end);
-    expect(realtimeSource).not.toContain('SORA_WEB_QUERY_UNION');
     expect(realtimeSource).toContain('MAX_REALTIME_RETRIEVAL_QUERIES');
     expect(realtimeSource).toContain('runRealtimeWave');
     expect(realtimeSource).toContain('retrievalQueries');
     expect(source).toContain('Promise.allSettled');
-  });
-
-  test('integrated cache separates union OFF and ON', () => {
-    const source = readFileSync(new URL('../scraper.ts', import.meta.url), 'utf8');
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
-    expect(source).toContain("${webQueryUnion ? 'wqu-on' : 'wqu-off'}");
   });
 
   test('duplicate URL keeps richest snippet', () => {
