@@ -96,22 +96,33 @@ describe('generateClient', () => {
         '/watch/list': { get: { summary: '監視の一覧 */ 取得', responses: json } },
         '/watch/{id}': { delete: { summary: '監視の削除', description: '以後の監視を止める。\n  id は一覧で確認', responses: json } },
         '/gov/law-text': { post: { responses: json } },
+        '/search/web': { post: { summary: 'Web 検索', responses: json } },
+        '/gov/laws': { post: { description: '法令の一覧', responses: json } },
       },
     };
     const watch: ToolMeta = { name: 'watch', category: 'watch', description: 'action で選ぶ。返却: register は { target }', keywords: [] };
     const law: ToolMeta = { name: 'search_laws', category: 'gov', description: '【法令】keyword か lawId', keywords: [] };
+    const web: ToolMeta = { name: 'search_web', category: 'web', description: '【Web検索】MCP の説明', keywords: [] };
+    const diet: ToolMeta = { name: 'search_diet', category: 'gov', description: '【国会】MCP の説明', keywords: [] };
     const files = generateClient(ops, {
       watch: [{ method: 'GET', path: '/watch/list', fn: 'watchList' }, { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' }],
       search_laws: { method: 'POST', path: '/gov/law-text' },
-    }, [watch, law]);
+      search_web: { method: 'POST', path: '/search/web' },
+      search_diet: { method: 'POST', path: '/gov/laws' },
+    }, [watch, law, web, diet]);
     const module = files['servers/sora/watch.ts'];
     expect(module).toContain('/** 監視の一覧 * / 取得 */\nexport function watchList()');
     expect(module).toContain('/** 監視の削除 以後の監視を止める。 id は一覧で確認 */\nexport function watchDelete(');
     expect(module).not.toContain('action で選ぶ');
+    // 1 つのルートのツールも、操作の文（summary だけ・description だけでも）
+    expect(files['servers/sora/search_web.ts']).toContain('/** Web 検索 */\nexport function searchWeb()');
+    expect(files['servers/sora/search_diet.ts']).toContain('/** 法令の一覧 */\nexport function searchDiet()');
     // 操作に説明が無いときだけ、ツールの説明を使う
     expect(files['servers/sora/search_laws.ts']).toContain('/** 【法令】keyword か lawId */');
     // catalog.json は、ツールの説明のまま（ツールの検索に使う）
-    expect(JSON.parse(files['catalog.json']).map((row: { description: string }) => row.description)).toEqual(['【法令】keyword か lawId', watch.description, watch.description]);
+    expect(JSON.parse(files['catalog.json']).map((row: { name: string; description: string }) => `${row.name}: ${row.description}`)).toEqual([
+      `search_diet: ${diet.description}`, `search_laws: ${law.description}`, `search_web: ${web.description}`, `watch: ${watch.description}`, `watch: ${watch.description}`,
+    ]);
   });
 });
 

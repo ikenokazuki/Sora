@@ -96,8 +96,9 @@ describe('live address checks', () => {
     const check = addressCase('geo.lookup_address.postal');
     await expect(check.run(context(zip))).resolves.toHaveProperty('sources');
     // MCP の lookup_address が、郵便番号だけの入力を別の経路で読んだ
-    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toThrow('mode');
-    await expect(check.run(context({ ...zip, mode: undefined }))).rejects.toThrow('mode');
+    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(context({ ...zip, mode: 'normalize' }))).rejects.toThrow('lookup_address chose mode "normalize" (expected "postal")');
+    await expect(check.run(context({ ...zip, mode: undefined }))).rejects.toThrow('lookup_address chose mode undefined (expected "postal")');
     await expect(check.run(context({ ...zip, zipcode: '1000001' }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, count: 0, candidates: [] }))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(context({ ...zip, candidates: [{ ...zip.candidates[0], city: '新宿区' }] }))).rejects.toBeInstanceOf(LiveFail);

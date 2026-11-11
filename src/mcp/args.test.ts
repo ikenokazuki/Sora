@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { exactlyOne, onlyForMode, onlyWith, usageError } from './args.js';
+import { exactlyOne, notUrl, onlyForMode, onlyWith, usageError } from './args.js';
 
 const USAGE = '使い方: 1 ページは url、複数は urls。';
 
@@ -132,6 +132,25 @@ describe('onlyForMode', () => {
     test('in an allowed mode, defaults change nothing', () => {
       expect(onlyForMode('batch', ['batch'], { concurrency: 5 }, ['concurrency'], USAGE, defaults)).toBeUndefined();
     });
+  });
+});
+
+describe('notUrl', () => {
+  test('empty, missing and URL values pass (only a given value is checked)', () => {
+    for (const value of [undefined, null, '', 'https://example.com/a']) expect(notUrl({ url: value }, ['url'], USAGE)).toBeUndefined();
+    expect(notUrl({}, ['url', 'webhookUrl'], USAGE)).toBeUndefined();
+  });
+
+  test('like zod 4 .url(): any scheme that new URL() reads passes (file:, javascript:, mailto:); a bare host does not', () => {
+    for (const value of ['file:///etc/hosts', 'javascript:void(0)', 'mailto:a@example.com', 'http:/x']) expect(notUrl({ url: value }, ['url'], USAGE)).toBeUndefined();
+    expect(notUrl({ url: 'example.com/a' }, ['url'], USAGE)).toBeDefined();
+  });
+
+  test('names the first bad key with its value (quoted), adds the usage, and never says 「モード」', () => {
+    const message = notUrl({ url: 'https://example.com/a', webhookUrl: 'foo' }, ['url', 'webhookUrl'], USAGE);
+    expect(message).toBe(`webhookUrl は URL として読めません（いま: "foo"）。${USAGE}`);
+    expect(message).not.toContain('モード');
+    expect(notUrl({ url: 'foo' }, ['url'])).toBe('url は URL として読めません（いま: "foo"）。');
   });
 });
 
