@@ -182,6 +182,17 @@ async function stealthUserAgent(): Promise<string | undefined> {
   }
 }
 
+/**
+ * SORA_BROWSER_LOW_MEMORY（既定は無効）。true・1・on・yes（大文字小文字・前後の空白は問わない）で、Chromium を
+ * 低メモリ端末のモード（--enable-low-end-device-mode）で起動する。描画中のピークの PSS 合計が、ページを 1 つずつ開いて
+ * 約 18%・3 ページ同時で約 14% 下がる（同梱の Chromium 156 で実測）。待機中の常駐量は変わらない。
+ * 指紋で変わるのは navigator.deviceMemory（8 → 2）だけだが、既定は変えない（使うかどうかは運用者が決める）。
+ * それ以外の値（不正な値を含む）は無効。
+ */
+export function isBrowserLowMemory(env: NodeJS.ProcessEnv = process.env): boolean {
+  return ['true', '1', 'on', 'yes'].includes((env.SORA_BROWSER_LOW_MEMORY ?? '').trim().toLowerCase());
+}
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
   const userAgent = await stealthUserAgent();
@@ -209,6 +220,7 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     args.push(`--proxy-server=${proxy}`);
     if (bypass) args.push(`--proxy-bypass-list=${bypass}`);
   }
+  if (isBrowserLowMemory()) args.push('--enable-low-end-device-mode');
   return puppeteer.launch({
     executablePath: CHROME_EXECUTABLE_PATH,
     headless: true,

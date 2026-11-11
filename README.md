@@ -2512,6 +2512,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
 | `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
 | `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
+| `SORA_BROWSER_LOW_MEMORY` | *(未設定 = 無効)* | `true`（`1`・`on`・`yes` も可）で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
 | `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
 | `ALLOW_BROWSER_EVALUATE` | *(未設定 = 遮断)* | `true` を指定したときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意JS実行）が動きます。未設定やそれ以外の値は遮断 |
 | `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
@@ -2557,6 +2558,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   1 ページあたり約 300MB は目安です。明示した値が優先されます。
 - **Chromium は無操作で閉じます**（`BROWSER_IDLE_TTL_MS`、既定 5 分、`0` で無効）。次にブラウザが必要になったとき自動で再起動します（実測: 再起動後の最初のブラウザ描画も、起動済みの場合と同等の約 3.6 秒）。ブラウザセッション（`sessionId`）や追跡・SNS 取得でコンテキストが開いている間は閉じません。
 - **実測の目安**: 起動直後 約 160MB、静的取得後 約 195MB、ブラウザ描画中 約 950MB（bun 約 250MB + Chromium 約 700MB）、解放後 約 200MB。
+- **ブラウザ描画中のピークを下げたい**ときは `SORA_BROWSER_LOW_MEMORY=true`（既定は無効）。Chromium を低メモリ端末のモードで起動し、ページを 1 つずつ開いたときのピークが約 18%、3 ページ同時で約 14% 下がります。副作用は `navigator.deviceMemory` が 8 から 2 になることだけです（詳細は §4.3 の表）。
 - **ブラウザを使わせたくないリクエスト**には `scrape` の `mode: "fast"`（静的取得のみ）を指定します。
 - **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 14 ツールに絞れます。
 
