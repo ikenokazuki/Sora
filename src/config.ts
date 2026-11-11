@@ -525,7 +525,7 @@ export function envList(name: NameOf<'list'>, env: Env = process.env): string[] 
   return (read(name, env) as string[] | undefined) ?? [];
 }
 
-/** URL（new URL() で読めて、scheme が許されたもの。末尾の `/` は外す）。 */
+/** URL（new URL() で読めて、scheme が許されたもの。前後の空白を除き、末尾の `/` は外す。keepTrailingSlash の設定（呼ぶ宛先の URL）は外さない）。 */
 export function envUrl<N extends NameOf<'url'>>(name: N, env: Env = process.env): Read<N, string> {
   return read(name, env) as Read<N, string>;
 }
