@@ -35,8 +35,8 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     },
     async (args) => {
       const mode = typeIs(args.type);
-      // 既定値は、上のスキーマの .meta({ default }) と同じ値
-      const invalid = onlyForMode(mode, [typeIs('image'), typeIs('video')], args, ['page'], MEDIA_USAGE)
+      // 既定値は、上のスキーマの .meta({ default }) と同じ値。page は既定値を出していないが、news には page が無いので、1 は省いたのと同じ
+      const invalid = onlyForMode(mode, [typeIs('image'), typeIs('video')], args, ['page'], MEDIA_USAGE, { page: 1 })
         ?? onlyForMode(mode, [typeIs('video')], args, ['transcripts', 'transcriptChars', 'updated', 'platform'], MEDIA_USAGE, { transcripts: 0, transcriptChars: 2000, updated: 'all', platform: 'all' });
       if (invalid) return usageError(invalid);
       const { type, query, limit, page, transcripts, transcriptChars, updated, platform } = args;
@@ -89,7 +89,9 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
   );
 
   // Tool 11: search_keywords (query ありはサジェスト、なしは急上昇トレンド) - DEFERRED
-  const KEYWORDS_USAGE = '使い方: query を指定するとサジェスト（limit は 20 まで）、省くと急上昇トレンド（limit は 50 まで）。';
+  // サジェストの件数の上限（REST の /search/suggest と同じ）。スキーマはトレンドの上限（50）まで通す
+  const SUGGEST_LIMIT_MAX = 20;
+  const KEYWORDS_USAGE = `使い方: query を指定するとサジェスト（limit は ${SUGGEST_LIMIT_MAX} まで）、省くと急上昇トレンド（limit は 50 まで）。`;
   registerTool(
     mcpServer,
     toolCatalog,
@@ -99,12 +101,11 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     '【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp }',
     {
       query: z.string().optional().describe('サジェストを引く検索語句プレフィックス (例: "東京 観光")。省くと急上昇トレンド'),
-      limit: z.number().int().min(1).max(50).optional().describe('取得件数。省略時はサジェスト 10 件・トレンド 20 件。上限はサジェスト 20・トレンド 50（トレンドはページに載っている件数まで）'),
+      limit: z.number().int().min(1).max(50).optional().describe(`取得件数。省略時はサジェスト 10 件・トレンド 20 件。上限はサジェスト ${SUGGEST_LIMIT_MAX}・トレンド 50（トレンドはページに載っている件数まで）`),
     },
     async ({ query, limit }) => {
       if (query) {
-        // スキーマはトレンドの上限（50）まで通す。サジェストは、REST の /search/suggest と同じ上限
-        if ((limit ?? 0) > 20) return usageError(`query を指定したとき（サジェスト）の limit は 20 までです（いま: ${limit}）。${KEYWORDS_USAGE}`);
+        if ((limit ?? 0) > SUGGEST_LIMIT_MAX) return usageError(`query を指定したとき（サジェスト）の limit は ${SUGGEST_LIMIT_MAX} までです（いま: ${limit}）。${KEYWORDS_USAGE}`);
         try {
           return { content: [{ type: 'text', text: toolJson(await suggestKeywordsCached({ query, limit })) }] };
         } catch (err) {

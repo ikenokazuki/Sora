@@ -286,6 +286,8 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     { defaultEnabled: true, keywords: ['SNS', 'Weibo', '微博', 'Threads', 'Instagram', 'Facebook', '投稿検索', 'ソーシャル'] },
   );
   // Tool 5c: fetch_social_post (既知SNS投稿の取得。X は statusId でも) - CORE
+  // Weibo のコメントの既定の件数（説明・既定値の比較・ハンドラで補う値）
+  const COMMENT_LIMIT_DEFAULT = 10;
   const SOCIAL_FETCH_USAGE = '使い方: 投稿の url（X・Weibo・Threads・Instagram・Facebook）。X は statusId でも可。commentLimit は X 以外のときだけ。';
   // onlyForMode に渡す語句。エラーの文にそのまま出る。入力の形で言う
   const X_POST = 'X の投稿を指定したとき';
@@ -308,14 +310,14 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     {
       url: z.string().optional().describe('公開投稿URL（X・Weibo・Threads・Instagram・Facebook）。X は search_realtime で見つけた 1 件の全文・投稿日時・メディアを FxTwitter 経由で取得（ID 突合検証済みのみ返し、未検証の推測は返さない）。url か statusId のどちらかは必須'),
       statusId: z.string().optional().describe('X 投稿の数値ステータスID (例: "2100871827090501852")。url の代わりに指定可。X だけ'),
-      commentLimit: z.number().int().min(0).max(20).optional().describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)。X 以外のときだけ').meta({ default: 10 }),
+      commentLimit: z.number().int().min(0).max(20).optional().describe(`Weiboコメント取得件数 (デフォルト: ${COMMENT_LIMIT_DEFAULT}, Metaでは無視)。X 以外のときだけ`).meta({ default: COMMENT_LIMIT_DEFAULT }),
     },
     async (args) => {
       if (!args.url && !args.statusId) return usageError(`url・statusId のどちらかを指定してください。${SOCIAL_FETCH_USAGE}`);
       const mode = !args.url || isXUrl(args.url) ? X_POST : OTHER_POST;
       // 既定値は、上のスキーマの .meta({ default }) と同じ値
       const invalid = onlyForMode(mode, [X_POST], args, ['statusId'], SOCIAL_FETCH_USAGE)
-        ?? onlyForMode(mode, [OTHER_POST], args, ['commentLimit'], SOCIAL_FETCH_USAGE, { commentLimit: 10 });
+        ?? onlyForMode(mode, [OTHER_POST], args, ['commentLimit'], SOCIAL_FETCH_USAGE, { commentLimit: COMMENT_LIMIT_DEFAULT });
       if (invalid) return usageError(invalid);
       if (mode === X_POST) {
         try {
@@ -337,7 +339,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
           webSearch: createProdWebSearch(),
         });
         const signal = AbortSignal.timeout(30000);
-        const result = await svc.fetch({ url: args.url!, commentLimit: args.commentLimit ?? 10 }, { signal, deadlineAt: Date.now() + 30000 });
+        const result = await svc.fetch({ url: args.url!, commentLimit: args.commentLimit ?? COMMENT_LIMIT_DEFAULT }, { signal, deadlineAt: Date.now() + 30000 });
         return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
         return { isError: true, content: [{ type: 'text', text: `Social fetch error: ${errorMessage(err) || err}` }] };

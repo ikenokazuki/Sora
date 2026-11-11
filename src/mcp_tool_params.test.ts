@@ -13,10 +13,14 @@ const restore: Array<() => void> = [];
 afterEach(() => { while (restore.length) restore.pop()!(); });
 
 // v4.0.0 の MCP の引数（docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md の 5）。
-// v5.0.0 で scrape に旧 scrape_batch の urls・concurrency・webhookUrl を、crawl_site に旧 map_site の listOnly・limit・since・until を足した
+// v5.0.0 で scrape に旧 scrape_batch の urls・concurrency・webhookUrl を、crawl_site に旧 map_site の listOnly・limit・since・until を足した。
+// 統合したツールの引数は、旧ツールの引数の和（fetch_social_post は旧 fetch_x_post の statusId、search_media・search_keywords は Yahoo の 5 ツール）
 const expected: Record<string, string[]> = {
   scrape: ['url', 'urls', 'concurrency', 'webhookUrl', 'maxChars', 'mode', 'formats', 'fullPage', 'stripLinks', 'maskPii', 'query', 'onlyMainContent', 'headers', 'verbose', 'keepDataImages', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
   crawl_site: ['url', 'listOnly', 'limit', 'since', 'until', 'maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'annotateTemporal', 'highlightMaxCount', 'includeMedia', 'responseMode'],
+  fetch_social_post: ['url', 'statusId', 'commentLimit'],
+  search_media: ['type', 'query', 'limit', 'page', 'transcripts', 'transcriptChars', 'updated', 'platform'],
+  search_keywords: ['query', 'limit'],
 };
 
 /** 手元の MCP サーバーに 1 つのクライアントでつなぎ、fn を呼んで閉じる */
@@ -37,7 +41,7 @@ async function withClient<T>(fn: (client: Client) => Promise<T>, options: Parame
 const textOf = (res: any): string => res.content?.[0]?.text ?? '';
 
 describe('MCP のツールの引数', () => {
-  test('scrape・crawl_site の引数が決めたとおり、search_deep は 26 個', async () => {
+  test('統合したツール（scrape・crawl_site・fetch_social_post・search_media・search_keywords）の引数が決めたとおり、search_deep は 26 個', async () => {
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({ deferTools: false });
     const client = new Client({ name: 'tool-params', version: '1.0.0' });
@@ -489,6 +493,15 @@ describe('search_media: type で画像・動画・ニュース（旧 search_imag
       for (const spy of [image, video, news]) expect(spy).not.toHaveBeenCalled();
     });
   }
+
+  test('news に page: 1 は通り（news には page が無く、1 は省いたのと同じ）、使われない', async () => {
+    const { image, video, news } = mockAll();
+    const res = await call({ type: 'news', query: '経済', page: 1 });
+    expect(res.isError, textOf(res)).toBeFalsy();
+    expect(news.mock.calls[0][0]).toEqual({ query: '経済' });
+    expect(image).not.toHaveBeenCalled();
+    expect(video).not.toHaveBeenCalled();
+  });
 
   test('動画だけの引数のうち、スキーマが既定値を出しているものは、その値をそのまま入れても通り、使われない', async () => {
     const { image } = mockAll();
