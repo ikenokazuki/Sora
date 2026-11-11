@@ -72,4 +72,18 @@ describe('generateClient', () => {
     expect(files['servers/sora/index.ts']).toContain("export * from './search_web.js';");
     expect(generateClient(doc, rest, tools)).toEqual(files);
   });
+
+  test('a tool with several routes gets one module with one function per route, named by method and path', () => {
+    const watch: ToolMeta = { name: 'watch', category: 'watch', description: 'watch', keywords: [] };
+    const multi = generateClient(doc, { watch: [{ method: 'GET', path: '/watch/list' }, { method: 'DELETE', path: '/watch/:id' }] }, [watch]);
+    const module = multi['servers/sora/watch.ts'];
+    expect(module).toContain('export function getWatchList(): Promise<GetWatchListOutput>');
+    expect(module).toContain('export function deleteWatchId(input: DeleteWatchIdInput): Promise<DeleteWatchIdOutput>');
+    expect(module).toContain("callSora<DeleteWatchIdOutput>({ method: 'DELETE', path: '/watch/:id' }, input)");
+    expect(module.match(/^import /gm)).toHaveLength(1);
+    const catalog = JSON.parse(multi['catalog.json']);
+    expect(catalog.map((t: { name: string; fn: string }) => `${t.name}.${t.fn}`)).toEqual(['watch.getWatchList', 'watch.deleteWatchId']);
+    expect(catalog[1]).toMatchObject({ method: 'DELETE', path: '/watch/:id', file: 'servers/sora/watch.ts' });
+    expect(multi['servers/sora/index.ts'].match(/export \*/g)).toHaveLength(1);
+  });
 });

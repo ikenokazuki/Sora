@@ -3,7 +3,7 @@ import { findNotationIssues, noteKeyPaths, parseDocumentedDefault, type Param } 
 import { checkReadmeExamples, missingExampleKeys } from './readme_examples.js';
 
 const SAFE = Number.MAX_SAFE_INTEGER;
-const kinds = (params: Param[], pairs: Record<string, { method: string; path: string } | null> = {}, allow: Record<string, string> = {}) =>
+const kinds = (params: Param[], pairs: Parameters<typeof findNotationIssues>[1] = {}, allow: Record<string, string> = {}) =>
   findNotationIssues(params, pairs, allow).map((f) => f.kind);
 
 describe('parseDocumentedDefault', () => {
@@ -60,6 +60,27 @@ describe('findNotationIssues', () => {
     const pairs = { tool: { method: 'POST', path: '/tool' } };
     expect(kinds([mcp, rest], pairs)).toEqual(['pair_mismatch']);
     expect(kinds([mcp, rest], pairs, { 'pair_mismatch tool limit': 'intentional' })).toEqual([]);
+  });
+
+  test('a tool with several routes: each MCP param pairs with the first route that has it; params on no route are not compared', () => {
+    const mcp = (path: string, schema: object): Param => ({ surface: 'mcp', owner: 'tool', path, schema });
+    const rest = (owner: string, path: string, schema: object): Param => ({ surface: 'rest', owner, path, schema });
+    const pairs = { tool: [{ method: 'POST', path: '/tool' }, { method: 'GET', path: '/tool/:id' }] };
+    const params = [
+      mcp('url', { type: 'string' }),
+      mcp('limit', { type: 'integer', minimum: 1, maximum: 20 }),
+      mcp('id', { type: 'string' }),
+      mcp('modeOnly', { type: 'boolean' }),
+      rest('POST /tool', 'url', { type: 'string' }),
+      rest('POST /tool', 'limit', { type: 'integer', minimum: 1, maximum: 20 }),
+      rest('GET /tool/{id}', 'query:limit', { type: 'integer', minimum: 1, maximum: 50 }),
+      rest('GET /tool/{id}', 'path:id', { type: 'integer' }),
+    ];
+    const findings = findNotationIssues(params, pairs);
+    expect(findings.map((f) => f.key)).toEqual(['tool id']);
+    expect(findings[0]).toMatchObject({ kind: 'pair_mismatch', detail: expect.stringContaining('GET /tool/{id}') });
+    const reversed = { tool: [...pairs.tool].reverse() };
+    expect(findNotationIssues(params, reversed).map((f) => f.key)).toEqual(['tool limit', 'tool id']);
   });
 });
 

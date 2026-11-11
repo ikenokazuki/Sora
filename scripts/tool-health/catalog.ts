@@ -49,7 +49,16 @@ export const CANONICAL_TOOLS: readonly string[] = [
 ];
 
 
-export const REST_MAP: Record<string, RestRoute | null> = {
+/** ツール → REST のルート。配列は、モードごとに複数のルートを持つツール。null は REST の無いツール。 */
+export type RestMap = Record<string, RestRoute | RestRoute[] | null>;
+
+/** ツールの REST ルートの一覧（null は []、1 つは 1 要素の配列）。 */
+export function restRoutesOf(tool: string, map: RestMap = REST_MAP): RestRoute[] {
+  const route = map[tool];
+  return !route ? [] : Array.isArray(route) ? route : [route];
+}
+
+export const REST_MAP: RestMap = {
   scrape: { method: 'POST', path: '/scrape' },
   scrape_batch: { method: 'POST', path: '/scrape/batch' },
   search_deep: { method: 'POST', path: '/search/deep' },
