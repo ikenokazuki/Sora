@@ -1816,7 +1816,7 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v13:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v13:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;

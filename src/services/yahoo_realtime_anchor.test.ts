@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { findOfficialXHandle, searchYahooRealtime, type RealtimeAnchorHints } from './yahoo.js';
 
 function post(id: string, text: string, handle = 'fan') {
@@ -41,10 +41,6 @@ const loveProvider = (q: string) =>
 const OPT = { detailEnrichment: false } as const;
 const totals = (map: Record<string, number>) => async (terms: string[]) =>
   Object.fromEntries(terms.filter((t) => t in map).map((t) => [t, map[t]]));
-
-afterEach(() => {
-  delete process.env.SORA_REALTIME_ANCHOR;
-});
 
 describe('Realtime anchor (v2.36.0)', () => {
   test('固有名詞が壊れていれば公式ハッシュタグの別名で検索し、無関係な投稿を除く', async () => {
@@ -141,22 +137,6 @@ describe('Realtime anchor (v2.36.0)', () => {
       ...OPT,
       _callMcp: mockMcp(() => [], calls),
     } as any);
-    expect(calls).toContain('チケット 料金');
-    expect(res.anchorTerm).toBeUndefined();
-  });
-
-  test('SORA_REALTIME_ANCHOR=off なら判定しない', async () => {
-    process.env.SORA_REALTIME_ANCHOR = 'off';
-    const calls: string[] = [];
-    const used: string[] = [];
-    const res: any = await searchYahooRealtime({
-      query: 'チケット 料金 君と見るそら',
-      ...OPT,
-      anchorHints: hints(['君と見るそら公式サイト'], [], used),
-      _termTotals: totals({}),
-      _callMcp: mockMcp(() => [], calls),
-    } as any);
-    expect(used).toEqual([]);
     expect(calls).toContain('チケット 料金');
     expect(res.anchorTerm).toBeUndefined();
   });

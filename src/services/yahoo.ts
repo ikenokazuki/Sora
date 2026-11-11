@@ -1214,7 +1214,6 @@ export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): stri
     options.verbose === true,
     options.focus ?? 'auto',
     options.anchor?.trim() || 'auto',
-    process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on',
   ]);
 }
 
@@ -1964,7 +1963,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions): Promis
   }
   let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   const anchorHints = (options as YahooRealtimeOptions).anchorHints;
-  const anchorEnabled = anchorHints !== undefined && process.env.SORA_REALTIME_ANCHOR !== 'off';
+  const anchorEnabled = anchorHints !== undefined;
   // 1件だけ全語に一致しても、大半が全語を含まなければ網羅できたとはみなさない（判定材料がある時だけ）
   const weakCoverage = anchorEnabled && coverage.hasFullCoverage
     && coverage.itemCount >= WEAK_COVERAGE_MIN_ITEMS
