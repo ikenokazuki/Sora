@@ -24,7 +24,7 @@
 - **Yahoo!: `search_media` は `type`（`image`・`video`・`news`）で選びます**（旧 `search_image`・`search_video`・`search_news`）。`page` は image・video のとき（news は `page: 1` だけ通る）、`transcripts`・`transcriptChars`・`updated`・`platform` は video のときだけです。`search_keywords` は `query` があればサジェスト（旧 `suggest_keywords`）、無ければ急上昇トレンド（旧 `search_trend`）です。`limit` の上限はサジェストが 20、トレンドが 50 で、サジェストで 20 を超えると入力の誤りです（旧 `suggest_keywords` はスキーマの検査の誤りでした）。
 - **住所: `lookup_address` は、渡した引数で引き方を選びます**（旧 `normalize_address`・`reverse_geocode`・`search_postal_code`）。`address` があれば正規化、`address` なしで `lat` と `lon` なら逆引き、`zipcode` だけなら郵便番号の住所の候補です。
   - 住所から郵便番号（旧 `search_postal_code` の `address`）は、正規化の応答の `postalCodes` です。入力の写しの欄は `address` でなく `input` です。
-  - 郵便番号のデータの取得に失敗したときは、`postalCodes: []` と `incomplete`・`pending` で返します（旧 `search_postal_code` は `Postal code error`）。番地を国土交通省のデータで補ったときは、`dataset` に `mlit:…` が入ります。
+  - この経路で郵便番号のデータの取得に失敗したときは、`postalCodes: []` と `incomplete`・`pending` で返します（旧 `search_postal_code` は `Postal code error`）。番地を国土交通省のデータで補ったときは、`dataset` に `mlit:…` も入ります（旧 `search_postal_code` には入らなかった）。
   - `lat` か `lon` の片方だけは、住所と一緒でも、サービスを呼ぶ前に入力の誤りです（旧 `normalize_address` は `Address normalize error`）。
 - **地点: `get_place_info` は、`include` で返す情報を選びます**（旧 `get_elevation`。今は `elevation` だけで、既定）。`address` と `lat`・`lon` を同時に渡すと入力の誤りです（旧 `get_elevation` は黙って住所を使っていました）。
 - **防災: `get_disaster_info` は、`include` で警報（`warnings`）と地震（`earthquake`）を選びます**（旧 `search_disaster_warnings`・`search_earthquake`）。既定は、`city` か `areaCode` があれば `["warnings"]`、無ければ `["earthquake"]` です。両方は `["warnings", "earthquake"]` で、2 つは順に取るので、所要時間は 2 つの合計になります。説明から P2P地震情報への切り替えの記述を外しました（検索語には残し、各件の `source` で分かります）。
