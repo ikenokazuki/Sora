@@ -47,7 +47,8 @@ docker pull -q "$DISTROLESS_BASE" >/dev/null
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 extract_status() { # $1=イメージ $2=出力の場所
-  local cid; cid="$(docker create "$1")"
+  # distroless の土台は、ENTRYPOINT も CMD も持たない。docker create は、コマンドが無いと失敗する（podman は通る）ので、使わないコマンドを渡す
+  local cid; cid="$(docker create "$1" /bin/true)"
   docker cp "$cid:/var/lib/dpkg/status.d" "$2" >/dev/null
   docker rm -f "$cid" >/dev/null
 }
