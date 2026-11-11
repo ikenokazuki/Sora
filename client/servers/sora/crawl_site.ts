@@ -304,7 +304,7 @@ export type CrawlSiteOutput = {
   }[];
 };
 
-/** 【同一サイト内再帰巡回・URL一覧】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。listOnly: true なら本文を取らず、サイトマップ (sitemap.xml) またはページ内リンクからサイト内の URL 一覧だけを高速抽出します。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }。listOnly は { url, links, count, source } */
+/** 再帰的サブページクロール */
 export function crawlSite(input: CrawlSiteInput): Promise<CrawlSiteOutput> {
   return callSora<CrawlSiteOutput>({ method: 'POST', path: '/crawl' }, input);
 }
@@ -343,7 +343,7 @@ export type MapSiteOutput = {
   ageSeconds?: number;
 };
 
-/** 【同一サイト内再帰巡回・URL一覧】指定 URL を起点として同一ドメイン配下の Web ページを再帰的に巡回（クロール）し、複数ページの Markdown 本文を一括収集します（同一サイトの複数ページ巡回）。ドキュメントサイト等のまとめ読みに最適です。listOnly: true なら本文を取らず、サイトマップ (sitemap.xml) またはページ内リンクからサイト内の URL 一覧だけを高速抽出します。単一ページの取得は scrape、動的対話操作は browser_action を使用してください。返却: { url, baseUrl, count, totalPages, pages: [{ url, title, content }] }。listOnly は { url, links, count, source } */
+/** サイトマップ & URL マッピング */
 export function mapSite(input: MapSiteInput): Promise<MapSiteOutput> {
   return callSora<MapSiteOutput>({ method: 'POST', path: '/map' }, input);
 }

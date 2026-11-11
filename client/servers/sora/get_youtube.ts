@@ -96,7 +96,7 @@ export type GetYoutubeTranscriptOutput = {
   ageSeconds?: number;
 };
 
-/** 【YouTube 動画の字幕・チャンネルの最新動画】url の形で判別します。動画（URL か動画 ID）: 題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。チャンネル（URL・@ハンドル・UC… の ID）: 最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件。Yahoo の検索は使いません。動画の中身は、返った videoId を url に渡して読みます。チャンネルが無いときは found が false。返却: mode（video / channel）と、video は { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks }、channel は { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] } */
+/** YouTube 動画の題名・説明文・チャプターと時刻つきの字幕 (手動の字幕、無ければ YouTube の自動字幕) */
 export function getYoutubeTranscript(input: GetYoutubeTranscriptInput): Promise<GetYoutubeTranscriptOutput> {
   return callSora<GetYoutubeTranscriptOutput>({ method: 'POST', path: '/youtube/transcript' }, input);
 }
@@ -148,7 +148,7 @@ export type GetYoutubeChannelOutput = {
   ageSeconds?: number;
 };
 
-/** 【YouTube 動画の字幕・チャンネルの最新動画】url の形で判別します。動画（URL か動画 ID）: 題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕（手動の字幕、無ければ YouTube の自動字幕）を取得します。動画の要約・内容の抽出・何分に何と言ったかの確認に使います。自動字幕は音声認識なので誤りを含みます。transcript.status が ok 以外（字幕なし・配信中・取得失敗）のときは、話の中身を推測せず題名と説明文だけで答えてください。長い動画は nextFromSec を fromSec に渡して続きを読みます。チャンネル（URL・@ハンドル・UC… の ID）: 最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に最大 15 件。Yahoo の検索は使いません。動画の中身は、返った videoId を url に渡して読みます。チャンネルが無いときは found が false。返却: mode（video / channel）と、video は { found, videoId, title, channel, publishedAt, durationSec, description, chapters, requestedStartSec, transcript: { status, reason, message, source, note, text, truncated, nextFromSec }, availableTracks }、channel は { found, channelId, title, url, videos: [{ videoId, url, title, publishedAt, updatedAt, description, views }] } */
+/** YouTube チャンネルの最新の動画 (題名・公開日・説明文・視聴回数。新しい順に最大 15 件。字幕は /youtube/transcript で読む) */
 export function getYoutubeChannel(input: GetYoutubeChannelInput): Promise<GetYoutubeChannelOutput> {
   return callSora<GetYoutubeChannelOutput>({ method: 'POST', path: '/youtube/channel' }, input);
 }

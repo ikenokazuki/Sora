@@ -68,7 +68,7 @@ export type SearchImageOutput = {
   }[];
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** Yahoo! 画像検索 */
 export function searchImage(input: SearchImageInput): Promise<SearchImageOutput> {
   return callSora<SearchImageOutput>({ method: 'POST', path: '/search/image' }, input);
 }
@@ -157,7 +157,7 @@ export type SearchVideoOutput = {
   message?: string;
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** Yahoo! 動画検索 */
 export function searchVideo(input: SearchVideoInput): Promise<SearchVideoOutput> {
   return callSora<SearchVideoOutput>({ method: 'POST', path: '/search/video' }, input);
 }
@@ -199,7 +199,7 @@ export type SearchNewsOutput = {
   }[];
 };
 
-/** 【Yahoo 画像・動画・ニュース検索】type で選ぶ。image: 画像の元 URL と寸法・サムネイル・掲載元ページ（画像の中身を読むときは inspect_image）。video: YouTube・TikTok 等の動画。transcripts で上位の YouTube 動画に検索語に関係する字幕の部分（時刻つき）を付ける（全文は get_youtube）。news: 大手報道機関の最新ニュース速報（タイトル・サマリー・配信メディア・配信日時・記事 URL）。時事問題・公式発表の調査に。返却: { query, count, items }（items の欄は type の説明） */
+/** Yahoo! ニュース検索 */
 export function searchNews(input: SearchNewsInput): Promise<SearchNewsOutput> {
   return callSora<SearchNewsOutput>({ method: 'POST', path: '/search/news' }, input);
 }

@@ -36,7 +36,7 @@ export type SearchLawsOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source } */
+/** e-Gov 法令 API v2 キーワード法令検索 */
 export function searchLaws(input: SearchLawsInput): Promise<SearchLawsOutput> {
   return callSora<SearchLawsOutput>({ method: 'POST', path: '/gov/laws' }, input);
 }
@@ -75,7 +75,7 @@ export type GetLawTextOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・推測回答厳禁】日本の法律・政令・府省令の検索・条文確認では、条文番号・法令名・条文を推測・創作せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行。keywordで法令一覧、lawIdで条文全文。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source } */
+/** e-Gov 法令 API v2 法令条文・本文詳細取得 (Markdown 構造化) */
 export function getLawText(input: GetLawTextInput): Promise<GetLawTextOutput> {
   return callSora<GetLawTextOutput>({ method: 'POST', path: '/gov/law-text' }, input);
 }

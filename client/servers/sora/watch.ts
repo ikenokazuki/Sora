@@ -66,7 +66,7 @@ export type WatchRegisterOutput = {
   };
 };
 
-/** 【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id } */
+/** Web ページ差分監視ターゲット登録 (初期ハッシュ作成) */
 export function watchRegister(input: WatchRegisterInput): Promise<WatchRegisterOutput> {
   return callSora<WatchRegisterOutput>({ method: 'POST', path: '/watch/register' }, input);
 }
@@ -125,7 +125,7 @@ export type WatchCheckOutput = {
   }[];
 };
 
-/** 【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id } */
+/** Web ページ差分スキャン実行 (差分検知時 Webhook 自動発火) */
 export function watchCheck(input: WatchCheckInput): Promise<WatchCheckOutput> {
   return callSora<WatchCheckOutput>({ method: 'POST', path: '/watch/check' }, input);
 }
@@ -158,7 +158,7 @@ export type WatchListOutput = {
   }[];
 };
 
-/** 【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id } */
+/** 登録済み差分監視ターゲット一覧取得 (SQLite 永続化) */
 export function watchList(): Promise<WatchListOutput> {
   return callSora<WatchListOutput>({ method: 'GET', path: '/watch/list' });
 }
@@ -174,7 +174,7 @@ export type WatchDeleteOutput = {
   id: string;
 };
 
-/** 【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id } */
+/** 差分監視ターゲット削除 */
 export function watchDelete(input: WatchDeleteInput): Promise<WatchDeleteOutput> {
   return callSora<WatchDeleteOutput>({ method: 'DELETE', path: '/watch/:id' }, input);
 }

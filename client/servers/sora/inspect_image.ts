@@ -32,7 +32,7 @@ export type InspectImageOutput = {
   cached?: boolean;
 };
 
-/** 【画像視覚解析・マルチモーダル入力】WebページやSNS投稿内の重要画像URL（チラシ、時刻表、表、図等）を取得し、MCP ImageContent（Base64）として直接AIに視覚入力します。※単なるアイキャッチや装飾画像には呼び出さず、テキスト回答に不可欠な画像に限定してください。返却: ImageContent */
+/** 画像取得 & MCP 視覚入力（Base64）変換 API */
 export function inspectImage(input: InspectImageInput): Promise<InspectImageOutput> {
   return callSora<InspectImageOutput>({ method: 'POST', path: '/media/inspect-image' }, input);
 }

@@ -13,6 +13,7 @@ interface OpenApiParameter {
 
 interface OpenApiOperation {
   summary?: string;
+  description?: string;
   parameters?: OpenApiParameter[];
   requestBody?: { content?: Record<string, { schema?: OpenApiSchema }> };
   responses?: Record<string, { content?: Record<string, { schema?: OpenApiSchema }> }>;
@@ -62,7 +63,9 @@ function routeFunction(fn: string, tool: ToolMeta, route: RestRoute, op: OpenApi
   const input = inputSchema(op, route.method, route.path);
   const output = op.responses?.['200']?.content?.['application/json']?.schema;
   const routeLiteral = `{ method: '${route.method}', path: '${route.path}' }`;
-  const description = tool.description.replace(/\*\//g, '* /').replace(/\s*\n\s*/g, ' ');
+  // 関数はそのルートの REST を呼ぶので、そのルートの操作の文で説明する（統合したツールの MCP の説明は、REST に無い引数や、まとめた応答の形を書いている）
+  const text = [op.summary, op.description].filter(Boolean).join(' ') || tool.description;
+  const description = text.replace(/\*\//g, '* /').replace(/\s*\n\s*/g, ' ');
   const signature = input ? `input: ${type}Input` : '';
   return [
     ...(input ? [`export type ${type}Input = ${schemaToTs(input)};`, ''] : []),

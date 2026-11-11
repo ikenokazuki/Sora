@@ -71,7 +71,7 @@ export type SearchMusicOutput = {
   ageSeconds?: number;
 };
 
-/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
+/** iTunes 公式 Search API 楽曲・アルバム・アーティストメタデータ検索 (汎用) */
 export function searchMusic(input: SearchMusicInput): Promise<SearchMusicOutput> {
   return callSora<SearchMusicOutput>({ method: 'POST', path: '/search/music' }, input);
 }
@@ -142,7 +142,7 @@ export type SearchSongOutput = {
   ageSeconds?: number;
 };
 
-/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
+/** iTunes 公式 Search API 曲名指定 楽曲メタデータ検索 */
 export function searchSong(input: SearchSongInput): Promise<SearchSongOutput> {
   return callSora<SearchSongOutput>({ method: 'POST', path: '/search/song' }, input);
 }
@@ -215,7 +215,7 @@ export type SearchArtistOutput = {
   ageSeconds?: number;
 };
 
-/** 【iTunes公式直結】楽曲・アルバム・アーティストをiTunes公式メタデータから検索し、正確な曲名、高解像度ジャケット画像、30秒試聴音源URL、アーティスト名、リリース日、Apple Musicリンクを返します。曲名で探すときは attribute: "songTerm"。アーティストの代表曲・アルバムは attribute: "artistTerm" と entity: "song" / "album"、アーティスト基本情報は entity: "musicArtist"（attribute なし）。※公式カタログのメタデータです。ライブ・公演日程や最新の出演スケジュール・最新活動情報は search_deep または search_realtime を使用してください。返却: { query, country, entity, attribute?, count, items: [{ title, artist, previewUrl, artwork }], source } */
+/** iTunes 公式 Search API アーティスト名指定 音楽・アルバム・アーティストメタデータ検索 */
 export function searchArtist(input: SearchArtistInput): Promise<SearchArtistOutput> {
   return callSora<SearchArtistOutput>({ method: 'POST', path: '/search/artist' }, input);
 }

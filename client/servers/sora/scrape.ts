@@ -322,7 +322,7 @@ export type ScrapeOutput = {
   ageSeconds?: number;
 };
 
-/** 【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? } */
+/** 単一 Web ページ / PDF スクレイピング (アセット高速遮断・DOM静止検知・イベント/パンくず/表構造化・読了時間・PII保護対応) */
 export function scrape(input: ScrapeInput): Promise<ScrapeOutput> {
   return callSora<ScrapeOutput>({ method: 'POST', path: '/scrape' }, input);
 }
@@ -641,7 +641,7 @@ export type ScrapeBatchOutput = {
   }[];
 };
 
-/** 【URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。urls で最大20件を並行取得。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? } */
+/** 複数 URL 一括並行スクレイピング (最大20件・ドメインスロットリング・イベント/パンくず構造化抽出) */
 export function scrapeBatch(input: ScrapeBatchInput): Promise<ScrapeBatchOutput> {
   return callSora<ScrapeBatchOutput>({ method: 'POST', path: '/scrape/batch' }, input);
 }

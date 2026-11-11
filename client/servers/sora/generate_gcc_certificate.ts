@@ -162,7 +162,7 @@ export type GenerateGccCertificateOutput = {
   disclaimer: string;
 };
 
-/** 【必須・推測や見本の値は禁止】米国CPSCの一般適合証明書（GCC、16 CFR 1110.11）と、通関の保留に出す書類（表紙、品目ごとのGCC、16 CFR 1610.1(d) の免除の説明）を印刷用のHTMLで作る。値は記録から渡す（州・県が無ければ state は N/A）。足りない項目があれば既定でエラー（allowDraft で下書き）。12歳以下の子供用は CPC が要るので作らない。返却: { packageId, overallStatus, counts, items, packageHtml } */
+/** 米国CPSCの一般適合証明書（GCC）と、通関の保留に出す書類を作る（16 CFR 1110.11） */
 export function generateGccCertificate(input: GenerateGccCertificateInput): Promise<GenerateGccCertificateOutput> {
   return callSora<GenerateGccCertificateOutput>({ method: 'POST', path: '/trade/gcc-generate' }, input);
 }

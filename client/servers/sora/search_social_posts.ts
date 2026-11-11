@@ -64,7 +64,7 @@ export type SearchSocialPostsOutput = {
   warnings: string[];
 };
 
-/** 【公開SNS投稿検索】Weiboのキーワード新着検索と、Threads/Instagram/Facebookの公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外（search_realtime を使う）。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable なら failures を確認、empty は一致なし。 */
+/** 公開SNS投稿検索 (Weibo新着 / Threads・Instagram・Facebook公開投稿) */
 export function searchSocialPosts(input: SearchSocialPostsInput): Promise<SearchSocialPostsOutput> {
   return callSora<SearchSocialPostsOutput>({ method: 'POST', path: '/social/search' }, input);
 }

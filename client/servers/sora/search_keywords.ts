@@ -34,7 +34,7 @@ export type SuggestKeywordsOutput = {
   }[];
 };
 
-/** 【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp } */
+/** Yahoo! サジェスト（キーワード自動補完） */
 export function suggestKeywords(input: SuggestKeywordsInput): Promise<SuggestKeywordsOutput> {
   return callSora<SuggestKeywordsOutput>({ method: 'POST', path: '/search/suggest' }, input);
 }
@@ -72,7 +72,7 @@ export type SearchTrendOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式サジェスト・トレンド直結】query を指定すると、Yahoo! JAPAN のキーワード補完サジェスト（入力候補・よく一緒に検索される複合検索需要・関連語）を返す。query を省くと、いま日本国内で最も話題の急上昇トレンドキーワード上位 20 件（順位・キーワード・ポスト数）を返す。急上昇トレンドは必ず本ツールで取得してください。返却: { query, suggestions: [...] }。query を省くと { source, type, count, items: [{ rank, keyword, tweetCount, url }], timestamp } */
+/** Yahoo! リアルタイム急上昇トレンド (X/Twitter) */
 export function searchTrend(input: SearchTrendInput): Promise<SearchTrendOutput> {
   return callSora<SearchTrendOutput>({ method: 'POST', path: '/search/trend' }, input);
 }

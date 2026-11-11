@@ -68,7 +68,7 @@ export type SearchDisasterWarningsOutput = {
   ageSeconds?: number;
 };
 
-/** 【気象庁公式・防災速報直結】特別警報・危険警報・警報・注意報（大雨・土砂災害・暴風・大雪・波浪等。河川の氾濫は含まない）と最新の地震（震源・マグニチュード・最大震度・津波）は推測せず本ツールで取得。includeで選ぶ（既定はcity/areaCodeがあればwarnings、無ければearthquake）。返却: { include, warnings: { areaName, warnings }, earthquake: { count, earthquakes } } */
+/** 気象庁公式 特別警報・気象警報・注意報 リアルタイム取得 */
 export function searchDisasterWarnings(input: SearchDisasterWarningsInput): Promise<SearchDisasterWarningsOutput> {
   return callSora<SearchDisasterWarningsOutput>({ method: 'POST', path: '/disaster/warnings' }, input);
 }
@@ -130,7 +130,7 @@ export type SearchEarthquakeOutput = {
   ageSeconds?: number;
 };
 
-/** 【気象庁公式・防災速報直結】特別警報・危険警報・警報・注意報（大雨・土砂災害・暴風・大雪・波浪等。河川の氾濫は含まない）と最新の地震（震源・マグニチュード・最大震度・津波）は推測せず本ツールで取得。includeで選ぶ（既定はcity/areaCodeがあればwarnings、無ければearthquake）。返却: { include, warnings: { areaName, warnings }, earthquake: { count, earthquakes } } */
+/** 気象庁 リアルタイム地震情報・履歴取得（気象庁が使えない間は P2P地震情報） */
 export function searchEarthquake(input: SearchEarthquakeInput): Promise<SearchEarthquakeOutput> {
   return callSora<SearchEarthquakeOutput>({ method: 'POST', path: '/disaster/earthquake' }, input);
 }

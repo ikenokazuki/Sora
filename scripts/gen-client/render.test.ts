@@ -88,6 +88,31 @@ describe('generateClient', () => {
     expect(catalog[1]).toMatchObject({ method: 'DELETE', path: '/watch/:id', file: 'servers/sora/watch.ts' });
     expect(multi['servers/sora/index.ts'].match(/export \*/g)).toHaveLength(1);
   });
+
+  test('each function is documented by its own REST operation (summary, then description), not by the merged MCP description', () => {
+    const json = { 200: { content: { 'application/json': { schema: { type: 'object' } } } } };
+    const ops: OpenApiDoc = {
+      paths: {
+        '/watch/list': { get: { summary: '監視の一覧 */ 取得', responses: json } },
+        '/watch/{id}': { delete: { summary: '監視の削除', description: '以後の監視を止める。\n  id は一覧で確認', responses: json } },
+        '/gov/law-text': { post: { responses: json } },
+      },
+    };
+    const watch: ToolMeta = { name: 'watch', category: 'watch', description: 'action で選ぶ。返却: register は { target }', keywords: [] };
+    const law: ToolMeta = { name: 'search_laws', category: 'gov', description: '【法令】keyword か lawId', keywords: [] };
+    const files = generateClient(ops, {
+      watch: [{ method: 'GET', path: '/watch/list', fn: 'watchList' }, { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' }],
+      search_laws: { method: 'POST', path: '/gov/law-text' },
+    }, [watch, law]);
+    const module = files['servers/sora/watch.ts'];
+    expect(module).toContain('/** 監視の一覧 * / 取得 */\nexport function watchList()');
+    expect(module).toContain('/** 監視の削除 以後の監視を止める。 id は一覧で確認 */\nexport function watchDelete(');
+    expect(module).not.toContain('action で選ぶ');
+    // 操作に説明が無いときだけ、ツールの説明を使う
+    expect(files['servers/sora/search_laws.ts']).toContain('/** 【法令】keyword か lawId */');
+    // catalog.json は、ツールの説明のまま（ツールの検索に使う）
+    expect(JSON.parse(files['catalog.json']).map((row: { description: string }) => row.description)).toEqual(['【法令】keyword か lawId', watch.description, watch.description]);
+  });
 });
 
 describe('generateClient function names', () => {

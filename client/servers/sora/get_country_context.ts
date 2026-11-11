@@ -1303,7 +1303,7 @@ export type GetCountryContextOutput = {
   };
 };
 
-/** 【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? } */
+/** 永続化済み国地域コンテキスト取得 */
 export function getCountryContext(input: GetCountryContextInput): Promise<GetCountryContextOutput> {
   return callSora<GetCountryContextOutput>({ method: 'GET', path: '/intelligence/context/:contextId' }, input);
 }
@@ -1351,7 +1351,7 @@ export type GetCountryContextEvidenceOutput = {
   nextCursor?: string;
 };
 
-/** 【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? } */
+/** 根拠原文・構造化データのページ取得 */
 export function getCountryContextEvidence(input: GetCountryContextEvidenceInput): Promise<GetCountryContextEvidenceOutput> {
   return callSora<GetCountryContextEvidenceOutput>({ method: 'GET', path: '/intelligence/context/:contextId/evidence' }, input);
 }
@@ -1376,7 +1376,7 @@ export type GetCountryContextUpdatesOutput = {
   nextCursor?: string;
 };
 
-/** 【国地域レポートの再取得】research_country_context が返した contextId で、保存済みのレポートを取得します（再調査はしません）。part で選ぶ。report（既定）: レポート全体。evidence: 根拠（原文の抜粋・構造化データ）をページ単位で取得します。evidenceIds で個別に指定し、省略時は nextCursor で順に走査します。レポートに無い ID は missingIds で返し、limit を超えたら nextCursor で続きます。updates: 前回以降の根拠の追加・訂正・削除・取得障害。前回の nextCursor を cursor に渡すと続きから取得します。返却: report は CountryContextReport、evidence は { contextId, items: [{ evidenceId, providerId, sourceRecordUrl, resolvedTitle?, blocks, publishedAt? }], totalStored, missingIds?, nextCursor? }、updates は { contextId, changes: [{ id, observedAt, changeKind, evidenceId?, summary? }], nextCursor? } */
+/** 追加・訂正・削除・取得障害の差分取得 */
 export function getCountryContextUpdates(input: GetCountryContextUpdatesInput): Promise<GetCountryContextUpdatesOutput> {
   return callSora<GetCountryContextUpdatesOutput>({ method: 'GET', path: '/intelligence/context/:contextId/updates' }, input);
 }

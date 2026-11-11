@@ -62,7 +62,7 @@ export type GetFlightStatusOutput = {
   ageSeconds?: number;
 };
 
-/** 【公式運航情報直結】羽田・成田・伊丹・関西・中部の 5 空港の国内線・国際線フライトリアルタイム運航状況・欠航・遅延ステータスおよび理由詳細は、推測せず必ず本ツールで確認してください。返却: { airportName, summary, flights: [{ flightNumber, airline, scheduledTime, status }] } */
+/** 5 空港 (羽田・成田・伊丹・関西・中部) フライト運航状況・欠航・遅延リアルタイム検索 API */
 export function getFlightStatus(input: GetFlightStatusInput): Promise<GetFlightStatusOutput> {
   return callSora<GetFlightStatusOutput>({ method: 'POST', path: '/traffic/flight' }, input);
 }

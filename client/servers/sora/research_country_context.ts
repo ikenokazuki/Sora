@@ -1323,7 +1323,7 @@ export type ResearchCountryContextOutput = {
   };
 };
 
-/** 【国地域インテリジェンス・証拠基盤】指定した国・地域の政治・経済・安全・災害・保健・旅行・カレンダー・世論調査を分野横断で取得します。初回応答は代表証拠、全件はcontextIdで参照可能。評価・推奨は含めません。限界: 一部証拠は公表日時なし、SNSは対象言語・範囲限定、未観測範囲の明示は呼出元が確認すること。本ツール単独で判断の十分性を保証しない。調査手順はリソース sora-skill://sora-deep-research を読む。返却: CountryContextReport */
+/** 国地域コンテキスト生成 (証拠基盤・永続化レポート) */
 export function researchCountryContext(input: ResearchCountryContextInput): Promise<ResearchCountryContextOutput> {
   return callSora<ResearchCountryContextOutput>({ method: 'POST', path: '/intelligence/country' }, input);
 }

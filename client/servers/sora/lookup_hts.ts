@@ -54,7 +54,7 @@ export type VerifyHtsCodeOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation } */
+/** HTS/HSコード実在確認・検証（USITC公式データ照合・10桁特定ヒアリング誘導対応） */
 export function verifyHtsCode(input: VerifyHtsCodeInput): Promise<VerifyHtsCodeOutput> {
   return callSora<VerifyHtsCodeOutput>({ method: 'POST', path: '/trade/hts-verify' }, input);
 }
@@ -251,7 +251,7 @@ export type PredictHtsCodeOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation } */
+/** 商品情報からのHTS/HSコード推測（USITC公式HTS全件の階層つき全文検索とCBP分類判例の統合・候補提示・関税率取得・分岐点の確認質問）。入力は英語 */
 export function predictHtsCode(input: PredictHtsCodeInput): Promise<PredictHtsCodeOutput> {
   return callSora<PredictHtsCodeOutput>({ method: 'POST', path: '/trade/hts-predict' }, input);
 }

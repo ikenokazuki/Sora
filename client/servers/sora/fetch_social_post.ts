@@ -56,7 +56,7 @@ export type FetchSocialPostOutput = {
   warnings: string[];
 };
 
-/** 【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail } */
+/** 既知SNS投稿の取得（本文・日時・反応） */
 export function fetchSocialPost(input: FetchSocialPostInput): Promise<FetchSocialPostOutput> {
   return callSora<FetchSocialPostOutput>({ method: 'POST', path: '/social/fetch' }, input);
 }
@@ -86,7 +86,7 @@ export type FetchXPostOutput = {
   };
 };
 
-/** 【既知SNS投稿の取得】X/Weibo/Threads/Instagram/Facebookの公開投稿URL（Xは statusId でも可）から本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }。Xは { found, statusId, detail } */
+/** X個別投稿の全文取得 (FxTwitter経由) */
 export function fetchXPost(input: FetchXPostInput): Promise<FetchXPostOutput> {
   return callSora<FetchXPostOutput>({ method: 'POST', path: '/realtime/post' }, input);
 }

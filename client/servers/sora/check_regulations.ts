@@ -65,7 +65,7 @@ export type CheckCpscCertificateOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・即時推測厳禁】HTSコードから米国の規制を判定する際は、推測せず必ず本ツールを実行してください。agenciesで機関を選ぶ（既定は両方）。cpsc: CPSC適合証明書（GCC/CPC）要否と2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務、非対象時のACE免責申告コード(Disclaimer)と根拠条文（16 CFR）。fda: FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）。素材・年齢層・食品接触用途が不明な場合は推測で埋めず、未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { agencies, cpsc: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }, fda: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation } } */
+/** 米国CPSC適合証明書 (GCC/CCC) eFiling完全義務化 & ACE免責判定 (動的ヒアリング誘導対応) */
 export function checkCpscCertificate(input: CheckCpscCertificateInput): Promise<CheckCpscCertificateOutput> {
   return callSora<CheckCpscCertificateOutput>({ method: 'POST', path: '/trade/cpsc-check' }, input);
 }
@@ -112,7 +112,7 @@ export type CheckFdaRegulatedOutput = {
   impactExplanation?: string;
 };
 
-/** 【必須・即時推測厳禁】HTSコードから米国の規制を判定する際は、推測せず必ず本ツールを実行してください。agenciesで機関を選ぶ（既定は両方）。cpsc: CPSC適合証明書（GCC/CPC）要否と2026年7月完全義務化されたCBP ACE電子申告（eFiling）義務、非対象時のACE免責申告コード(Disclaimer)と根拠条文（16 CFR）。fda: FDA規制対象（FD1〜FD4フラグ・Prior Notice要否・MoCRA・ACE免責Disclaimer要件）。素材・年齢層・食品接触用途が不明な場合は推測で埋めず、未指定/unknownで呼び出すこと。不足時は確認質問(clarifyingQuestions)と影響説明を返却します。返却: { agencies, cpsc: { certificateRequired, eFilingRequired, applicableRegulations, clarifyingQuestions, impactExplanation }, fda: { fdaRegulatedLikely, fdFlag, possiblePrograms, priorNoticeRequired, clarifyingQuestions, impactExplanation } } */
+/** 米国FDA規制対象 実務判定（PGAフラグ FD1〜FD4・Prior Notice・MoCRA要件・動的ヒアリング誘導対応） */
 export function checkFdaRegulated(input: CheckFdaRegulatedInput): Promise<CheckFdaRegulatedOutput> {
   return callSora<CheckFdaRegulatedOutput>({ method: 'POST', path: '/trade/fda-check' }, input);
 }

@@ -104,7 +104,7 @@ export type NormalizeAddressOutput = {
   attribution: string;
 };
 
-/** 【住所正規化・逆ジオコーディング・郵便番号】日本の住所を引く（一次データ: デジタル庁ABR・日本郵便。使われた市区町村のみオンデマンド取得）。入力で選ぶ。address: 番地・号（level 8）まで照合・正規化し、緯度経度・結合キー・郵便番号を付与。zipcode・lat/lon・compareAddress で突き合わせ（名寄せ）。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。lat と lon だけ: 緯度経度から最寄りの番地・号または町字の住所を逆引き（代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点で numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。zipcode だけ: 郵便番号から住所候補（大口事業所の個別郵便番号にも対応）。返却: mode（normalize / reverse / postal）と、normalize は { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }、reverse は { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }、postal は { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }], dataset, attribution } */
+/** 住所の正規化と、郵便番号・座標・住所同士の突き合わせ API (番地・号まで照合) */
 export function normalizeAddress(input: NormalizeAddressInput): Promise<NormalizeAddressOutput> {
   return callSora<NormalizeAddressOutput>({ method: 'POST', path: '/geo/address/normalize' }, input);
 }
@@ -167,7 +167,7 @@ export type ReverseGeocodeOutput = {
   attribution: string;
 };
 
-/** 【住所正規化・逆ジオコーディング・郵便番号】日本の住所を引く（一次データ: デジタル庁ABR・日本郵便。使われた市区町村のみオンデマンド取得）。入力で選ぶ。address: 番地・号（level 8）まで照合・正規化し、緯度経度・結合キー・郵便番号を付与。zipcode・lat/lon・compareAddress で突き合わせ（名寄せ）。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。lat と lon だけ: 緯度経度から最寄りの番地・号または町字の住所を逆引き（代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点で numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。zipcode だけ: 郵便番号から住所候補（大口事業所の個別郵便番号にも対応）。返却: mode（normalize / reverse / postal）と、normalize は { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }、reverse は { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }、postal は { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }], dataset, attribution } */
+/** 緯度経度 → 住所 (逆ジオコーディング) API。代表点による最寄り判定 */
 export function reverseGeocode(input: ReverseGeocodeInput): Promise<ReverseGeocodeOutput> {
   return callSora<ReverseGeocodeOutput>({ method: 'POST', path: '/geo/reverse' }, input);
 }
@@ -224,7 +224,7 @@ export type SearchPostalCodeOutput = {
   attribution: string;
 };
 
-/** 【住所正規化・逆ジオコーディング・郵便番号】日本の住所を引く（一次データ: デジタル庁ABR・日本郵便。使われた市区町村のみオンデマンド取得）。入力で選ぶ。address: 番地・号（level 8）まで照合・正規化し、緯度経度・結合キー・郵便番号を付与。zipcode・lat/lon・compareAddress で突き合わせ（名寄せ）。numberSource は番地・号の照合の根拠: rsdt（住居表示）・chiban（地番）は番地・号を照合、mlit は国土交通省の街区データで街区符号まで（号は未照合で other に残る。確認済みの番地ではない）、null は整形のみ。座標の精度は point.level（8 番地・号 / 7 街区 / 3 町字）で判断（chiban で ABR に座標が無いとき pointSource: mlit）。lat と lon だけ: 緯度経度から最寄りの番地・号または町字の住所を逆引き（代表点による最寄り判定。ABR の点が範囲内に無いときは国土交通省の街区の点で numberSource: mlit、point.level 7、番地の特定ではなく街区の近似）。zipcode だけ: 郵便番号から住所候補（大口事業所の個別郵便番号にも対応）。返却: mode（normalize / reverse / postal）と、normalize は { normalized, addr, other, level, numberSource, keys, point: { lat, lon, level }, pointSource?, postalCodes, checks?: { zipcode?, coordinates?, compare? }, dataset, attribution }、reverse は { found, address, normalized, level, numberSource, distanceMeters, keys, postalCodes, alternatives, dataset, attribution }、postal は { zipcode, count, candidates: [{ kind, prefecture, city, town, detail?, office?, lgCode, lat?, lon?, locationLevel? }], dataset, attribution } */
+/** 郵便番号 ⇄ 住所候補 API (ABR・日本郵便データを必要な範囲だけ取得して使う) */
 export function searchPostalCode(input: SearchPostalCodeInput): Promise<SearchPostalCodeOutput> {
   return callSora<SearchPostalCodeOutput>({ method: 'POST', path: '/geo/postal-code' }, input);
 }
