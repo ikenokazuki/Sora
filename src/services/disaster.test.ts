@@ -8,6 +8,7 @@ import { createMcpServer } from '../mcp.js';
 import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES } from '../jma_areas.js';
 import { ElevationRequestSchema } from '../types.js';
 import R8_TOKYO from '../test_fixtures/jma_warning_r8_excerpt.json';
+import QUAKE from '../test_fixtures/jma_quake_excerpt.json';
 
 // 送り先を差し替え、要求した URL を記録する。handler が undefined を返したら 404。
 let restore: (() => void) | undefined;
@@ -480,28 +481,142 @@ function p2pQuakes(scales: number[]) {
   };
 }
 
+/** 気象庁が落ちている間の退避先（P2P地震情報）だけが答える状況。 */
+function jmaDownP2pUp(scales: number[]) {
+  const p2p = p2pQuakes(scales);
+  return (url: URL) => (url.hostname === 'www.jma.go.jp' ? new Response('unavailable', { status: 503 }) : p2p(url));
+}
+
+type QuakeEntry = (typeof QUAKE.list)[number];
+/** 気象庁の地震情報（bosai/quake/data）。list.json と各報の JSON は、2026-11-11 に取った実データの抜粋。 */
+function jmaQuakes(options: { list?: QuakeEntry[]; failDetail?: boolean } = {}) {
+  return (url: URL) => {
+    if (url.hostname !== 'www.jma.go.jp' || !url.pathname.startsWith('/bosai/quake/data/')) return undefined;
+    const name = url.pathname.split('/').pop()!;
+    if (name === 'list.json') return options.list ?? QUAKE.list;
+    if (options.failDetail) return new Response('unavailable', { status: 503 });
+    return (QUAKE.details as Record<string, unknown>)[name];
+  };
+}
+const quakeCalls = (calls: string[]) => calls.filter((c) => c.includes('/bosai/quake/data/'));
+
 describe('search_earthquake', () => {
-  it('minIntensity が既定より大きいときは 100 件取り、絞ってから limit 件に切る', async () => {
-    const calls = stubFetch(p2pQuakes([10, 10, 10, 10, 10, 30, 10, 40]));
-    const r = await fetchRecentEarthquakes({ limit: 1, minIntensity: 30, noCache: true });
-    expect(new URL(calls[0]).searchParams.get('limit')).toBe('100');
-    expect(r.count).toBe(1);
-    expect(r.earthquakes[0].hypocenter.name).toBe('震源5');
+  describe('気象庁の公式データ', () => {
+    it('震源・震度情報を新しい順に返す（震源、深さ、津波、観測点つき。遠地地震は含めない）', async () => {
+      const calls = stubFetch(jmaQuakes());
+      const r = await fetchRecentEarthquakes({ limit: 20, noCache: true });
+      expect(r.earthquakes.map((e) => e.id)).toEqual(['20261111125704', '20261108105319', '20261108010441', '20261106193937']);
+      expect(r.count).toBe(4);
+      expect(r.earthquakes.every((e) => e.source === 'jma')).toBe(true);
+      expect(calls.some((c) => c.includes('p2pquake'))).toBe(false);
+
+      const [ibaraki, kumamoto, shizuoka, kanto] = r.earthquakes;
+      expect(ibaraki).toMatchObject({
+        time: '2026/11/11 12:57:00', maxScale: '震度1', maxScaleRaw: 10, tsunami: '津波の心配なし',
+        hypocenter: { name: '茨城県沖', magnitude: 4.6, depthKm: 20, latitude: 36.3, longitude: 141.7 },
+      });
+      expect(ibaraki.points).toBeUndefined();
+      expect(kumamoto).toMatchObject({ maxScale: '震度4', maxScaleRaw: 40, hypocenter: { name: '熊本県天草・芦北地方', magnitude: 4.3, depthKm: 10 } });
+      // 震度3以上の観測点だけを、強い順に最大 10 件
+      expect(kumamoto.points?.length).toBeGreaterThan(0);
+      expect(kumamoto.points!.length).toBeLessThanOrEqual(10);
+      expect(kumamoto.points![0]).toMatchObject({ pref: '熊本県', scale: '震度4' });
+      expect(kumamoto.points!.every((p) => p.scale === '震度4' || p.scale === '震度3')).toBe(true);
+      const order = kumamoto.points!.map((p) => (p.scale === '震度4' ? 4 : 3));
+      expect(order).toEqual([...order].sort((a, b) => b - a));
+      expect(shizuoka).toMatchObject({ maxScale: '震度5強', maxScaleRaw: 50, tsunami: '津波の心配なし', hypocenter: { name: '静岡県西部', magnitude: 5.7, depthKm: 40 } });
+      expect(kanto).toMatchObject({ maxScale: '震度3', tsunami: '若干の海面変動の可能性あり' });
+    });
+
+    it('minIntensity で絞ってから limit 件に切り、詳細は返す件数だけ取る', async () => {
+      const calls = stubFetch(jmaQuakes());
+      const strong = await fetchRecentEarthquakes({ limit: 5, minIntensity: 45, noCache: true });
+      expect(strong.earthquakes.map((e) => e.id)).toEqual(['20261108010441']);
+      expect(quakeCalls(calls)).toHaveLength(2); // list.json と 1 件の詳細
+
+      const calls2 = stubFetch(jmaQuakes());
+      const two = await fetchRecentEarthquakes({ limit: 2, noCache: true });
+      expect(two.earthquakes.map((e) => e.id)).toEqual(['20261111125704', '20261108105319']);
+      expect(quakeCalls(calls2)).toHaveLength(3);
+    });
+
+    it('震源・震度情報が出る前の地震も、あるぶんの情報で返す（震源に関する情報、震度速報）', async () => {
+      const withoutFull = QUAKE.list.filter((x) => !(x.eid === '20261106193937' && x.ttl === '震源・震度情報'));
+      stubFetch(jmaQuakes({ list: withoutFull }));
+      const early = (await fetchRecentEarthquakes({ limit: 20, noCache: true })).earthquakes.find((e) => e.id === '20261106193937')!;
+      expect(early).toMatchObject({ source: 'jma', maxScale: '震度3', tsunami: '若干の海面変動の可能性あり', hypocenter: { name: '関東東方沖', magnitude: 6.1 } });
+      expect(early.points).toBeUndefined();
+
+      const onlyScale = QUAKE.list.filter((x) => !(x.eid === '20261106193937' && x.ttl !== '震度速報'));
+      stubFetch(jmaQuakes({ list: onlyScale }));
+      const first = (await fetchRecentEarthquakes({ limit: 20, noCache: true })).earthquakes.find((e) => e.id === '20261106193937')!;
+      expect(first).toMatchObject({ maxScale: '震度3', tsunami: '津波の有無は調査中', hypocenter: { name: '震源地不明', magnitude: -1 } });
+      expect(first.hypocenter.latitude).toBeUndefined();
+    });
+
+    it('座標の深さが 0 なら 0 km、高度の欄が無ければ深さなし', async () => {
+      const base = QUAKE.list.find((x) => x.eid === '20261111125704')!;
+      stubFetch(jmaQuakes({ list: [{ ...base, cod: '+32.8+130.8+0/' }] }));
+      expect((await fetchRecentEarthquakes({ noCache: true })).earthquakes[0].hypocenter).toMatchObject({ latitude: 32.8, longitude: 130.8, depthKm: 0 });
+      stubFetch(jmaQuakes({ list: [{ ...base, cod: '+32.8+130.8/' }] }));
+      const noDepth = (await fetchRecentEarthquakes({ noCache: true })).earthquakes[0].hypocenter;
+      expect(noDepth).toMatchObject({ latitude: 32.8, longitude: 130.8 });
+      expect(noDepth.depthKm).toBeUndefined();
+    });
+
+    it('各報の詳細が取れなくても地震は返し、津波は「不明」と正直に書く', async () => {
+      stubFetch(jmaQuakes({ failDetail: true }));
+      const r = await fetchRecentEarthquakes({ limit: 2, noCache: true });
+      expect(r.count).toBe(2);
+      expect(r.earthquakes[0].source).toBe('jma');
+      expect(r.earthquakes[0].tsunami).toBe('津波の有無は不明（詳細を取得できませんでした）');
+      expect(r.earthquakes[1].points).toBeUndefined();
+    });
+
+    it('津波の文が知らない種類なら、気象庁の文をそのまま返す', async () => {
+      const entry = QUAKE.list.find((x) => x.eid === '20261024113820')!; // 遠地地震（0226 0230）
+      stubFetch(jmaQuakes({ list: [{ ...entry, ttl: '震源・震度情報', maxi: '1' }] }));
+      const r = await fetchRecentEarthquakes({ noCache: true });
+      expect(r.earthquakes[0].tsunami).toBe('震源の近傍で津波発生の可能性があります。 この地震による日本への津波の影響はありません。');
+    });
   });
 
-  it('既定の震度では今までどおり limit×2 件を取る', async () => {
-    const calls = stubFetch(p2pQuakes([10, 20, 30, 40, 10, 10, 10]));
-    const r = await fetchRecentEarthquakes({ limit: 3, noCache: true });
-    expect(new URL(calls[0]).searchParams.get('limit')).toBe('6');
-    expect(r.count).toBe(3);
+  describe('気象庁が使えないときの退避先（P2P地震情報）', () => {
+    it('気象庁の一覧が落ちていたら P2P 地震情報から返す', async () => {
+      const calls = stubFetch(jmaDownP2pUp([30, 20]));
+      const r = await fetchRecentEarthquakes({ limit: 2, noCache: true });
+      expect(r.count).toBe(2);
+      expect(r.earthquakes.every((e) => e.source === 'p2pquake')).toBe(true);
+      expect(calls[0]).toContain('www.jma.go.jp/bosai/quake/data/list.json');
+    });
+
+    it('気象庁の一覧が想定と違う形でも P2P 地震情報から返す', async () => {
+      stubFetch((url) => (url.hostname === 'www.jma.go.jp' ? { not: 'a list' } : p2pQuakes([30])(url)));
+      expect((await fetchRecentEarthquakes({ limit: 1, noCache: true })).earthquakes[0].source).toBe('p2pquake');
+    });
+
+    it('minIntensity が既定より大きいときは 100 件取り、絞ってから limit 件に切る', async () => {
+      const calls = stubFetch(jmaDownP2pUp([10, 10, 10, 10, 10, 30, 10, 40]));
+      const r = await fetchRecentEarthquakes({ limit: 1, minIntensity: 30, noCache: true });
+      expect(new URL(calls.find((c) => c.includes('p2pquake'))!).searchParams.get('limit')).toBe('100');
+      expect(r.count).toBe(1);
+      expect(r.earthquakes[0].hypocenter.name).toBe('震源5');
+    });
+
+    it('既定の震度では今までどおり limit×2 件を取る', async () => {
+      const calls = stubFetch(jmaDownP2pUp([10, 20, 30, 40, 10, 10, 10]));
+      const r = await fetchRecentEarthquakes({ limit: 3, noCache: true });
+      expect(new URL(calls.find((c) => c.includes('p2pquake'))!).searchParams.get('limit')).toBe('6');
+      expect(r.count).toBe(3);
+    });
   });
 
-  it('取得に失敗したら 0 件ではなくエラーにし、失敗はキャッシュしない', async () => {
+  it('どちらも取得に失敗したら 0 件ではなくエラーにし（両方の理由を書く）、失敗はキャッシュしない', async () => {
     clearCache();
     stubFetch(() => new Response('unavailable', { status: 503 }));
-    await expect(fetchRecentEarthquakes({ limit: 2 })).rejects.toThrow('503');
+    await expect(fetchRecentEarthquakes({ limit: 2 })).rejects.toThrow(/気象庁.*503.*P2P.*503/s);
     restore?.();
-    stubFetch(p2pQuakes([20, 20]));
+    stubFetch(jmaQuakes());
     expect((await fetchRecentEarthquakes({ limit: 2 })).count).toBe(2);
   });
 

@@ -1,5 +1,6 @@
 import { AreaInputError, TOWN_BY_CODE, officeCodeOf, prefectureCodeOf, prefectureOf, resolvePlace, wholeCityOf, type Municipality } from './jma_area.js';
 import { getFromCache, setToCache } from '../cache.js';
+import { errorMessage } from '../errors.js';
 import { geocodeAddress, geocodingAttribution, type GeocodingResult } from './geocoding.js';
 import { JMA_CLASS10, JMA_OFFICES } from '../jma_areas.js';
 
@@ -227,21 +228,143 @@ export async function fetchWeatherWarnings(options: {
   return { ...labels, ...content };
 }
 
-/** P2PQuake & 気象庁 リアルタイム地震履歴取得 */
-export async function fetchRecentEarthquakes(options?: {
-  limit?: number;
-  minIntensity?: number;
-  noCache?: boolean;
-}): Promise<{ count: number; earthquakes: EarthquakeItem[] }> {
-  const limit = Math.min(Math.max(options?.limit ?? 5, 1), 20);
-  const minScaleRaw = options?.minIntensity ?? 10; // デフォルト震度1以上
-  const cacheKey = `disaster:earthquake:v2:${limit}:${minScaleRaw}`;
+const JMA_QUAKE_URL = 'https://www.jma.go.jp/bosai/quake/data';
+const CACHE_TTL_QUAKE_DETAIL = 24 * 60 * 60 * 1000; // 各報の中身は後から変わらない
+const QUAKE_TIMEOUT_MS = 6000;
+const QUAKE_DETAIL_UNKNOWN = '津波の有無は不明（詳細を取得できませんでした）';
 
-  if (!options?.noCache) {
-    const cached = getFromCache<{ count: number; earthquakes: EarthquakeItem[] }>(cacheKey);
+/** 気象庁の震度の表記（1〜7、5-・5+・6-・6+）を、P2P地震情報と同じ震度コードにそろえる。 */
+const JMA_INTENSITY: Record<string, number> = { '1': 10, '2': 20, '3': 30, '4': 40, '5-': 45, '5+': 50, '6-': 55, '6+': 60, '7': 70 };
+
+/** 気象庁の地震情報の一覧（bosai/quake/data/list.json）の 1 行。同じ地震（eid）の報が、新しい順に並ぶ。 */
+interface JmaQuakeEntry {
+  eid: string;
+  ttl: string;
+  at: string;
+  anm: string;
+  cod: string;
+  mag: string;
+  maxi: string;
+  json: string;
+}
+
+interface QuakeDetailSummary {
+  tsunami: string;
+  points: Array<{ pref: string; addr: string; scale: string }>;
+}
+
+/** 震源の座標（ISO 6709。「+36.3+141.7-20000/」＝北緯・東経・高さ(m)。高さの負が深さ）。 */
+function parseQuakeCoordinate(cod: string): { latitude: number; longitude: number; depthKm?: number } | undefined {
+  const m = /^([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)([+-]\d+(?:\.\d+)?)?\/?$/.exec(cod ?? '');
+  if (!m) return undefined;
+  const depth = m[3] === undefined ? undefined : -Number(m[3]) / 1000;
+  return { latitude: Number(m[1]), longitude: Number(m[2]), ...(depth !== undefined && depth >= 0 ? { depthKm: depth === 0 ? 0 : depth } : {}) };
+}
+
+async function fetchJmaQuake(path: string): Promise<unknown> {
+  const res = await fetch(`${JMA_QUAKE_URL}/${path}`, {
+    headers: { 'User-Agent': 'Sora-Disaster-Fetcher/1.0' },
+    signal: AbortSignal.timeout(QUAKE_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`気象庁の地震情報 HTTP ${res.status}（${path}）`);
+  return res.json();
+}
+
+/** 津波の欄。よくある 3 つは従来の言い回しにそろえ、それ以外は気象庁の文をそのまま返す。 */
+function quakeTsunami(comment: { Code?: unknown; Text?: unknown } | undefined): string {
+  if (!comment) return QUAKE_DETAIL_UNKNOWN;
+  const codes = String(comment.Code ?? '').split(/\s+/);
+  if (codes.includes('0215')) return '津波の心配なし';
+  if (codes.includes('0212')) return '若干の海面変動の可能性あり';
+  if (codes.includes('0217')) return '津波の有無は調査中';
+  const text = typeof comment.Text === 'string' ? comment.Text.split('\n').map((l) => l.trim()).filter(Boolean).join(' ') : '';
+  return text || QUAKE_DETAIL_UNKNOWN;
+}
+
+/** 各報の JSON から、津波の欄と、震度3以上の観測点（強い順に 10 件まで）を取り出す。 */
+function summarizeQuakeDetail(detail: any): QuakeDetailSummary {
+  const stations: Array<{ pref: string; addr: string; raw: number }> = [];
+  for (const pref of detail?.Body?.Intensity?.Observation?.Pref ?? []) {
+    for (const area of pref?.Area ?? []) {
+      for (const city of area?.City ?? []) {
+        for (const st of city?.IntensityStation ?? []) {
+          const raw = JMA_INTENSITY[String(st?.Int)];
+          if (raw !== undefined && raw >= 30) stations.push({ pref: String(pref?.Name ?? ''), addr: String(st?.Name ?? ''), raw });
+        }
+      }
+    }
+  }
+  stations.sort((x, y) => y.raw - x.raw); // 同じ強さの中では元の並びを保つ
+  return {
+    tsunami: quakeTsunami(detail?.Body?.Comments?.ForecastComment),
+    points: stations.slice(0, 10).map((st) => ({ pref: st.pref, addr: st.addr, scale: formatScale(st.raw) })),
+  };
+}
+
+/** 詳細が取れなければ null（地震そのものは返す）。 */
+async function fetchQuakeDetail(file: string, noCache: boolean): Promise<QuakeDetailSummary | null> {
+  const key = `disaster:quake-detail:v1:${file}`;
+  if (!noCache) {
+    const cached = getFromCache<QuakeDetailSummary>(key);
     if (cached) return cached;
   }
+  try {
+    const summary = summarizeQuakeDetail(await fetchJmaQuake(file));
+    if (!noCache) setToCache(key, summary, CACHE_TTL_QUAKE_DETAIL);
+    return summary;
+  } catch {
+    return null;
+  }
+}
 
+/**
+ * 気象庁の公式データ（bosai/quake/data）から地震を返す。同じ地震の報（震度速報・震源に関する情報・震源・震度情報）は 1 件にまとめ、
+ * 揃っていない間はあるぶんの情報で返す。遠地地震（国外）は含めない。
+ */
+async function fetchEarthquakesFromJma(limit: number, minScaleRaw: number, noCache: boolean): Promise<EarthquakeItem[]> {
+  const list = await fetchJmaQuake('list.json');
+  if (!Array.isArray(list)) throw new Error('気象庁の地震情報の一覧が想定と違う形です');
+  const events = new Map<string, { full?: JmaQuakeEntry; dest?: JmaQuakeEntry; scale?: JmaQuakeEntry }>();
+  for (const e of list as JmaQuakeEntry[]) {
+    if (typeof e?.eid !== 'string' || typeof e?.json !== 'string') continue;
+    const slot = e.ttl === '震源・震度情報' ? 'full' : e.ttl === '震源に関する情報' ? 'dest' : e.ttl === '震度速報' ? 'scale' : undefined;
+    if (!slot) continue;
+    const event = events.get(e.eid) ?? {};
+    event[slot] ??= e; // 一覧は新しい報が先
+    events.set(e.eid, event);
+  }
+  const candidates = [...events.entries()]
+    .sort(([a], [b]) => b.localeCompare(a)) // 地震 ID は発生日時
+    .map(([eid, ev]) => ({ eid, ev, raw: JMA_INTENSITY[(ev.full ?? ev.scale)?.maxi ?? ''] ?? 0 }))
+    .filter((c) => c.raw >= minScaleRaw)
+    .slice(0, limit);
+  const details = await Promise.all(candidates.map((c) => fetchQuakeDetail((c.ev.full ?? c.ev.dest ?? c.ev.scale)!.json, noCache)));
+  return candidates.map(({ eid, ev, raw }, i) => {
+    const quake = ev.full ?? ev.dest;
+    const coordinate = quake ? parseQuakeCoordinate(quake.cod) : undefined;
+    const magnitude = quake?.mag ? Number(quake.mag) : NaN;
+    const detail = details[i];
+    return {
+      id: eid,
+      time: (quake ?? ev.scale)!.at.slice(0, 19).replace(/-/g, '/').replace('T', ' '),
+      hypocenter: {
+        name: quake?.anm || '震源地不明',
+        magnitude: Number.isFinite(magnitude) && magnitude >= 0 ? magnitude : -1,
+        depthKm: coordinate?.depthKm,
+        latitude: coordinate?.latitude,
+        longitude: coordinate?.longitude,
+      },
+      maxScale: formatScale(raw),
+      maxScaleRaw: raw,
+      tsunami: detail?.tsunami ?? QUAKE_DETAIL_UNKNOWN,
+      source: 'jma' as const,
+      points: detail && detail.points.length > 0 ? detail.points : undefined,
+    };
+  });
+}
+
+/** P2P地震情報から地震を返す（気象庁の公式データが使えないときの退避先）。 */
+async function fetchEarthquakesFromP2p(limit: number, minScaleRaw: number): Promise<EarthquakeItem[]> {
   // 震度で絞るときは、絞ってから limit 件に切れるよう上限の 100 件を取る。失敗は 0 件にせずエラーにする
   const p2pUrl = `https://api.p2pquake.net/v2/history?codes=551&limit=${minScaleRaw > 10 ? 100 : Math.min(limit * 2, 40)}`;
   const res = await fetch(p2pUrl, {
@@ -299,10 +422,40 @@ export async function fetchRecentEarthquakes(options?: {
 
     if (items.length >= limit) break;
   }
+  return items;
+}
+
+/** 気象庁の公式データによるリアルタイム地震履歴取得。気象庁が使えないときだけ P2P地震情報から返す。 */
+export async function fetchRecentEarthquakes(options?: {
+  limit?: number;
+  minIntensity?: number;
+  noCache?: boolean;
+}): Promise<{ count: number; earthquakes: EarthquakeItem[] }> {
+  const limit = Math.min(Math.max(options?.limit ?? 5, 1), 20);
+  const minScaleRaw = options?.minIntensity ?? 10; // デフォルト震度1以上
+  const cacheKey = `disaster:earthquake:v3:${limit}:${minScaleRaw}`;
+
+  if (!options?.noCache) {
+    const cached = getFromCache<{ count: number; earthquakes: EarthquakeItem[] }>(cacheKey);
+    if (cached) return cached;
+  }
+
+  let earthquakes: EarthquakeItem[];
+  try {
+    earthquakes = await fetchEarthquakesFromJma(limit, minScaleRaw, !!options?.noCache);
+  } catch (jmaError) {
+    const jmaMessage = errorMessage(jmaError) ?? String(jmaError);
+    console.warn(`[Sora/Disaster] 気象庁の地震情報が使えないため、P2P地震情報から返します: ${jmaMessage}`);
+    try {
+      earthquakes = await fetchEarthquakesFromP2p(limit, minScaleRaw);
+    } catch (p2pError) {
+      throw new Error(`地震情報を取得できませんでした（気象庁: ${jmaMessage} / P2P地震情報: ${errorMessage(p2pError) ?? String(p2pError)}）`);
+    }
+  }
 
   const result = {
-    count: items.length,
-    earthquakes: items,
+    count: earthquakes.length,
+    earthquakes,
   };
 
   if (!options?.noCache) {
@@ -329,7 +482,7 @@ export interface ElevationResult {
   source: 'gsi';
 }
 
-/** Nominatimによる住所・地名解決と国土地理院の標高（海抜）取得。 */
+/** 住所・地名の座標解決（国土地理院・Nominatim）と国土地理院の標高（海抜）取得。 */
 export async function fetchElevationAndCoordinates(options: {
   address?: string;
   lat?: number;

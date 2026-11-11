@@ -771,7 +771,7 @@ export const PredictHtsCodeRequestSchema = z.object({
   hasBattery: z.boolean().optional().describe('電池・バッテリーを使用する製品か。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること'),
 });
 export const ElevationRequestSchema = z.object({
-  address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持'),
+  address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")。番地まである住所は国土地理院、施設名・地名はNominatimで座標化し、Nominatimの未キャッシュ問い合わせは共有キューで1.1秒間隔を維持'),
   lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
   lon: z.number().min(-180).max(180).optional().describe('経度 (住所未指定時に直接指定, 例: 139.767125)'),
   noCache: z.boolean().optional().describe('座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),
@@ -880,7 +880,7 @@ export const PoiSearchRequestSchema = z.object({
   lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
   lon: z.number().min(-180).max(180).optional().describe('中心経度、経度が先 (lat とペア指定)'),
   radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
-  center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他。未キャッシュ時は共有キューで1.1秒間隔を守って取得'),
+  center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化する。lat/lonとは排他。Nominatimの未キャッシュ問い合わせは共有キューで1.1秒間隔を守って取得'),
   bbox: z.string().regex(/^(-?\d+(\.\d+)?,){3}-?\d+(\.\d+)?$/).optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
   limit: z.number().int().min(1).max(50).default(10).describe('最大件数 (1-50)'),
   noCache: z.boolean().optional().describe('地名解決の24時間キャッシュを使わず再取得する。1.1秒間隔の制限は維持').meta({ default: false }),
@@ -3055,7 +3055,7 @@ export function generateOpenApiDocument() {
       },
       '/disaster/earthquake': {
         post: {
-          summary: 'P2P地震情報 & 気象庁 リアルタイム地震速報・履歴取得',
+          summary: '気象庁 リアルタイム地震情報・履歴取得（気象庁が使えない間は P2P地震情報）',
           requestBody: {
             content: {
               'application/json': {
@@ -3571,7 +3571,7 @@ export function generateOpenApiDocument() {
       },
       '/geo/elevation': {
         post: {
-          summary: 'Nominatim 座標解決 & 国土地理院 標高（海抜）取得 API',
+          summary: '住所・地名の座標解決（国土地理院・Nominatim）& 国土地理院 標高（海抜）取得 API',
           requestBody: {
             content: {
               'application/json': {
@@ -3581,7 +3581,7 @@ export function generateOpenApiDocument() {
           },
           responses: {
             '200': {
-              description: 'Nominatimで解決した座標・地名ラベルと国土地理院の海抜標高',
+              description: '解決した座標・地名ラベルと国土地理院の海抜標高',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(ElevationResultSchema),
@@ -3591,16 +3591,16 @@ export function generateOpenApiDocument() {
           },
         },
         get: {
-          summary: 'Nominatim 座標解決 & 国土地理院 標高（海抜）取得 API (GET クエリ指定)',
+          summary: '住所・地名の座標解決（国土地理院・Nominatim）& 国土地理院 標高（海抜）取得 API (GET クエリ指定)',
           parameters: [
-            { name: 'address', in: 'query', schema: { type: 'string' }, description: '住所・地名 (例: "原宿")。Nominatimで座標化し、未キャッシュ時は共有キューで1.1秒間隔を維持' },
+            { name: 'address', in: 'query', schema: { type: 'string' }, description: '住所・地名 (例: "原宿")。番地まである住所は国土地理院、施設名・地名はNominatimで座標化し、Nominatimの未キャッシュ問い合わせは共有キューで1.1秒間隔を維持' },
             { name: 'lat', in: 'query', schema: { type: 'number' }, description: '緯度 (address 省略時の直接指定)' },
             { name: 'lon', in: 'query', schema: { type: 'number' }, description: '経度 (address 省略時の直接指定)' },
             { name: 'noCache', in: 'query', schema: { type: 'boolean' }, description: '座標解決・標高のキャッシュを使わず再取得する。1.1秒間隔は維持' },
           ],
           responses: {
             '200': {
-              description: 'Nominatimで解決した座標・地名ラベルと国土地理院の海抜標高',
+              description: '解決した座標・地名ラベルと国土地理院の海抜標高',
               content: {
                 'application/json': {
                   schema: zodToOpenApiSchema(ElevationResultSchema),
@@ -3639,7 +3639,7 @@ export function generateOpenApiDocument() {
           summary: 'OpenPOI直結 全国施設POI検索 API (GET クエリ指定)',
           parameters: [
             { name: 'query', in: 'query', schema: { type: 'string' }, description: '施設・住所キーワード (例: "ラーメン")' },
-            { name: 'center', in: 'query', schema: { type: 'string' }, description: '中心地名 (例: "原宿")。Nominatimで座標化。lat/lonとは排他。共有キューで1.1秒間隔を維持' },
+            { name: 'center', in: 'query', schema: { type: 'string' }, description: '中心地名 (例: "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化。lat/lonとは排他。Nominatimへは共有キューで1.1秒間隔を維持' },
             { name: 'lat', in: 'query', schema: { type: 'number' }, description: '中心緯度 (lon とペア指定)' },
             { name: 'lon', in: 'query', schema: { type: 'number' }, description: '中心経度 (lat とペア指定)' },
             { name: 'radiusMeters', in: 'query', schema: { type: 'number' }, description: '中心からの半径m (bbox 指定時は無視)' },

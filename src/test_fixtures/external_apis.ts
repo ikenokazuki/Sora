@@ -1,7 +1,8 @@
-// テスト用の外部 API の固定応答。USITC・CBP 判例・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報を、
+// テスト用の外部 API の固定応答。USITC・CBP 判例・iTunes・気象庁（予報・警報・地震）・P2P地震情報・Yahoo! 道路交通情報を、
 // ネットワークなしで同じ形の応答で返す。実 API との突き合わせは live-tools.yml（tool-health）で行う。
 // 形は各 API の実際の応答に合わせ、中身はテストに必要な最小限にしている。
 import crossExcerpt from './cross_search_excerpt.json';
+import quakeExcerpt from './jma_quake_excerpt.json';
 import usitcExcerpt from './usitc_export_excerpt.json';
 import { JMA_CLASS10, JMA_CLASS20, JMA_OFFICES as JMA_OFFICE_NAMES } from '../jma_areas.js';
 
@@ -172,7 +173,7 @@ function jmaWarning(officeCode: string): unknown {
   return [report('VPWW55', 'T05:00:00', [{ code: '10', status: '発表' }]), report('VPWW61', 'T04:00:00', [{ code: '14', status: '継続' }])];
 }
 
-/** P2P地震情報 history（code 551 の地震情報）。 */
+/** P2P地震情報 history（code 551 の地震情報）。気象庁の地震情報が使えないときの退避先として答える。 */
 function p2pHistory(): unknown {
   return [
     {
@@ -220,6 +221,13 @@ export function externalApiFixtureResponse(url: URL): Response | undefined {
   if (url.hostname === 'rulings.cbp.gov' && url.pathname === '/api/search') return json(crossSearchResponse(url.searchParams.get('term') || ''));
   if (url.hostname === 'itunes.apple.com' && url.pathname === '/search') return json(itunesSearch(url));
   if (url.hostname === 'www.jma.go.jp') {
+    const quake = url.pathname.match(/^\/bosai\/quake\/data\/([^/]+\.json)$/);
+    if (quake) {
+      // 一覧と各報の JSON は、2026-11-11 に取った実データの抜粋（地震 4 件と遠地地震 1 件）
+      if (quake[1] === 'list.json') return json(quakeExcerpt.list);
+      const detail = (quakeExcerpt.details as Record<string, unknown>)[quake[1]];
+      return detail ? json(detail) : new Response('Not Found', { status: 404 });
+    }
     const m = url.pathname.match(/^\/bosai\/(forecast\/data\/forecast|forecast\/data\/overview_forecast|warning\/data\/r8)\/(\d+)\.json$/);
     if (m && (!isJmaOffice(m[2]) || (m[1] !== 'warning/data/r8' && NO_FORECAST.has(m[2])))) return new Response('Not Found', { status: 404 });
     if (m?.[1] === 'forecast/data/forecast') return json(jmaForecast(m[2]));

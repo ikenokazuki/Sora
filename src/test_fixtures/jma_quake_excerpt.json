@@ -1,0 +1,3924 @@
+{
+ "_note": "気象庁 bosai/quake/data の実データの抜粋（2026-11-11 取得）。list は各市区町村の震度の欄（int）を省き、details は観測点の数を減らしてある。",
+ "list": [
+  {
+   "ctt": "20261111130021",
+   "eid": "20261111125704",
+   "rdt": "2026-11-11T13:00:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "1",
+   "at": "2026-11-11T12:57:00+09:00",
+   "anm": "茨城県沖",
+   "acd": "471",
+   "cod": "+36.3+141.7-20000/",
+   "mag": "4.6",
+   "maxi": "1",
+   "json": "20261111130021_20261111125704_VXSE5k_1.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Off the Coast of Ibaraki Prefecture"
+  },
+  {
+   "ctt": "20261108105653",
+   "eid": "20261108105319",
+   "rdt": "2026-11-08T10:56:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "1",
+   "at": "2026-11-08T10:53:00+09:00",
+   "anm": "熊本県天草・芦北地方",
+   "acd": "743",
+   "cod": "+32.6+130.6-10000/",
+   "mag": "4.3",
+   "maxi": "4",
+   "json": "20261108105653_20261108105319_VXSE5k_1.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Amakusa and Ashikita Region,  Kumamoto Prefecture"
+  },
+  {
+   "ctt": "20261108105550",
+   "eid": "20261108105319",
+   "rdt": "2026-11-08T10:55:00+09:00",
+   "ttl": "震源に関する情報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T10:53:00+09:00",
+   "anm": "熊本県天草・芦北地方",
+   "acd": "743",
+   "cod": "+32.6+130.6-10000/",
+   "mag": "4.3",
+   "maxi": "",
+   "json": "20261108105550_20261108105319_VXSE52_0.json",
+   "en_ttl": "Earthquake Information",
+   "en_anm": "Amakusa and Ashikita Region,  Kumamoto Prefecture"
+  },
+  {
+   "ctt": "20261108105449",
+   "eid": "20261108105319",
+   "rdt": "2026-11-08T10:54:00+09:00",
+   "ttl": "震度速報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T10:53:00+09:00",
+   "anm": "",
+   "acd": "",
+   "cod": "",
+   "mag": "",
+   "maxi": "4",
+   "json": "20261108105449_20261108105319_VXSE51_0.json",
+   "en_ttl": "Seismic Intensity Information",
+   "en_anm": ""
+  },
+  {
+   "ctt": "20261108030512",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T03:05:00+09:00",
+   "ttl": "顕著な地震の震源要素更新のお知らせ",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "静岡県西部",
+   "acd": "443",
+   "cod": "+3456.1+13739.5-41000/",
+   "mag": "5.7",
+   "maxi": "",
+   "json": "20261108030512_20261108010441_VXSE61_0.json",
+   "en_ttl": "",
+   "en_anm": "Western Shizuoka Prefecture"
+  },
+  {
+   "ctt": "20261108011257",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:12:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "2",
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "静岡県西部",
+   "acd": "443",
+   "cod": "+34.9+137.7-40000/",
+   "mag": "5.7",
+   "maxi": "5+",
+   "json": "20261108011257_20261108010441_VXSE5k_2.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Western Shizuoka Prefecture"
+  },
+  {
+   "ctt": "20261108010836",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:08:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "1",
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "静岡県西部",
+   "acd": "443",
+   "cod": "+34.9+137.7-40000/",
+   "mag": "5.7",
+   "maxi": "5+",
+   "json": "20261108010836_20261108010441_VXSE5k_1.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Western Shizuoka Prefecture"
+  },
+  {
+   "ctt": "20261108010725",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:07:00+09:00",
+   "ttl": "震度速報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "",
+   "acd": "",
+   "cod": "",
+   "mag": "",
+   "maxi": "5+",
+   "json": "20261108010725_20261108010441_VXSE51_0.json",
+   "en_ttl": "Seismic Intensity Information",
+   "en_anm": ""
+  },
+  {
+   "ctt": "20261108010721",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:07:00+09:00",
+   "ttl": "震源に関する情報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "静岡県西部",
+   "acd": "443",
+   "cod": "+34.9+137.7-40000/",
+   "mag": "5.7",
+   "maxi": "",
+   "json": "20261108010721_20261108010441_VXSE52_0.json",
+   "en_ttl": "Earthquake Information",
+   "en_anm": "Western Shizuoka Prefecture"
+  },
+  {
+   "ctt": "20261108010625",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:06:00+09:00",
+   "ttl": "震度速報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "",
+   "acd": "",
+   "cod": "",
+   "mag": "",
+   "maxi": "5+",
+   "json": "20261108010625_20261108010441_VXSE51_0.json",
+   "en_ttl": "Seismic Intensity Information",
+   "en_anm": ""
+  },
+  {
+   "ctt": "20261108010610",
+   "eid": "20261108010441",
+   "rdt": "2026-11-08T01:06:00+09:00",
+   "ttl": "震度速報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-08T01:04:00+09:00",
+   "anm": "",
+   "acd": "",
+   "cod": "",
+   "mag": "",
+   "maxi": "5+",
+   "json": "20261108010610_20261108010441_VXSE51_0.json",
+   "en_ttl": "Seismic Intensity Information",
+   "en_anm": ""
+  },
+  {
+   "ctt": "20261106195615",
+   "eid": "20261106193937",
+   "rdt": "2026-11-06T19:56:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "2",
+   "at": "2026-11-06T19:39:00+09:00",
+   "anm": "関東東方沖",
+   "acd": "472",
+   "cod": "+35.0+142.2-10000/",
+   "mag": "6.1",
+   "maxi": "3",
+   "json": "20261106195615_20261106193937_VXSE5k_2.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Off the east Coast of Kanto"
+  },
+  {
+   "ctt": "20261106194521",
+   "eid": "20261106193937",
+   "rdt": "2026-11-06T19:45:00+09:00",
+   "ttl": "震源・震度情報",
+   "ift": "発表",
+   "ser": "1",
+   "at": "2026-11-06T19:39:00+09:00",
+   "anm": "関東東方沖",
+   "acd": "472",
+   "cod": "+35.0+142.2-10000/",
+   "mag": "6.1",
+   "maxi": "3",
+   "json": "20261106194521_20261106193937_VXSE5k_1.json",
+   "en_ttl": "Earthquake and Seismic Intensity Information",
+   "en_anm": "Off the east Coast of Kanto"
+  },
+  {
+   "ctt": "20261106194333",
+   "eid": "20261106193937",
+   "rdt": "2026-11-06T19:43:00+09:00",
+   "ttl": "震源に関する情報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-06T19:39:00+09:00",
+   "anm": "関東東方沖",
+   "acd": "472",
+   "cod": "+35.0+142.2-10000/",
+   "mag": "6.1",
+   "maxi": "",
+   "json": "20261106194333_20261106193937_VXSE52_0.json",
+   "en_ttl": "Earthquake Information",
+   "en_anm": "Off the east Coast of Kanto"
+  },
+  {
+   "ctt": "20261106194123",
+   "eid": "20261106193937",
+   "rdt": "2026-11-06T19:41:00+09:00",
+   "ttl": "震度速報",
+   "ift": "発表",
+   "ser": 0,
+   "at": "2026-11-06T19:39:00+09:00",
+   "anm": "",
+   "acd": "",
+   "cod": "",
+   "mag": "",
+   "maxi": "3",
+   "json": "20261106194123_20261106193937_VXSE51_0.json",
+   "en_ttl": "Seismic Intensity Information",
+   "en_anm": ""
+  },
+  {
+   "ctt": "20261024115400",
+   "eid": "20261024113820",
+   "rdt": "2026-10-24T11:54:00+09:00",
+   "ttl": "遠地地震に関する情報",
+   "ift": "発表",
+   "ser": "1",
+   "at": "2026-10-24T11:31:00+09:00",
+   "anm": "南太平洋",
+   "acd": "950",
+   "cod": "-13.8+165.7/",
+   "mag": "7.2",
+   "maxi": "",
+   "json": "20261024115400_20261024113820_VXSE5e_1.json",
+   "en_ttl": "Distant Earthquake Information",
+   "en_anm": "South Pacific Ocean"
+  }
+ ],
+ "details": {
+  "20261111130021_20261111125704_VXSE5k_1.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-11T04:00:21Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-11T13:00:00+09:00",
+    "TargetDateTime": "2026-11-11T13:00:00+09:00",
+    "EventID": "20261111125704",
+    "InfoType": "発表",
+    "Serial": "1",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "１１日１２時５７分ころ、地震がありました。"
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-11T12:56:00+09:00",
+     "ArrivalTime": "2026-11-11T12:57:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "茨城県沖",
+       "Code": "471",
+       "Coordinate": "+36.3+141.7-20000/",
+       "enName": "Off the Coast of Ibaraki Prefecture"
+      }
+     },
+     "Magnitude": "4.6"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "1",
+      "Pref": [
+       {
+        "Name": "福島県",
+        "Code": "07",
+        "MaxInt": "1",
+        "Area": [
+         {
+          "Name": "福島県中通り",
+          "Code": "250",
+          "MaxInt": "1",
+          "City": [
+           {
+            "Name": "郡山市",
+            "Code": "0720300",
+            "MaxInt": "1",
+            "IntensityStation": [
+             {
+              "Name": "郡山市湖南町＊",
+              "Code": "0720321",
+              "Int": "1"
+             }
+            ]
+           },
+           {
+            "Name": "白河市",
+            "Code": "0720500",
+            "MaxInt": "1",
+            "IntensityStation": [
+             {
+              "Name": "白河市新白河＊",
+              "Code": "0720520",
+              "Int": "1"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。",
+      "Code": "0215",
+      "enText": "This earthquake poses no tsunami risk.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261108105653_20261108105319_VXSE5k_1.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-08T01:56:53Z",
+    "Status": "通常",
+    "EditorialOffice": "大阪管区気象台",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-08T10:56:00+09:00",
+    "TargetDateTime": "2026-11-08T10:56:00+09:00",
+    "EventID": "20261108105319",
+    "InfoType": "発表",
+    "Serial": "1",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日１０時５３分ころ、地震がありました。",
+     "Information": [
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": {
+           "Name": "熊本県熊本",
+           "Code": "741"
+          }
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度３"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "長崎県島原半島",
+            "Code": "732"
+           },
+           {
+            "Name": "熊本県阿蘇",
+            "Code": "740"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "熊本南区",
+            "Code": "4310400"
+           },
+           {
+            "Name": "宇土市",
+            "Code": "4321100"
+           },
+           {
+            "Name": "宇城市",
+            "Code": "4321300"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度３"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "雲仙市",
+            "Code": "4221300"
+           },
+           {
+            "Name": "南島原市",
+            "Code": "4221400"
+           },
+           {
+            "Name": "熊本中央区",
+            "Code": "4310100"
+           },
+           {
+            "Name": "熊本西区",
+            "Code": "4310300"
+           },
+           {
+            "Name": "八代市",
+            "Code": "4320200"
+           },
+           {
+            "Name": "熊本美里町",
+            "Code": "4334800"
+           },
+           {
+            "Name": "熊本高森町",
+            "Code": "4342800"
+           },
+           {
+            "Name": "西原村",
+            "Code": "4343200"
+           },
+           {
+            "Name": "御船町",
+            "Code": "4344100"
+           },
+           {
+            "Name": "嘉島町",
+            "Code": "4344200"
+           },
+           {
+            "Name": "甲佐町",
+            "Code": "4344400"
+           },
+           {
+            "Name": "山都町",
+            "Code": "4344700"
+           },
+           {
+            "Name": "氷川町",
+            "Code": "4346800"
+           }
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T10:53:00+09:00",
+     "ArrivalTime": "2026-11-08T10:53:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "熊本県天草・芦北地方",
+       "Code": "743",
+       "Coordinate": "+32.6+130.6-10000/",
+       "enName": "Amakusa and Ashikita Region,  Kumamoto Prefecture"
+      }
+     },
+     "Magnitude": "4.3"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "4",
+      "Pref": [
+       {
+        "Name": "熊本県",
+        "Code": "43",
+        "MaxInt": "4",
+        "Area": [
+         {
+          "Name": "熊本県熊本",
+          "Code": "741",
+          "MaxInt": "4",
+          "City": [
+           {
+            "Name": "熊本南区",
+            "Code": "4310400",
+            "MaxInt": "4",
+            "IntensityStation": [
+             {
+              "Name": "熊本南区城南町＊",
+              "Code": "4310432",
+              "Int": "4"
+             }
+            ]
+           },
+           {
+            "Name": "宇土市",
+            "Code": "4321100",
+            "MaxInt": "4",
+            "IntensityStation": [
+             {
+              "Name": "宇土市浦田町＊",
+              "Code": "4321121",
+              "Int": "4"
+             }
+            ]
+           },
+           {
+            "Name": "宇城市",
+            "Code": "4321300",
+            "MaxInt": "4",
+            "IntensityStation": [
+             {
+              "Name": "宇城市松橋町",
+              "Code": "4321300",
+              "Int": "4"
+             },
+             {
+              "Name": "宇城市不知火町＊",
+              "Code": "4321330",
+              "Int": "4"
+             },
+             {
+              "Name": "宇城市豊野町＊",
+              "Code": "4321335",
+              "Int": "4"
+             },
+             {
+              "Name": "宇城市三角町＊",
+              "Code": "4321320",
+              "Int": "3"
+             },
+             {
+              "Name": "宇城市小川町＊",
+              "Code": "4321336",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "熊本中央区",
+            "Code": "4310100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "熊本中央区大江＊",
+              "Code": "4310130",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "八代市",
+            "Code": "4320200",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "八代市坂本町＊",
+              "Code": "4320238",
+              "Int": "2"
+             }
+            ]
+           },
+           {
+            "Name": "山都町",
+            "Code": "4344700",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "山都町大平＊",
+              "Code": "4344730",
+              "Int": "2"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。",
+      "Code": "0215",
+      "enText": "This earthquake poses no tsunami risk.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261108105550_20261108105319_VXSE52_0.json": {
+   "Control": {
+    "Title": "震源に関する情報",
+    "DateTime": "2026-11-08T01:55:50Z",
+    "Status": "通常",
+    "EditorialOffice": "大阪管区気象台",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源に関する情報",
+    "ReportDateTime": "2026-11-08T10:55:00+09:00",
+    "TargetDateTime": "2026-11-08T10:55:00+09:00",
+    "EventID": "20261108105319",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震源速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "きょう　８日１０時５３分ころ、地震がありました。"
+    },
+    "enTitle": "Earthquake Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T10:53:00+09:00",
+     "ArrivalTime": "2026-11-08T10:53:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "熊本県天草・芦北地方",
+       "Code": "743",
+       "Coordinate": "+32.6+130.6-10000/",
+       "enName": "Amakusa and Ashikita Region,  Kumamoto Prefecture"
+      }
+     },
+     "Magnitude": "4.3"
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。",
+      "Code": "0215",
+      "enText": "This earthquake poses no tsunami risk.\n"
+     }
+    }
+   }
+  },
+  "20261108105449_20261108105319_VXSE51_0.json": {
+   "Control": {
+    "Title": "震度速報",
+    "DateTime": "2026-11-08T01:54:49Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震度速報",
+    "ReportDateTime": "2026-11-08T10:54:00+09:00",
+    "TargetDateTime": "2026-11-08T10:53:00+09:00",
+    "EventID": "20261108105319",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震度速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日１０時５３分ころ、地震による強い揺れを感じました。震度３以上が観測された地域をお知らせします。",
+     "Information": {
+      "Item": [
+       {
+        "Kind": {
+         "Name": "震度４"
+        },
+        "Areas": {
+         "Area": {
+          "Name": "熊本県熊本",
+          "Code": "741"
+         }
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "長崎県島原半島",
+           "Code": "732"
+          },
+          {
+           "Name": "熊本県阿蘇",
+           "Code": "740"
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "enTitle": "Seismic Intensity Information"
+   },
+   "Body": {
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "4",
+      "Pref": [
+       {
+        "Name": "熊本県",
+        "Code": "43",
+        "MaxInt": "4",
+        "Area": [
+         {
+          "Name": "熊本県熊本",
+          "Code": "741",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "熊本県阿蘇",
+          "Code": "740",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "長崎県",
+        "Code": "42",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "長崎県島原半島",
+          "Code": "732",
+          "MaxInt": "3"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "今後の情報に注意してください。",
+      "Code": "0217",
+      "enText": "Check the information which will be issued from now on.\n"
+     }
+    }
+   }
+  },
+  "20261108030512_20261108010441_VXSE61_0.json": {
+   "Control": {
+    "Title": "顕著な地震の震源要素更新のお知らせ",
+    "DateTime": "2026-11-07T18:05:12Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "顕著な地震の震源要素更新のお知らせ",
+    "ReportDateTime": "2026-11-08T03:05:00+09:00",
+    "TargetDateTime": "2026-11-08T03:05:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震源要素更新のお知らせ",
+    "InfoKindVersion": "1.0_0",
+    "Headline": {
+     "Text": "令和　８年１１月　８日０３時０５分をもって、地震の発生場所と規模を更新します。"
+    }
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T01:04:00+09:00",
+     "ArrivalTime": "2026-11-08T01:04:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "静岡県西部",
+       "Code": "443",
+       "Coordinate": "+34.9+137.7-40000/",
+       "Coordinate_WGS": "+3456.1+13739.5-41000/",
+       "enName": "Western Shizuoka Prefecture"
+      }
+     },
+     "Magnitude": "5.7"
+    },
+    "Comments": {
+     "FreeFormComment": "度単位の震源要素は、津波情報等を引き続き発表する場合に使用されます。"
+    }
+   }
+  },
+  "20261108011257_20261108010441_VXSE5k_2.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-07T16:12:57Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-08T01:12:00+09:00",
+    "TargetDateTime": "2026-11-08T01:12:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": "2",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日０１時０４分ころ、地震がありました。",
+     "Information": [
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度５強"
+         },
+         "Areas": {
+          "Area": {
+           "Name": "愛知県西部",
+           "Code": "451"
+          }
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度５弱"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "長野県南部",
+            "Code": "422"
+           },
+           {
+            "Name": "岐阜県美濃東部",
+            "Code": "431"
+           },
+           {
+            "Name": "静岡県西部",
+            "Code": "443"
+           },
+           {
+            "Name": "愛知県東部",
+            "Code": "450"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "岐阜県美濃中西部",
+            "Code": "432"
+           },
+           {
+            "Name": "静岡県中部",
+            "Code": "442"
+           },
+           {
+            "Name": "三重県北部",
+            "Code": "460"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度３"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "福井県嶺北",
+            "Code": "400"
+           },
+           {
+            "Name": "福井県嶺南",
+            "Code": "401"
+           },
+           {
+            "Name": "山梨県中・西部",
+            "Code": "411"
+           },
+           {
+            "Name": "長野県中部",
+            "Code": "421"
+           },
+           {
+            "Name": "岐阜県飛騨",
+            "Code": "430"
+           },
+           {
+            "Name": "静岡県伊豆",
+            "Code": "440"
+           },
+           {
+            "Name": "静岡県東部",
+            "Code": "441"
+           },
+           {
+            "Name": "三重県中部",
+            "Code": "461"
+           },
+           {
+            "Name": "三重県南部",
+            "Code": "462"
+           },
+           {
+            "Name": "滋賀県北部",
+            "Code": "500"
+           },
+           {
+            "Name": "滋賀県南部",
+            "Code": "501"
+           },
+           {
+            "Name": "京都府南部",
+            "Code": "511"
+           },
+           {
+            "Name": "大阪府北部",
+            "Code": "520"
+           },
+           {
+            "Name": "兵庫県北部",
+            "Code": "530"
+           },
+           {
+            "Name": "奈良県",
+            "Code": "540"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度５強"
+         },
+         "Areas": {
+          "Area": {
+           "Name": "知多市",
+           "Code": "2322400"
+          }
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度５弱"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "売木村",
+            "Code": "2041200"
+           },
+           {
+            "Name": "恵那市",
+            "Code": "2121000"
+           },
+           {
+            "Name": "浜松浜名区",
+            "Code": "2213900"
+           },
+           {
+            "Name": "瀬戸市",
+            "Code": "2320400"
+           },
+           {
+            "Name": "半田市",
+            "Code": "2320500"
+           },
+           {
+            "Name": "刈谷市",
+            "Code": "2321000"
+           },
+           {
+            "Name": "豊田市",
+            "Code": "2321100"
+           },
+           {
+            "Name": "新城市",
+            "Code": "2322100"
+           },
+           {
+            "Name": "東海市",
+            "Code": "2322200"
+           },
+           {
+            "Name": "愛知みよし市",
+            "Code": "2323600"
+           },
+           {
+            "Name": "東郷町",
+            "Code": "2330200"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "飯田市",
+            "Code": "2020500"
+           },
+           {
+            "Name": "飯島町",
+            "Code": "2038400"
+           },
+           {
+            "Name": "中川村",
+            "Code": "2038600"
+           },
+           {
+            "Name": "松川町",
+            "Code": "2040200"
+           },
+           {
+            "Name": "長野高森町",
+            "Code": "2040300"
+           },
+           {
+            "Name": "阿南町",
+            "Code": "2040400"
+           },
+           {
+            "Name": "阿智村",
+            "Code": "2040700"
+           },
+           {
+            "Name": "根羽村",
+            "Code": "2041000"
+           },
+           {
+            "Name": "下條村",
+            "Code": "2041100"
+           },
+           {
+            "Name": "天龍村",
+            "Code": "2041300"
+           },
+           {
+            "Name": "泰阜村",
+            "Code": "2041400"
+           },
+           {
+            "Name": "喬木村",
+            "Code": "2041500"
+           },
+           {
+            "Name": "南木曽町",
+            "Code": "2042300"
+           },
+           {
+            "Name": "王滝村",
+            "Code": "2042900"
+           },
+           {
+            "Name": "大桑村",
+            "Code": "2043000"
+           },
+           {
+            "Name": "木曽町",
+            "Code": "2043200"
+           },
+           {
+            "Name": "多治見市",
+            "Code": "2120400"
+           },
+           {
+            "Name": "関市",
+            "Code": "2120500"
+           },
+           {
+            "Name": "中津川市",
+            "Code": "2120600"
+           },
+           {
+            "Name": "白川町",
+            "Code": "2150600"
+           },
+           {
+            "Name": "浜松中央区",
+            "Code": "2213800"
+           },
+           {
+            "Name": "浜松天竜区",
+            "Code": "2214000"
+           },
+           {
+            "Name": "島田市",
+            "Code": "2220900"
+           },
+           {
+            "Name": "磐田市",
+            "Code": "2221100"
+           },
+           {
+            "Name": "掛川市",
+            "Code": "2221300"
+           },
+           {
+            "Name": "袋井市",
+            "Code": "2221600"
+           },
+           {
+            "Name": "湖西市",
+            "Code": "2222100"
+           },
+           {
+            "Name": "名古屋千種区",
+            "Code": "2310100"
+           },
+           {
+            "Name": "名古屋北区",
+            "Code": "2310300"
+           },
+           {
+            "Name": "名古屋西区",
+            "Code": "2310400"
+           },
+           {
+            "Name": "名古屋中村区",
+            "Code": "2310500"
+           },
+           {
+            "Name": "名古屋中区",
+            "Code": "2310600"
+           },
+           {
+            "Name": "名古屋昭和区",
+            "Code": "2310700"
+           },
+           {
+            "Name": "名古屋瑞穂区",
+            "Code": "2310800"
+           },
+           {
+            "Name": "名古屋熱田区",
+            "Code": "2310900"
+           },
+           {
+            "Name": "名古屋港区",
+            "Code": "2311100"
+           },
+           {
+            "Name": "名古屋南区",
+            "Code": "2311200"
+           },
+           {
+            "Name": "名古屋守山区",
+            "Code": "2311300"
+           },
+           {
+            "Name": "名古屋緑区",
+            "Code": "2311400"
+           },
+           {
+            "Name": "名古屋名東区",
+            "Code": "2311500"
+           },
+           {
+            "Name": "名古屋天白区",
+            "Code": "2311600"
+           },
+           {
+            "Name": "豊橋市",
+            "Code": "2320100"
+           },
+           {
+            "Name": "岡崎市",
+            "Code": "2320200"
+           },
+           {
+            "Name": "一宮市",
+            "Code": "2320300"
+           },
+           {
+            "Name": "春日井市",
+            "Code": "2320600"
+           },
+           {
+            "Name": "豊川市",
+            "Code": "2320700"
+           },
+           {
+            "Name": "碧南市",
+            "Code": "2320900"
+           },
+           {
+            "Name": "安城市",
+            "Code": "2321200"
+           },
+           {
+            "Name": "西尾市",
+            "Code": "2321300"
+           },
+           {
+            "Name": "蒲郡市",
+            "Code": "2321400"
+           },
+           {
+            "Name": "犬山市",
+            "Code": "2321500"
+           },
+           {
+            "Name": "常滑市",
+            "Code": "2321600"
+           },
+           {
+            "Name": "大府市",
+            "Code": "2322300"
+           },
+           {
+            "Name": "知立市",
+            "Code": "2322500"
+           },
+           {
+            "Name": "尾張旭市",
+            "Code": "2322600"
+           },
+           {
+            "Name": "豊明市",
+            "Code": "2322900"
+           },
+           {
+            "Name": "日進市",
+            "Code": "2323000"
+           },
+           {
+            "Name": "田原市",
+            "Code": "2323100"
+           },
+           {
+            "Name": "清須市",
+            "Code": "2323300"
+           },
+           {
+            "Name": "あま市",
+            "Code": "2323700"
+           },
+           {
+            "Name": "長久手市",
+            "Code": "2323800"
+           },
+           {
+            "Name": "大口町",
+            "Code": "2336100"
+           },
+           {
+            "Name": "扶桑町",
+            "Code": "2336200"
+           },
+           {
+            "Name": "飛島村",
+            "Code": "2342700"
+           },
+           {
+            "Name": "阿久比町",
+            "Code": "2344100"
+           },
+           {
+            "Name": "東浦町",
+            "Code": "2344200"
+           },
+           {
+            "Name": "愛知美浜町",
+            "Code": "2344600"
+           },
+           {
+            "Name": "武豊町",
+            "Code": "2344700"
+           },
+           {
+            "Name": "幸田町",
+            "Code": "2350100"
+           },
+           {
+            "Name": "豊根村",
+            "Code": "2356300"
+           },
+           {
+            "Name": "木曽岬町",
+            "Code": "2430300"
+           }
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T01:04:00+09:00",
+     "ArrivalTime": "2026-11-08T01:04:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "静岡県西部",
+       "Code": "443",
+       "Coordinate": "+34.9+137.7-40000/",
+       "enName": "Western Shizuoka Prefecture"
+      }
+     },
+     "Magnitude": "5.7"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "5+",
+      "Pref": [
+       {
+        "Name": "愛知県",
+        "Code": "23",
+        "MaxInt": "5+",
+        "Area": [
+         {
+          "Name": "愛知県西部",
+          "Code": "451",
+          "MaxInt": "5+",
+          "City": [
+           {
+            "Name": "知多市",
+            "Code": "2322400",
+            "MaxInt": "5+",
+            "IntensityStation": [
+             {
+              "Name": "知多市緑町＊",
+              "Code": "2322420",
+              "Int": "5+"
+             }
+            ]
+           },
+           {
+            "Name": "瀬戸市",
+            "Code": "2320400",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "瀬戸市追分町＊",
+              "Code": "2320431",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "半田市",
+            "Code": "2320500",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "半田市東洋町＊",
+              "Code": "2320531",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "刈谷市",
+            "Code": "2321000",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "刈谷市寿町＊",
+              "Code": "2321031",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "豊田市",
+            "Code": "2321100",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "豊田市小坂本町",
+              "Code": "2321100",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市小坂町＊",
+              "Code": "2321120",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市長興寺＊",
+              "Code": "2321145",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市大洞町",
+              "Code": "2321101",
+              "Int": "4"
+             },
+             {
+              "Name": "豊田市駒場町＊",
+              "Code": "2321140",
+              "Int": "2"
+             },
+             {
+              "Name": "豊田市畝部西町＊",
+              "Code": "2321142",
+              "Int": "2"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。\nこの地震について、緊急地震速報を発表しています。",
+      "Code": "0215 0241",
+      "enText": "This earthquake poses no tsunami risk.\nEarthquake Early Warning is in effect for this earthquake.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261108010836_20261108010441_VXSE5k_1.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-07T16:08:36Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-08T01:08:00+09:00",
+    "TargetDateTime": "2026-11-08T01:08:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": "1",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日０１時０４分ころ、地震がありました。",
+     "Information": [
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度５強"
+         },
+         "Areas": {
+          "Area": {
+           "Name": "愛知県西部",
+           "Code": "451"
+          }
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度５弱"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "長野県南部",
+            "Code": "422"
+           },
+           {
+            "Name": "岐阜県美濃東部",
+            "Code": "431"
+           },
+           {
+            "Name": "静岡県西部",
+            "Code": "443"
+           },
+           {
+            "Name": "愛知県東部",
+            "Code": "450"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "岐阜県美濃中西部",
+            "Code": "432"
+           },
+           {
+            "Name": "静岡県中部",
+            "Code": "442"
+           },
+           {
+            "Name": "三重県北部",
+            "Code": "460"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度３"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "福井県嶺北",
+            "Code": "400"
+           },
+           {
+            "Name": "福井県嶺南",
+            "Code": "401"
+           },
+           {
+            "Name": "山梨県中・西部",
+            "Code": "411"
+           },
+           {
+            "Name": "長野県中部",
+            "Code": "421"
+           },
+           {
+            "Name": "岐阜県飛騨",
+            "Code": "430"
+           },
+           {
+            "Name": "静岡県伊豆",
+            "Code": "440"
+           },
+           {
+            "Name": "静岡県東部",
+            "Code": "441"
+           },
+           {
+            "Name": "三重県中部",
+            "Code": "461"
+           },
+           {
+            "Name": "三重県南部",
+            "Code": "462"
+           },
+           {
+            "Name": "滋賀県北部",
+            "Code": "500"
+           },
+           {
+            "Name": "滋賀県南部",
+            "Code": "501"
+           },
+           {
+            "Name": "京都府南部",
+            "Code": "511"
+           },
+           {
+            "Name": "大阪府北部",
+            "Code": "520"
+           },
+           {
+            "Name": "兵庫県北部",
+            "Code": "530"
+           },
+           {
+            "Name": "奈良県",
+            "Code": "540"
+           }
+          ]
+         }
+        }
+       ]
+      },
+      {
+       "Item": [
+        {
+         "Kind": {
+          "Name": "震度５強"
+         },
+         "Areas": {
+          "Area": {
+           "Name": "知多市",
+           "Code": "2322400"
+          }
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度５弱"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "売木村",
+            "Code": "2041200"
+           },
+           {
+            "Name": "恵那市",
+            "Code": "2121000"
+           },
+           {
+            "Name": "浜松浜名区",
+            "Code": "2213900"
+           },
+           {
+            "Name": "瀬戸市",
+            "Code": "2320400"
+           },
+           {
+            "Name": "半田市",
+            "Code": "2320500"
+           },
+           {
+            "Name": "刈谷市",
+            "Code": "2321000"
+           },
+           {
+            "Name": "豊田市",
+            "Code": "2321100"
+           },
+           {
+            "Name": "新城市",
+            "Code": "2322100"
+           },
+           {
+            "Name": "東海市",
+            "Code": "2322200"
+           },
+           {
+            "Name": "愛知みよし市",
+            "Code": "2323600"
+           },
+           {
+            "Name": "東郷町",
+            "Code": "2330200"
+           }
+          ]
+         }
+        },
+        {
+         "Kind": {
+          "Name": "震度４"
+         },
+         "Areas": {
+          "Area": [
+           {
+            "Name": "飯田市",
+            "Code": "2020500"
+           },
+           {
+            "Name": "飯島町",
+            "Code": "2038400"
+           },
+           {
+            "Name": "中川村",
+            "Code": "2038600"
+           },
+           {
+            "Name": "松川町",
+            "Code": "2040200"
+           },
+           {
+            "Name": "長野高森町",
+            "Code": "2040300"
+           },
+           {
+            "Name": "阿南町",
+            "Code": "2040400"
+           },
+           {
+            "Name": "阿智村",
+            "Code": "2040700"
+           },
+           {
+            "Name": "根羽村",
+            "Code": "2041000"
+           },
+           {
+            "Name": "下條村",
+            "Code": "2041100"
+           },
+           {
+            "Name": "天龍村",
+            "Code": "2041300"
+           },
+           {
+            "Name": "泰阜村",
+            "Code": "2041400"
+           },
+           {
+            "Name": "喬木村",
+            "Code": "2041500"
+           },
+           {
+            "Name": "南木曽町",
+            "Code": "2042300"
+           },
+           {
+            "Name": "王滝村",
+            "Code": "2042900"
+           },
+           {
+            "Name": "大桑村",
+            "Code": "2043000"
+           },
+           {
+            "Name": "木曽町",
+            "Code": "2043200"
+           },
+           {
+            "Name": "多治見市",
+            "Code": "2120400"
+           },
+           {
+            "Name": "関市",
+            "Code": "2120500"
+           },
+           {
+            "Name": "中津川市",
+            "Code": "2120600"
+           },
+           {
+            "Name": "白川町",
+            "Code": "2150600"
+           },
+           {
+            "Name": "浜松中央区",
+            "Code": "2213800"
+           },
+           {
+            "Name": "浜松天竜区",
+            "Code": "2214000"
+           },
+           {
+            "Name": "島田市",
+            "Code": "2220900"
+           },
+           {
+            "Name": "磐田市",
+            "Code": "2221100"
+           },
+           {
+            "Name": "掛川市",
+            "Code": "2221300"
+           },
+           {
+            "Name": "袋井市",
+            "Code": "2221600"
+           },
+           {
+            "Name": "湖西市",
+            "Code": "2222100"
+           },
+           {
+            "Name": "名古屋千種区",
+            "Code": "2310100"
+           },
+           {
+            "Name": "名古屋北区",
+            "Code": "2310300"
+           },
+           {
+            "Name": "名古屋西区",
+            "Code": "2310400"
+           },
+           {
+            "Name": "名古屋中村区",
+            "Code": "2310500"
+           },
+           {
+            "Name": "名古屋中区",
+            "Code": "2310600"
+           },
+           {
+            "Name": "名古屋昭和区",
+            "Code": "2310700"
+           },
+           {
+            "Name": "名古屋瑞穂区",
+            "Code": "2310800"
+           },
+           {
+            "Name": "名古屋熱田区",
+            "Code": "2310900"
+           },
+           {
+            "Name": "名古屋港区",
+            "Code": "2311100"
+           },
+           {
+            "Name": "名古屋南区",
+            "Code": "2311200"
+           },
+           {
+            "Name": "名古屋守山区",
+            "Code": "2311300"
+           },
+           {
+            "Name": "名古屋緑区",
+            "Code": "2311400"
+           },
+           {
+            "Name": "名古屋名東区",
+            "Code": "2311500"
+           },
+           {
+            "Name": "名古屋天白区",
+            "Code": "2311600"
+           },
+           {
+            "Name": "豊橋市",
+            "Code": "2320100"
+           },
+           {
+            "Name": "一宮市",
+            "Code": "2320300"
+           },
+           {
+            "Name": "春日井市",
+            "Code": "2320600"
+           },
+           {
+            "Name": "豊川市",
+            "Code": "2320700"
+           },
+           {
+            "Name": "碧南市",
+            "Code": "2320900"
+           },
+           {
+            "Name": "安城市",
+            "Code": "2321200"
+           },
+           {
+            "Name": "西尾市",
+            "Code": "2321300"
+           },
+           {
+            "Name": "蒲郡市",
+            "Code": "2321400"
+           },
+           {
+            "Name": "犬山市",
+            "Code": "2321500"
+           },
+           {
+            "Name": "常滑市",
+            "Code": "2321600"
+           },
+           {
+            "Name": "大府市",
+            "Code": "2322300"
+           },
+           {
+            "Name": "知立市",
+            "Code": "2322500"
+           },
+           {
+            "Name": "尾張旭市",
+            "Code": "2322600"
+           },
+           {
+            "Name": "豊明市",
+            "Code": "2322900"
+           },
+           {
+            "Name": "日進市",
+            "Code": "2323000"
+           },
+           {
+            "Name": "田原市",
+            "Code": "2323100"
+           },
+           {
+            "Name": "清須市",
+            "Code": "2323300"
+           },
+           {
+            "Name": "あま市",
+            "Code": "2323700"
+           },
+           {
+            "Name": "長久手市",
+            "Code": "2323800"
+           },
+           {
+            "Name": "大口町",
+            "Code": "2336100"
+           },
+           {
+            "Name": "扶桑町",
+            "Code": "2336200"
+           },
+           {
+            "Name": "飛島村",
+            "Code": "2342700"
+           },
+           {
+            "Name": "阿久比町",
+            "Code": "2344100"
+           },
+           {
+            "Name": "東浦町",
+            "Code": "2344200"
+           },
+           {
+            "Name": "愛知美浜町",
+            "Code": "2344600"
+           },
+           {
+            "Name": "武豊町",
+            "Code": "2344700"
+           },
+           {
+            "Name": "幸田町",
+            "Code": "2350100"
+           },
+           {
+            "Name": "豊根村",
+            "Code": "2356300"
+           },
+           {
+            "Name": "木曽岬町",
+            "Code": "2430300"
+           }
+          ]
+         }
+        }
+       ]
+      }
+     ]
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T01:04:00+09:00",
+     "ArrivalTime": "2026-11-08T01:04:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "静岡県西部",
+       "Code": "443",
+       "Coordinate": "+34.9+137.7-40000/",
+       "enName": "Western Shizuoka Prefecture"
+      }
+     },
+     "Magnitude": "5.7"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "5+",
+      "Pref": [
+       {
+        "Name": "愛知県",
+        "Code": "23",
+        "MaxInt": "5+",
+        "Area": [
+         {
+          "Name": "愛知県西部",
+          "Code": "451",
+          "MaxInt": "5+",
+          "City": [
+           {
+            "Name": "知多市",
+            "Code": "2322400",
+            "MaxInt": "5+",
+            "IntensityStation": [
+             {
+              "Name": "知多市緑町＊",
+              "Code": "2322420",
+              "Int": "5+"
+             }
+            ]
+           },
+           {
+            "Name": "瀬戸市",
+            "Code": "2320400",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "瀬戸市追分町＊",
+              "Code": "2320431",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "半田市",
+            "Code": "2320500",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "半田市東洋町＊",
+              "Code": "2320531",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "刈谷市",
+            "Code": "2321000",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "刈谷市寿町＊",
+              "Code": "2321031",
+              "Int": "5-"
+             }
+            ]
+           },
+           {
+            "Name": "豊田市",
+            "Code": "2321100",
+            "MaxInt": "5-",
+            "IntensityStation": [
+             {
+              "Name": "豊田市小坂本町",
+              "Code": "2321100",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市小坂町＊",
+              "Code": "2321120",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市長興寺＊",
+              "Code": "2321145",
+              "Int": "5-"
+             },
+             {
+              "Name": "豊田市大洞町",
+              "Code": "2321101",
+              "Int": "4"
+             },
+             {
+              "Name": "豊田市駒場町＊",
+              "Code": "2321140",
+              "Int": "2"
+             },
+             {
+              "Name": "豊田市畝部西町＊",
+              "Code": "2321142",
+              "Int": "2"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。\nこの地震について、緊急地震速報を発表しています。",
+      "Code": "0215 0241",
+      "enText": "This earthquake poses no tsunami risk.\nEarthquake Early Warning is in effect for this earthquake.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261108010725_20261108010441_VXSE51_0.json": {
+   "Control": {
+    "Title": "震度速報",
+    "DateTime": "2026-11-07T16:07:25Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震度速報",
+    "ReportDateTime": "2026-11-08T01:07:00+09:00",
+    "TargetDateTime": "2026-11-08T01:04:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震度速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日０１時０４分ころ、地震による強い揺れを感じました。震度３以上が観測された地域をお知らせします。",
+     "Information": {
+      "Item": [
+       {
+        "Kind": {
+         "Name": "震度５強"
+        },
+        "Areas": {
+         "Area": {
+          "Name": "愛知県西部",
+          "Code": "451"
+         }
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度５弱"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "長野県南部",
+           "Code": "422"
+          },
+          {
+           "Name": "岐阜県美濃東部",
+           "Code": "431"
+          },
+          {
+           "Name": "静岡県西部",
+           "Code": "443"
+          },
+          {
+           "Name": "愛知県東部",
+           "Code": "450"
+          }
+         ]
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度４"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "岐阜県美濃中西部",
+           "Code": "432"
+          },
+          {
+           "Name": "静岡県中部",
+           "Code": "442"
+          },
+          {
+           "Name": "三重県北部",
+           "Code": "460"
+          }
+         ]
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "福井県嶺北",
+           "Code": "400"
+          },
+          {
+           "Name": "福井県嶺南",
+           "Code": "401"
+          },
+          {
+           "Name": "山梨県中・西部",
+           "Code": "411"
+          },
+          {
+           "Name": "長野県中部",
+           "Code": "421"
+          },
+          {
+           "Name": "岐阜県飛騨",
+           "Code": "430"
+          },
+          {
+           "Name": "静岡県伊豆",
+           "Code": "440"
+          },
+          {
+           "Name": "静岡県東部",
+           "Code": "441"
+          },
+          {
+           "Name": "三重県中部",
+           "Code": "461"
+          },
+          {
+           "Name": "三重県南部",
+           "Code": "462"
+          },
+          {
+           "Name": "滋賀県北部",
+           "Code": "500"
+          },
+          {
+           "Name": "滋賀県南部",
+           "Code": "501"
+          },
+          {
+           "Name": "京都府南部",
+           "Code": "511"
+          },
+          {
+           "Name": "大阪府北部",
+           "Code": "520"
+          },
+          {
+           "Name": "兵庫県北部",
+           "Code": "530"
+          },
+          {
+           "Name": "奈良県",
+           "Code": "540"
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "enTitle": "Seismic Intensity Information"
+   },
+   "Body": {
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "5+",
+      "Pref": [
+       {
+        "Name": "愛知県",
+        "Code": "23",
+        "MaxInt": "5+",
+        "Area": [
+         {
+          "Name": "愛知県西部",
+          "Code": "451",
+          "MaxInt": "5+"
+         },
+         {
+          "Name": "愛知県東部",
+          "Code": "450",
+          "MaxInt": "5-"
+         }
+        ]
+       },
+       {
+        "Name": "長野県",
+        "Code": "20",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "長野県南部",
+          "Code": "422",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "長野県中部",
+          "Code": "421",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "岐阜県",
+        "Code": "21",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "岐阜県美濃東部",
+          "Code": "431",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "岐阜県美濃中西部",
+          "Code": "432",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "岐阜県飛騨",
+          "Code": "430",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "静岡県",
+        "Code": "22",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "静岡県西部",
+          "Code": "443",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "静岡県中部",
+          "Code": "442",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "静岡県伊豆",
+          "Code": "440",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "静岡県東部",
+          "Code": "441",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "三重県",
+        "Code": "24",
+        "MaxInt": "4",
+        "Area": [
+         {
+          "Name": "三重県北部",
+          "Code": "460",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "三重県中部",
+          "Code": "461",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "三重県南部",
+          "Code": "462",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "福井県",
+        "Code": "18",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "福井県嶺北",
+          "Code": "400",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "福井県嶺南",
+          "Code": "401",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "山梨県",
+        "Code": "19",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "山梨県中・西部",
+          "Code": "411",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "滋賀県",
+        "Code": "25",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "滋賀県北部",
+          "Code": "500",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "滋賀県南部",
+          "Code": "501",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "京都府",
+        "Code": "26",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "京都府南部",
+          "Code": "511",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "大阪府",
+        "Code": "27",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "大阪府北部",
+          "Code": "520",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "兵庫県",
+        "Code": "28",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "兵庫県北部",
+          "Code": "530",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "奈良県",
+        "Code": "29",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "奈良県",
+          "Code": "540",
+          "MaxInt": "3"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "今後の情報に注意してください。",
+      "Code": "0217",
+      "enText": "Check the information which will be issued from now on.\n"
+     }
+    }
+   }
+  },
+  "20261108010721_20261108010441_VXSE52_0.json": {
+   "Control": {
+    "Title": "震源に関する情報",
+    "DateTime": "2026-11-07T16:07:21Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源に関する情報",
+    "ReportDateTime": "2026-11-08T01:07:00+09:00",
+    "TargetDateTime": "2026-11-08T01:07:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震源速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "きょう　８日０１時０４分ころ、地震がありました。"
+    },
+    "enTitle": "Earthquake Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-08T01:04:00+09:00",
+     "ArrivalTime": "2026-11-08T01:04:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "静岡県西部",
+       "Code": "443",
+       "Coordinate": "+34.9+137.7-40000/",
+       "enName": "Western Shizuoka Prefecture"
+      }
+     },
+     "Magnitude": "5.7"
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震による津波の心配はありません。",
+      "Code": "0215",
+      "enText": "This earthquake poses no tsunami risk.\n"
+     }
+    }
+   }
+  },
+  "20261108010625_20261108010441_VXSE51_0.json": {
+   "Control": {
+    "Title": "震度速報",
+    "DateTime": "2026-11-07T16:06:25Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震度速報",
+    "ReportDateTime": "2026-11-08T01:06:00+09:00",
+    "TargetDateTime": "2026-11-08T01:04:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震度速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日０１時０４分ころ、地震による強い揺れを感じました。震度３以上が観測された地域をお知らせします。",
+     "Information": {
+      "Item": [
+       {
+        "Kind": {
+         "Name": "震度５強"
+        },
+        "Areas": {
+         "Area": {
+          "Name": "愛知県西部",
+          "Code": "451"
+         }
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度５弱"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "長野県南部",
+           "Code": "422"
+          },
+          {
+           "Name": "岐阜県美濃東部",
+           "Code": "431"
+          },
+          {
+           "Name": "静岡県西部",
+           "Code": "443"
+          },
+          {
+           "Name": "愛知県東部",
+           "Code": "450"
+          }
+         ]
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度４"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "岐阜県美濃中西部",
+           "Code": "432"
+          },
+          {
+           "Name": "静岡県中部",
+           "Code": "442"
+          },
+          {
+           "Name": "三重県北部",
+           "Code": "460"
+          }
+         ]
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "福井県嶺北",
+           "Code": "400"
+          },
+          {
+           "Name": "福井県嶺南",
+           "Code": "401"
+          },
+          {
+           "Name": "山梨県中・西部",
+           "Code": "411"
+          },
+          {
+           "Name": "長野県中部",
+           "Code": "421"
+          },
+          {
+           "Name": "岐阜県飛騨",
+           "Code": "430"
+          },
+          {
+           "Name": "静岡県伊豆",
+           "Code": "440"
+          },
+          {
+           "Name": "静岡県東部",
+           "Code": "441"
+          },
+          {
+           "Name": "三重県中部",
+           "Code": "461"
+          },
+          {
+           "Name": "三重県南部",
+           "Code": "462"
+          },
+          {
+           "Name": "滋賀県北部",
+           "Code": "500"
+          },
+          {
+           "Name": "滋賀県南部",
+           "Code": "501"
+          },
+          {
+           "Name": "京都府南部",
+           "Code": "511"
+          },
+          {
+           "Name": "大阪府北部",
+           "Code": "520"
+          },
+          {
+           "Name": "奈良県",
+           "Code": "540"
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "enTitle": "Seismic Intensity Information"
+   },
+   "Body": {
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "5+",
+      "Pref": [
+       {
+        "Name": "愛知県",
+        "Code": "23",
+        "MaxInt": "5+",
+        "Area": [
+         {
+          "Name": "愛知県西部",
+          "Code": "451",
+          "MaxInt": "5+"
+         },
+         {
+          "Name": "愛知県東部",
+          "Code": "450",
+          "MaxInt": "5-"
+         }
+        ]
+       },
+       {
+        "Name": "長野県",
+        "Code": "20",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "長野県南部",
+          "Code": "422",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "長野県中部",
+          "Code": "421",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "岐阜県",
+        "Code": "21",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "岐阜県美濃東部",
+          "Code": "431",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "岐阜県美濃中西部",
+          "Code": "432",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "岐阜県飛騨",
+          "Code": "430",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "静岡県",
+        "Code": "22",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "静岡県西部",
+          "Code": "443",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "静岡県中部",
+          "Code": "442",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "静岡県伊豆",
+          "Code": "440",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "静岡県東部",
+          "Code": "441",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "三重県",
+        "Code": "24",
+        "MaxInt": "4",
+        "Area": [
+         {
+          "Name": "三重県北部",
+          "Code": "460",
+          "MaxInt": "4"
+         },
+         {
+          "Name": "三重県中部",
+          "Code": "461",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "三重県南部",
+          "Code": "462",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "福井県",
+        "Code": "18",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "福井県嶺北",
+          "Code": "400",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "福井県嶺南",
+          "Code": "401",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "山梨県",
+        "Code": "19",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "山梨県中・西部",
+          "Code": "411",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "滋賀県",
+        "Code": "25",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "滋賀県北部",
+          "Code": "500",
+          "MaxInt": "3"
+         },
+         {
+          "Name": "滋賀県南部",
+          "Code": "501",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "京都府",
+        "Code": "26",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "京都府南部",
+          "Code": "511",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "大阪府",
+        "Code": "27",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "大阪府北部",
+          "Code": "520",
+          "MaxInt": "3"
+         }
+        ]
+       },
+       {
+        "Name": "奈良県",
+        "Code": "29",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "奈良県",
+          "Code": "540",
+          "MaxInt": "3"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "今後の情報に注意してください。",
+      "Code": "0217",
+      "enText": "Check the information which will be issued from now on.\n"
+     }
+    }
+   }
+  },
+  "20261108010610_20261108010441_VXSE51_0.json": {
+   "Control": {
+    "Title": "震度速報",
+    "DateTime": "2026-11-07T16:06:10Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震度速報",
+    "ReportDateTime": "2026-11-08T01:06:00+09:00",
+    "TargetDateTime": "2026-11-08T01:04:00+09:00",
+    "EventID": "20261108010441",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震度速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "８日０１時０４分ころ、地震による強い揺れを感じました。震度３以上が観測された地域をお知らせします。",
+     "Information": {
+      "Item": [
+       {
+        "Kind": {
+         "Name": "震度５強"
+        },
+        "Areas": {
+         "Area": {
+          "Name": "愛知県西部",
+          "Code": "451"
+         }
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度５弱"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "岐阜県美濃東部",
+           "Code": "431"
+          },
+          {
+           "Name": "静岡県西部",
+           "Code": "443"
+          },
+          {
+           "Name": "愛知県東部",
+           "Code": "450"
+          }
+         ]
+        }
+       },
+       {
+        "Kind": {
+         "Name": "震度４"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "長野県南部",
+           "Code": "422"
+          },
+          {
+           "Name": "静岡県中部",
+           "Code": "442"
+          }
+         ]
+        }
+       }
+      ]
+     }
+    },
+    "enTitle": "Seismic Intensity Information"
+   },
+   "Body": {
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "5+",
+      "Pref": [
+       {
+        "Name": "愛知県",
+        "Code": "23",
+        "MaxInt": "5+",
+        "Area": [
+         {
+          "Name": "愛知県西部",
+          "Code": "451",
+          "MaxInt": "5+"
+         },
+         {
+          "Name": "愛知県東部",
+          "Code": "450",
+          "MaxInt": "5-"
+         }
+        ]
+       },
+       {
+        "Name": "岐阜県",
+        "Code": "21",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "岐阜県美濃東部",
+          "Code": "431",
+          "MaxInt": "5-"
+         }
+        ]
+       },
+       {
+        "Name": "静岡県",
+        "Code": "22",
+        "MaxInt": "5-",
+        "Area": [
+         {
+          "Name": "静岡県西部",
+          "Code": "443",
+          "MaxInt": "5-"
+         },
+         {
+          "Name": "静岡県中部",
+          "Code": "442",
+          "MaxInt": "4"
+         }
+        ]
+       },
+       {
+        "Name": "長野県",
+        "Code": "20",
+        "MaxInt": "4",
+        "Area": [
+         {
+          "Name": "長野県南部",
+          "Code": "422",
+          "MaxInt": "4"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "今後の情報に注意してください。",
+      "Code": "0217",
+      "enText": "Check the information which will be issued from now on.\n"
+     }
+    }
+   }
+  },
+  "20261106195615_20261106193937_VXSE5k_2.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-06T10:56:15Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-06T19:56:00+09:00",
+    "TargetDateTime": "2026-11-06T19:56:00+09:00",
+    "EventID": "20261106193937",
+    "InfoType": "発表",
+    "Serial": "2",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "６日１９時３９分ころ、地震がありました。",
+     "Information": [
+      {
+       "Item": {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "宮城県北部",
+           "Code": "220"
+          },
+          {
+           "Name": "宮城県南部",
+           "Code": "221"
+          },
+          {
+           "Name": "宮城県中部",
+           "Code": "222"
+          },
+          {
+           "Name": "福島県中通り",
+           "Code": "250"
+          },
+          {
+           "Name": "福島県浜通り",
+           "Code": "251"
+          },
+          {
+           "Name": "茨城県北部",
+           "Code": "300"
+          }
+         ]
+        }
+       }
+      },
+      {
+       "Item": {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "石巻市",
+           "Code": "0420200"
+          },
+          {
+           "Name": "名取市",
+           "Code": "0420700"
+          },
+          {
+           "Name": "角田市",
+           "Code": "0420800"
+          },
+          {
+           "Name": "岩沼市",
+           "Code": "0421100"
+          },
+          {
+           "Name": "蔵王町",
+           "Code": "0430100"
+          },
+          {
+           "Name": "宮城美里町",
+           "Code": "0450500"
+          },
+          {
+           "Name": "福島市",
+           "Code": "0720100"
+          },
+          {
+           "Name": "郡山市",
+           "Code": "0720300"
+          },
+          {
+           "Name": "いわき市",
+           "Code": "0720400"
+          },
+          {
+           "Name": "白河市",
+           "Code": "0720500"
+          },
+          {
+           "Name": "須賀川市",
+           "Code": "0720700"
+          },
+          {
+           "Name": "二本松市",
+           "Code": "0721000"
+          },
+          {
+           "Name": "本宮市",
+           "Code": "0721400"
+          },
+          {
+           "Name": "国見町",
+           "Code": "0730300"
+          },
+          {
+           "Name": "川俣町",
+           "Code": "0730800"
+          },
+          {
+           "Name": "大玉村",
+           "Code": "0732200"
+          },
+          {
+           "Name": "天栄村",
+           "Code": "0734400"
+          },
+          {
+           "Name": "泉崎村",
+           "Code": "0746400"
+          },
+          {
+           "Name": "玉川村",
+           "Code": "0750200"
+          },
+          {
+           "Name": "大熊町",
+           "Code": "0754500"
+          },
+          {
+           "Name": "双葉町",
+           "Code": "0754600"
+          },
+          {
+           "Name": "浪江町",
+           "Code": "0754700"
+          },
+          {
+           "Name": "日立市",
+           "Code": "0820200"
+          },
+          {
+           "Name": "ひたちなか市",
+           "Code": "0822100"
+          },
+          {
+           "Name": "大洗町",
+           "Code": "0830900"
+          },
+          {
+           "Name": "東海村",
+           "Code": "0834100"
+          }
+         ]
+        }
+       }
+      }
+     ]
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-06T19:39:00+09:00",
+     "ArrivalTime": "2026-11-06T19:39:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "関東東方沖",
+       "Code": "472",
+       "Coordinate": "+35.0+142.2-10000/",
+       "enName": "Off the east Coast of Kanto"
+      }
+     },
+     "Magnitude": "6.1"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "3",
+      "Pref": [
+       {
+        "Name": "宮城県",
+        "Code": "04",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "宮城県北部",
+          "Code": "220",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "宮城美里町",
+            "Code": "0450500",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "宮城美里町木間塚＊",
+              "Code": "0450531",
+              "Int": "3"
+             },
+             {
+              "Name": "宮城美里町北浦＊",
+              "Code": "0450530",
+              "Int": "2"
+             }
+            ]
+           },
+           {
+            "Name": "登米市",
+            "Code": "0421200",
+            "MaxInt": "2",
+            "IntensityStation": [
+             {
+              "Name": "登米市中田町",
+              "Code": "0421200",
+              "Int": "2"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "Name": "宮城県南部",
+          "Code": "221",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "名取市",
+            "Code": "0420700",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "名取市増田＊",
+              "Code": "0420730",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "角田市",
+            "Code": "0420800",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "角田市角田＊",
+              "Code": "0420820",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "岩沼市",
+            "Code": "0421100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "岩沼市桜＊",
+              "Code": "0421120",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "蔵王町",
+            "Code": "0430100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "蔵王町円田＊",
+              "Code": "0430130",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "Name": "宮城県中部",
+          "Code": "222",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "石巻市",
+            "Code": "0420200",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "石巻市桃生町＊",
+              "Code": "0420239",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "Name": "福島県",
+        "Code": "07",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "福島県中通り",
+          "Code": "250",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "福島市",
+            "Code": "0720100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "福島市花園町",
+              "Code": "0720101",
+              "Int": "3"
+             },
+             {
+              "Name": "福島市桜木町＊",
+              "Code": "0720120",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震により、日本の沿岸では若干の海面変動があるかもしれませんが、被害の心配はありません。",
+      "Code": "0212",
+      "enText": "Although there may be slight sea-level changes in coastal regions, this earthquake has caused no damage to Japan.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261106194521_20261106193937_VXSE5k_1.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-11-06T10:45:21Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源・震度情報",
+    "ReportDateTime": "2026-11-06T19:45:00+09:00",
+    "TargetDateTime": "2026-11-06T19:45:00+09:00",
+    "EventID": "20261106193937",
+    "InfoType": "発表",
+    "Serial": "1",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "６日１９時３９分ころ、地震がありました。",
+     "Information": [
+      {
+       "Item": {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "宮城県北部",
+           "Code": "220"
+          },
+          {
+           "Name": "宮城県南部",
+           "Code": "221"
+          },
+          {
+           "Name": "宮城県中部",
+           "Code": "222"
+          },
+          {
+           "Name": "福島県中通り",
+           "Code": "250"
+          },
+          {
+           "Name": "福島県浜通り",
+           "Code": "251"
+          },
+          {
+           "Name": "茨城県北部",
+           "Code": "300"
+          }
+         ]
+        }
+       }
+      },
+      {
+       "Item": {
+        "Kind": {
+         "Name": "震度３"
+        },
+        "Areas": {
+         "Area": [
+          {
+           "Name": "石巻市",
+           "Code": "0420200"
+          },
+          {
+           "Name": "名取市",
+           "Code": "0420700"
+          },
+          {
+           "Name": "角田市",
+           "Code": "0420800"
+          },
+          {
+           "Name": "岩沼市",
+           "Code": "0421100"
+          },
+          {
+           "Name": "蔵王町",
+           "Code": "0430100"
+          },
+          {
+           "Name": "宮城美里町",
+           "Code": "0450500"
+          },
+          {
+           "Name": "福島市",
+           "Code": "0720100"
+          },
+          {
+           "Name": "郡山市",
+           "Code": "0720300"
+          },
+          {
+           "Name": "いわき市",
+           "Code": "0720400"
+          },
+          {
+           "Name": "白河市",
+           "Code": "0720500"
+          },
+          {
+           "Name": "須賀川市",
+           "Code": "0720700"
+          },
+          {
+           "Name": "二本松市",
+           "Code": "0721000"
+          },
+          {
+           "Name": "本宮市",
+           "Code": "0721400"
+          },
+          {
+           "Name": "国見町",
+           "Code": "0730300"
+          },
+          {
+           "Name": "川俣町",
+           "Code": "0730800"
+          },
+          {
+           "Name": "大玉村",
+           "Code": "0732200"
+          },
+          {
+           "Name": "天栄村",
+           "Code": "0734400"
+          },
+          {
+           "Name": "泉崎村",
+           "Code": "0746400"
+          },
+          {
+           "Name": "玉川村",
+           "Code": "0750200"
+          },
+          {
+           "Name": "大熊町",
+           "Code": "0754500"
+          },
+          {
+           "Name": "双葉町",
+           "Code": "0754600"
+          },
+          {
+           "Name": "浪江町",
+           "Code": "0754700"
+          },
+          {
+           "Name": "日立市",
+           "Code": "0820200"
+          },
+          {
+           "Name": "ひたちなか市",
+           "Code": "0822100"
+          },
+          {
+           "Name": "大洗町",
+           "Code": "0830900"
+          },
+          {
+           "Name": "東海村",
+           "Code": "0834100"
+          }
+         ]
+        }
+       }
+      }
+     ]
+    },
+    "enTitle": "Earthquake and Seismic Intensity Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-06T19:39:00+09:00",
+     "ArrivalTime": "2026-11-06T19:39:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "関東東方沖",
+       "Code": "472",
+       "Coordinate": "+35.0+142.2-10000/",
+       "enName": "Off the east Coast of Kanto"
+      }
+     },
+     "Magnitude": "6.1"
+    },
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "3",
+      "Pref": [
+       {
+        "Name": "宮城県",
+        "Code": "04",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "宮城県北部",
+          "Code": "220",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "宮城美里町",
+            "Code": "0450500",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "宮城美里町木間塚＊",
+              "Code": "0450531",
+              "Int": "3"
+             },
+             {
+              "Name": "宮城美里町北浦＊",
+              "Code": "0450530",
+              "Int": "2"
+             }
+            ]
+           },
+           {
+            "Name": "登米市",
+            "Code": "0421200",
+            "MaxInt": "2",
+            "IntensityStation": [
+             {
+              "Name": "登米市中田町",
+              "Code": "0421200",
+              "Int": "2"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "Name": "宮城県南部",
+          "Code": "221",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "名取市",
+            "Code": "0420700",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "名取市増田＊",
+              "Code": "0420730",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "角田市",
+            "Code": "0420800",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "角田市角田＊",
+              "Code": "0420820",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "岩沼市",
+            "Code": "0421100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "岩沼市桜＊",
+              "Code": "0421120",
+              "Int": "3"
+             }
+            ]
+           },
+           {
+            "Name": "蔵王町",
+            "Code": "0430100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "蔵王町円田＊",
+              "Code": "0430130",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "Name": "宮城県中部",
+          "Code": "222",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "石巻市",
+            "Code": "0420200",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "石巻市桃生町＊",
+              "Code": "0420239",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "Name": "福島県",
+        "Code": "07",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "福島県中通り",
+          "Code": "250",
+          "MaxInt": "3",
+          "City": [
+           {
+            "Name": "福島市",
+            "Code": "0720100",
+            "MaxInt": "3",
+            "IntensityStation": [
+             {
+              "Name": "福島市花園町",
+              "Code": "0720101",
+              "Int": "3"
+             },
+             {
+              "Name": "福島市桜木町＊",
+              "Code": "0720120",
+              "Int": "3"
+             }
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震により、日本の沿岸では若干の海面変動があるかもしれませんが、被害の心配はありません。",
+      "Code": "0212",
+      "enText": "Although there may be slight sea-level changes in coastal regions, this earthquake has caused no damage to Japan.\n"
+     },
+     "VarComment": {
+      "Text": "＊印は気象庁以外の震度観測点についての情報です。",
+      "Code": "0262",
+      "enText": "* mark: Local Governments' or NIED's station\n"
+     }
+    }
+   }
+  },
+  "20261106194333_20261106193937_VXSE52_0.json": {
+   "Control": {
+    "Title": "震源に関する情報",
+    "DateTime": "2026-11-06T10:43:33Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震源に関する情報",
+    "ReportDateTime": "2026-11-06T19:43:00+09:00",
+    "TargetDateTime": "2026-11-06T19:43:00+09:00",
+    "EventID": "20261106193937",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震源速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "きょう　６日１９時３９分ころ、地震がありました。"
+    },
+    "enTitle": "Earthquake Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-11-06T19:39:00+09:00",
+     "ArrivalTime": "2026-11-06T19:39:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "関東東方沖",
+       "Code": "472",
+       "Coordinate": "+35.0+142.2-10000/",
+       "enName": "Off the east Coast of Kanto"
+      }
+     },
+     "Magnitude": "6.1"
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "この地震により、日本の沿岸では若干の海面変動があるかもしれませんが、被害の心配はありません。",
+      "Code": "0212",
+      "enText": "Although there may be slight sea-level changes in coastal regions, this earthquake has caused no damage to Japan.\n"
+     }
+    }
+   }
+  },
+  "20261106194123_20261106193937_VXSE51_0.json": {
+   "Control": {
+    "Title": "震度速報",
+    "DateTime": "2026-11-06T10:41:23Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "震度速報",
+    "ReportDateTime": "2026-11-06T19:41:00+09:00",
+    "TargetDateTime": "2026-11-06T19:39:00+09:00",
+    "EventID": "20261106193937",
+    "InfoType": "発表",
+    "Serial": null,
+    "InfoKind": "震度速報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "６日１９時３９分ころ、地震による強い揺れを感じました。震度３以上が観測された地域をお知らせします。",
+     "Information": {
+      "Item": {
+       "Kind": {
+        "Name": "震度３"
+       },
+       "Areas": {
+        "Area": {
+         "Name": "茨城県北部",
+         "Code": "300"
+        }
+       }
+      }
+     }
+    },
+    "enTitle": "Seismic Intensity Information"
+   },
+   "Body": {
+    "Intensity": {
+     "Observation": {
+      "MaxInt": "3",
+      "Pref": [
+       {
+        "Name": "茨城県",
+        "Code": "08",
+        "MaxInt": "3",
+        "Area": [
+         {
+          "Name": "茨城県北部",
+          "Code": "300",
+          "MaxInt": "3"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "今後の情報に注意してください。",
+      "Code": "0217",
+      "enText": "Check the information which will be issued from now on.\n"
+     }
+    }
+   }
+  },
+  "20261024115400_20261024113820_VXSE5e_1.json": {
+   "Control": {
+    "Title": "震源・震度に関する情報",
+    "DateTime": "2026-10-24T02:54:00Z",
+    "Status": "通常",
+    "EditorialOffice": "気象庁本庁",
+    "PublishingOffice": "気象庁"
+   },
+   "Head": {
+    "Title": "遠地地震に関する情報",
+    "ReportDateTime": "2026-10-24T11:54:00+09:00",
+    "TargetDateTime": "2026-10-24T11:54:00+09:00",
+    "EventID": "20261024113820",
+    "InfoType": "発表",
+    "Serial": "1",
+    "InfoKind": "地震情報",
+    "InfoKindVersion": "1.0_1",
+    "Headline": {
+     "Text": "２４日１１時３１分ころ、海外で規模の大きな地震がありました。"
+    },
+    "enTitle": "Distant Earthquake Information"
+   },
+   "Body": {
+    "Earthquake": {
+     "OriginTime": "2026-10-24T11:31:00+09:00",
+     "ArrivalTime": "2026-10-24T11:31:00+09:00",
+     "Hypocenter": {
+      "Area": {
+       "Name": "南太平洋",
+       "Code": "950",
+       "Coordinate": "-13.8+165.7/",
+       "DetailedName": "バヌアツ諸島",
+       "DetailedCode": "1186",
+       "enName": "South Pacific Ocean"
+      },
+      "Source": "ＰＴＷＣ"
+     },
+     "Magnitude": "7.2"
+    },
+    "Comments": {
+     "ForecastComment": {
+      "Text": "震源の近傍で津波発生の可能性があります。\nこの地震による日本への津波の影響はありません。",
+      "Code": "0226 0230",
+      "enText": "There is a possibility of a destructive local tsunami near the epicenter.\nThis earthquake poses no tsunami risk to Japan.\n"
+     },
+     "FreeFormComment": "気象庁では２４日１１時５２分に北西太平洋津波情報を発表しています。"
+    }
+   }
+  }
+ }
+}

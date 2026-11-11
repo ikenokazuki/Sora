@@ -74,7 +74,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_earthquake',
     'disaster',
-    '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }',
+    '【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せず気象庁公式データ直結の本ツールで取得してください（不調時はP2P地震情報）。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }',
     {
       limit: z.number().int().min(1).max(20).optional().describe('取得件数 (1〜20, デフォルト: 5)').meta({ default: 5 }),
       // Gemini の関数宣言は enum を文字列にしか許さず、数の enum が 1 つあるとツール一覧ごと 400 になる。
@@ -108,7 +108,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'get_elevation',
     'disaster',
-    '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }',
+    '【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名を座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }',
     {
       address: z.string().optional().describe('住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "富士山頂")'),
       lat: z.number().min(-90).max(90).optional().describe('緯度 (住所未指定時に直接指定, 例: 35.681236)'),
@@ -144,7 +144,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       lat: z.number().min(-90).max(90).optional().describe('中心緯度 (lon とペア指定)'),
       lon: z.number().min(-180).max(180).optional().describe('中心経度 (lat とペア指定)'),
       radiusMeters: z.number().int().min(1).max(100000).optional().describe('中心からの半径m (デフォルト: 5000、bbox 指定時は無視)').meta({ default: 5000 }),
-      center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。Nominatimで座標化する。lat/lonとは排他'),
+      center: z.string().trim().min(1).max(200).optional().describe('中心地名 (例: "渋谷", "原宿")。番地まである住所は国土地理院、それ以外はNominatimで座標化する。lat/lonとは排他'),
       bbox: z.string().optional().describe('矩形範囲 "minLng,minLat,maxLng,maxLat" (center/radius より優先)'),
       limit: z.number().int().min(1).max(50).optional().default(10).describe('最大件数 (1-50, デフォルト: 10)'),
       noCache: z.boolean().optional().describe('地名解決のキャッシュを使わず再取得する。1.1秒間隔は維持').meta({ default: false }),

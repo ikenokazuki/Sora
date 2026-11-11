@@ -329,7 +329,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
   - `get_youtube_transcript`: YouTube の動画の題名・説明文・チャプターと時刻つきの字幕（手動の字幕、無ければ自動字幕。要約は呼び出し側の AI）
   - `get_youtube_channel`: YouTube のチャンネル（URL・@ハンドル・ID）の最新の動画（題名・公開日・説明文の先頭・視聴回数）。Yahoo の検索は使わない
   - `get_flight_status`: 羽田・成田・伊丹・関西・中部の 5 空港のフライト運航状況・遅延・欠航
-  - `get_elevation`: Nominatim 住所・地名の座標解決 & 国土地理院の標高（海抜）取得
+  - `get_elevation`: 住所・地名の座標解決（国土地理院・Nominatim）& 国土地理院の標高（海抜）取得
   - `search_poi`: OpenPOI直結 全国施設POI検索（座標付き。338万件。`withAddress: true`でローカル住所情報を付与）
   - `search_postal_code`: デジタル庁 ABR / 日本郵便 郵便番号から住所候補検索・住所から郵便番号逆引き
   - `normalize_address`: デジタル庁 ABR 住所正規化（街区・住居番号・地番 level 8）& 代表点座標・郵便番号・名寄せ照合
@@ -503,14 +503,14 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 ---
 
 ### 🚨 Module 5: Disaster, Geo & Address (`ENABLED_MODULES=disaster`)
-気象庁公式特別警報・気象警報・注意報および P2P地震情報 / 気象庁リアルタイム地震速報、デジタル庁アドレス・ベース・レジストリ（ABR）/ 日本郵便の一次データを用いた住所正規化・郵便番号・逆ジオコーディング。
+気象庁公式特別警報・気象警報・注意報および気象庁の公式地震情報（使えない間は P2P地震情報）、デジタル庁アドレス・ベース・レジストリ（ABR）/ 日本郵便の一次データを用いた住所正規化・郵便番号・逆ジオコーディング。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
 | `search_disaster_warnings` | 気象庁公式防災情報による特別警報・危険警報・警報・注意報（大雨、土砂災害、高潮、暴風、大雪、波浪、雷等。河川の氾濫は対象外）を市区町村単位（都道府県名は県全体、市区町村でも都道府県でもない名前は予報区単位）でリアルタイム取得します。大雨・土砂災害・高潮は段階（`alertLevel`: レベル2〜5）付き。見つからない地名はエラー。 | `source: "disaster"` | - `city` (string, 任意): 市区町村名 (例: "新宿区", "札幌", "札幌市中央区")。都道府県名 (例: "静岡県", "石川") は県全体で、気象台が複数ある北海道・鹿児島・沖縄は気象台を挙げたエラー。予報区の名前も可 (例: "富士五湖")。複数の市町村に当たる名前は都道府県名や市・町を付ける (例: "北海道森町", "川崎市")。省くと東京地方<br>- `areaCode` (string, 任意): 気象庁エリアコード。7桁は市町村 (例: "1310400")、6桁は予報区または気象台 (例: "130010", "130000")、2桁は都道府県 (例: "27"。北海道・鹿児島・沖縄は6桁の気象台で指定)。区域に分かれた市は応答の7桁をカンマでつないだもの (例: "1410011,1410012") も可 |
-| `search_earthquake` | P2P地震情報および気象庁公式速報によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)。震度で絞ってから `limit` 件を返す。取得に失敗したときは 0 件でなくエラー |
-| `get_elevation` | 住所・地名をNominatimで緯度経度へ解決し、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度 (-90〜90)<br>- `lon` (number, 任意): 経度 (-180〜180)<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
-| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名をNominatimで座標化し、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`（`withAddress`指定時は`addressAttribution`も）は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000、bbox 指定時は無視)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 各POIの住所を正規化して郵便番号を付け、POIの座標と突き合わせて addressInfo として付与（住所データ未取得の地域は初回に取得を待つ。最大 `SORA_ADDRESS_WAIT_MS`）。待ち時間までに揃わなかったPOIは`addressIncomplete: true`（全体の`addressIncomplete` / `addressPending` / `addressUnavailable`で不足を確認）で、数秒後の再実行で完全になります。解釈できない住所は`addressInfo`なしで印も付きません<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
+| `search_earthquake` | 気象庁の公式データ（使えない間は P2P地震情報）によるリアルタイム地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、各地の観測地点）を取得します。 | `source: "disaster"` | - `limit` (number, 任意): 取得件数 (1〜20, デフォルト: 5)<br>- `minIntensity` (number, 任意): 最小震度フィルター (10=震度1, 20=震度2, 30=震度3, 40=震度4, 45=震度5弱, 50=震度5強)。震度で絞ってから `limit` 件を返す。取得に失敗したときは 0 件でなくエラー |
+| `get_elevation` | 住所・地名を緯度経度へ解決し（番地まである住所は国土地理院、施設名・駅名・地名はNominatim）、国土地理院から海抜標高（m）を取得。解決先は`matchedTitle`、取得元の確認要求は`needsVerification`で確認できます。取得済みローカル住所データがあれば優先。 | `source: "gsi"` | - `address` (string, 任意): 住所・地名文字列 (例: "東京都千代田区永田町1-7-1", "原宿")<br>- `lat` (number, 任意): 緯度 (-90〜90)<br>- `lon` (number, 任意): 経度 (-180〜180)<br>- `noCache` (boolean, 任意): 座標・標高を再取得 |
+| `search_poi` | OpenPOI直結の全国施設POI検索。中心地名を座標化し（番地まである住所は国土地理院、それ以外はNominatim）、周辺施設を返却。`centerResolved`で解決先・取得元・要確認フラグを確認できます。応答の`attribution`（OpenPOI API・[出典ページ](https://openpoiapi.com/attribution.html)）と各`pois[].attributions`（`withAddress`指定時は`addressAttribution`も）は、結果を表示・公開する際に出典として表示し、保存時は`licenses` / `attributions`を保持してください。 | `source: "openpoi"` | - `query` (string, 任意): 施設キーワード (例: "ラーメン")<br>- `center` (string, 任意): 中心地名 (例: "渋谷", "原宿")<br>- `lat` / `lon` (number, 任意, ペア指定): 中心座標。centerとは排他<br>- `radiusMeters` (number, 任意): 半径m (デフォルト: 5000、bbox 指定時は無視)<br>- `bbox` (string, 任意): 矩形範囲 (center/radiusより優先)<br>- `limit` (number, 任意): 最大件数 (1-50)<br>- `withAddress` (boolean, 任意): 各POIの住所を正規化して郵便番号を付け、POIの座標と突き合わせて addressInfo として付与（住所データ未取得の地域は初回に取得を待つ。最大 `SORA_ADDRESS_WAIT_MS`）。待ち時間までに揃わなかったPOIは`addressIncomplete: true`（全体の`addressIncomplete` / `addressPending` / `addressUnavailable`で不足を確認）で、数秒後の再実行で完全になります。解釈できない住所は`addressInfo`なしで印も付きません<br>- `noCache` (boolean, 任意): 地名解決を再取得 |
 | `search_postal_code` | 日本郵便およびデジタル庁 ABR による郵便番号検索・逆引き。郵便番号から住所候補（町字・事業所）を引く、または住所から郵便番号を逆引きします。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `zipcode` (string, 任意): 郵便番号 (例: "100-0014"、ハイフン有無不問)<br>- `address` (string, 任意): 住所文字列 (zipcode と排他) |
 | `normalize_address` | デジタル庁 ABR による住所正規化・代表点座標解決・名寄せ突き合わせ。住居表示・地番・番地号（level 8）まで照合し、代表点座標・郵便番号を付与。任意で郵便番号照合、座標近傍判定、別住所との名寄せ（`compareAddress`）を実行。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `address` (string, 必須): 正規化対象住所 (例: "東京都千代田区永田町1-7-1")<br>- `level` (number, 任意): 正規化深さ上限 (1〜8、デフォルト: 8)<br>- `zipcode` (string, 任意): 突き合わせ用郵便番号<br>- `lat` / `lon` (number, 任意): 突き合わせ用座標<br>- `compareAddress` (string, 任意): 名寄せ比較用住所 |
 | `reverse_geocode` | デジタル庁 ABR による緯度経度からの最寄り住所逆引き。住居表示または地番レベル（level 8）の住所文字列、全国地方公共団体コード、街区・番地号キー、郵便番号を即座に特定します。 | `attribution: "デジタル庁 アドレス・ベース・レジストリ..."` | - `lat` (number, 必須): 緯度 (-90〜90)<br>- `lon` (number, 必須): 経度 (-180〜180)<br>- `maxDistanceMeters` (number, 任意): 番地・号の点を探す範囲 (メートル, デフォルト: 300, 上限: 2000) |
@@ -1306,7 +1306,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   ```
 
 - **地震速報・履歴 (`POST /disaster/earthquake`)**:
-  - P2P地震情報 API によるリアルタイム地震履歴（震度1〜7、震源地、M値、深さ、津波情報、観測地点）を取得。`minIntensity` で震度を絞ってから `limit` 件を返します。取得に失敗したときは 0 件でなくエラー（500 `EARTHQUAKE_ERROR`）を返します。
+  - 気象庁の公式データ（`bosai/quake/data`。直近約 1 か月・約 160 件）によるリアルタイム地震履歴（震度1〜7、震源地、M値、深さ、津波情報、観測地点）を取得。同じ地震の震度速報・震源に関する情報・震源・震度情報は 1 件にまとめ、揃うまではあるぶんの情報で返します。遠地地震（国外）は含めません。`minIntensity` で震度を絞ってから `limit` 件を返します（絞り込みは一覧の全件が対象です）。観測点は震度3以上を強い順に 10 件までで、各件の詳細は返す件数だけ取ります（結果は 24 時間キャッシュ）。気象庁の一覧が取れないときだけ P2P地震情報 API から返し、各件の `source`（`jma` / `p2pquake`）で分かります。取得に失敗したときは 0 件でなくエラー（500 `EARTHQUAKE_ERROR`）を返します。
   ```json
   { "limit": 5, "minIntensity": 30 }
   ```
@@ -1316,15 +1316,15 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
     "count": 1,
     "earthquakes": [
       {
-        "id": "20260824183000",
-        "time": "2026/08/24 18:30:00",
-        "hypocenter": { "name": "千葉県北西部", "magnitude": 4.5, "depthKm": 70 },
-        "maxScale": "震度3",
-        "maxScaleRaw": 30,
+        "id": "20261108105319",
+        "time": "2026/11/08 10:53:00",
+        "hypocenter": { "name": "熊本県天草・芦北地方", "magnitude": 4.3, "depthKm": 10, "latitude": 32.6, "longitude": 130.6 },
+        "maxScale": "震度4",
+        "maxScaleRaw": 40,
         "tsunami": "津波の心配なし",
-        "source": "p2pquake",
+        "source": "jma",
         "points": [
-          { "pref": "東京都", "addr": "東京千代田区大手町", "scale": "震度3" }
+          { "pref": "熊本県", "addr": "熊本南区城南町＊", "scale": "震度4" }
         ]
       }
     ]
@@ -1530,7 +1530,7 @@ iTunes 公式 Search API と連携し、曲名検索・アーティスト検索�
 
 ### 3.16 座標解決・国土地理院の標高取得 (`POST /geo/elevation` / `GET /geo/elevation`)
 
-住所・地名を[Nominatim (OpenStreetMap)](https://nominatim.org/)で緯度経度へ解決し（該当なしの番地住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)で補完）、国土地理院からその地点の海抜標高（m）を取得します。住所・郵便番号は、取得済みの住所データ（デジタル庁 ABR・日本郵便。`search_postal_code` などで一度取得した市区町村）があればそちらを優先して解決し（`geocodingSource: "abr"`）、地名・駅名・施設名や未取得の地域は従来どおり Nominatim → 国土地理院です。座標解決の取得元は`geocodingSource`（`nominatim` / `gsi` / `abr`）、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
+住所・地名を緯度経度へ解決し（番地まである住所は[国土地理院の住所検索](https://msearch.gsi.go.jp/address-search/AddressSearch)を先に、施設名・駅名・地名は[Nominatim (OpenStreetMap)](https://nominatim.org/)を先に引き、該当が無ければもう一方で補完）、国土地理院からその地点の海抜標高（m）を取得します。住所・郵便番号は、取得済みの住所データ（デジタル庁 ABR・日本郵便。`search_postal_code` などで一度取得した市区町村）があればそちらを優先して解決し（`geocodingSource: "abr"`）、地名・駅名・施設名や未取得の地域は、番地まである住所なら国土地理院 → Nominatim、それ以外なら Nominatim → 国土地理院の順です。座標解決の取得元は`geocodingSource`（`nominatim` / `gsi` / `abr`）、その出典表示は`geocodingAttribution`（結果を表示・公開する際に併記）、標高の取得元は`source: "gsi"`です。上位候補が複数の都道府県にまたがる場合は`needsVerification: true`を返すため、`matchedTitle`が意図した地域か確認してください。
 
 地名解決は`search_poi`と共有します。同一Soraプロセス内のMCP・REST全要求で、Nominatimへの実際の問い合わせ開始を1.1秒以上空けます。同じ地名の同時要求は1回にまとめ、成功結果は24時間キャッシュします。異なる未キャッシュ地名の要求は順番に待機します。`noCache: true`でも1.1秒間隔の制限は維持します。直接`lat` / `lon`を指定した場合は地名解決を行いません。
 
@@ -2557,7 +2557,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   - 日本全国の施設POIを検索できる公開APIの提供に感謝いたします。Soraの施設検索では、施設名・所在地・座標とともに提供元の`licenses`および`attributions`を保持して返します。取得データの保存・再利用時もこれらの情報を保持してください。
 - **気象庁（JMA）オープンデータ**: [jma.go.jp](https://www.jma.go.jp/)
   - 日本全国の高精度な気象予報・防災気象警報データおよび全国 1,800 以上のエリア定義データのオープン公開に深く感謝いたします。
-- **P2P地震情報 (P2PQuake)**: [p2pquake.net](https://www.p2pquake.net/)
+- **P2P地震情報 (P2PQuake)**: [p2pquake.net](https://www.p2pquake.net/)（気象庁の地震情報が使えないときの退避先）
   - リアルタイムな地震情報・震度速報 API の公開に感謝いたします。（※商用利用時は開発元への事前利用申請が必要です）
 - **e-Gov 法令 API（デジタル庁 / 総務省）**: [laws.e-gov.go.jp](https://laws.e-gov.go.jp/)
   - 日本の全現行法令オープンデータおよび e-Gov 法令 API v2 の一般公開に深く感謝いたします。
@@ -2595,7 +2595,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   - 本プロジェクトは各社とは一切関係ありません。
 - **利用規約・法令の遵守 & 商用利用の注意**:
   - 各外部サービス（Yahoo! JAPAN、気象庁、P2P地震情報、iTunes 等）へのアクセスにあたっては、相手先サービスの利用規約、ガイドライン、robots.txt、および適用法令を遵守し、過度な負荷をかけないよう利用者自身の責任においてご利用ください。
-  - P2P地震情報の商用利用を行う場合は、利用者の名義にて P2PQuake 開発元への事前利用申請を行ってください。
+  - P2P地震情報は、気象庁の地震情報が使えないときの退避先としてだけ使います。この退避先を商用で使う場合は、利用者の名義にて P2PQuake 開発元への事前利用申請を行ってください。
 - **責任の限定**:
   - 本ソフトウェアの利用により生じたいかなる損害（相手先サービスからのアクセス制限、データの完全性・正確性・最新性等を含む）について、本プロジェクトの開発者は一切の責任を負いません。
 

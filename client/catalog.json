@@ -205,7 +205,7 @@
     "name": "get_elevation",
     "fn": "getElevation",
     "category": "disaster",
-    "description": "【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名をNominatimで座標化し（該当なしの番地住所は国土地理院の住所検索で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュの地名解決は全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }",
+    "description": "【標高・座標取得必須】座標や標高を推測せず、本ツールで取得してください。住所・地名を座標化し（番地まである住所は国土地理院の住所検索、施設名・駅名・地名はNominatim。該当が無ければもう一方で補完）、国土地理院から海抜標高（m）を取得します。未キャッシュのNominatim問い合わせは全ツール共有で1.1秒間隔となり、待機する場合があります。needsVerificationがtrueならmatchedTitleが意図した場所か確認してください。座標既知ならlat/lonを指定できます。回答・公開時はgeocodingAttributionを出典として表示すること。返却: { elevationMeters, dataAccuracy, lat, lon, matchedTitle, geocodingSource, geocodingAttribution, needsVerification }",
     "keywords": [
       "標高",
       "海抜",
@@ -564,7 +564,7 @@
     "name": "search_earthquake",
     "fn": "searchEarthquake",
     "category": "disaster",
-    "description": "【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せずP2P地震情報および気象庁公式速報直結の本ツールで取得してください。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }",
+    "description": "【公式地震速報直結】最新の地震履歴（発生時刻、震源地、マグニチュード、深さ、最大震度、津波有無、観測地点）は、推測せず気象庁公式データ直結の本ツールで取得してください（不調時はP2P地震情報）。返却: { earthquakes: [{ time, hypocenter: { name, magnitude }, maxScale, tsunami }] }",
     "keywords": [
       "地震情報",
       "震度",

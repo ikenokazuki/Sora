@@ -785,18 +785,22 @@ export const TOOL_CASES: HealthCase[] = [
     const raw = toolPayload(rawJsonText, 'search_disaster_warnings');
     return mustContain(raw, ['東京'], 'jma-warning');
   }),
-  toolCase('quake.latest', ['search_earthquake'], ['p2p-quake'], true, 90000, async (ctx) => {
+  toolCase('quake.latest', ['search_earthquake'], ['jma:quake'], true, 90000, async (ctx) => {
     const { text: rawJsonText } = await mcpJson(ctx, 'search_earthquake', { limit: 1, noCache: true }, 60000);
     const raw = toolPayload(rawJsonText, 'search_earthquake');
     mustHaveItems(raw, 'search_earthquake');
-    return mustContain(raw, ['20'], 'p2p-quake');
+    // 気象庁の一覧が使えないと P2P地震情報に切り替わって答え続けるので、取得元を確かめて切り替わりを見逃さない
+    const parsed = parseFirstJson(textOf(raw), 'search_earthquake') as unknown as { earthquakes?: Array<{ source?: string }> };
+    const source = parsed.earthquakes?.[0]?.source;
+    if (source !== 'jma') throw new LiveFail(`search_earthquake answered from ${source} instead of the JMA quake feed`);
+    return mustContain(raw, ['20'], 'jma-quake');
   }),
   toolCase('geo.elevation', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '原宿', HARAJUKU, ['nominatim'])),
   // geocoding.jp では駅名がヒットしなかったため、駅名の解決を個別に検査する。
   toolCase('geo.station', ['get_elevation'], ['nominatim', 'gsi'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '渋谷駅', SHIBUYA_STATION, ['nominatim'])),
-  // 番地住所は OSM に無いことが多く国土地理院へフォールバックする。OSM 側で解決されても正しい地点なら合格。
+  // 番地住所は OSM に無いことが多いので、国土地理院を先に引く（取得元が Nominatim になっても、正しい地点なら合格）。
   toolCase('geo.address', ['get_elevation'], ['nominatim', 'gsi', 'abr'], true, 90000,
     (ctx) => checkGeocodedElevation(ctx, '東京都千代田区永田町1-7-1', NAGATACHO_1_7, ['gsi', 'nominatim', 'abr'])),
   // 検索語（ラーメン）を付けると、OpenPOI が半径を無視して名前が一致する遠くの施設（6〜14km 先）を返すようになった（2026-10-14）。

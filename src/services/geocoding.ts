@@ -75,10 +75,18 @@ function parseLocation(data: unknown, query: string): GeocodingResult | null {
   };
 }
 
-// OSM は番地レベルの住所に弱いため、該当なしのときだけ国土地理院の住所検索を使う。
-function parseGsiLocation(data: unknown, query: string): GeocodingResult {
+// 番地まである住所（「1-5-1」「3丁目4番」）。ハイフン類は ASCII・全角・長音・各種ダッシュを許す。「国道246号」のような道路は含めない。
+const BLOCK_NUMBER = /[0-9０-９]+\s*[-‐‑‒–—―−ー－]\s*[0-9０-９]+|[0-9０-９一二三四五六七八九十]+\s*(?:丁目|番)/;
+
+/** 番地まである住所か。OSM は番地レベルの住所に弱く、国土地理院の住所検索のほうが当たるので、これに当たる問い合わせは国土地理院を先に引く。 */
+export function looksLikeStreetAddress(query: string): boolean {
+  return BLOCK_NUMBER.test(query);
+}
+
+// 国土地理院の住所検索。施設名や駅名は当たらず、部分一致で別の地名を返すので、番地まである住所か、Nominatim が該当なしのときに使う。該当なしは null。
+function parseGsiLocation(data: unknown, query: string): GeocodingResult | null {
   if (!Array.isArray(data)) throw new Error('gsi address search returned an unexpected response');
-  if (data.length === 0) throw new Error(`nominatim and gsi found no match: ${query}`);
+  if (data.length === 0) return null;
   const top = data[0] as { geometry?: { coordinates?: unknown }; properties?: { title?: unknown } };
   const coords = Array.isArray(top?.geometry?.coordinates) ? top.geometry.coordinates : [];
   const lon = typeof coords[0] === 'number' ? coords[0] : NaN;
@@ -109,7 +117,8 @@ export function createGeocoder(options: GeocoderOptions = {}) {
   let gate: Promise<void> = Promise.resolve();
   let lastStart = Number.NEGATIVE_INFINITY;
 
-  async function requestLocation(query: string): Promise<GeocodingResult> {
+  // 1 秒に 1 回の決まりがあるのは Nominatim だけなので、順番待ちと間隔はその問い合わせにだけかける。該当なしは null。
+  async function viaNominatim(query: string): Promise<GeocodingResult | null> {
     const previous = gate;
     let release!: () => void;
     gate = new Promise<void>((resolve) => { release = resolve; });
@@ -125,13 +134,34 @@ export function createGeocoder(options: GeocoderOptions = {}) {
         q: query, format: 'jsonv2', countrycodes: 'jp', limit: '3', addressdetails: '1', 'accept-language': 'ja',
       });
       const data = await fetchJson(fetchFn, url, 'nominatim', { 'User-Agent': 'Sora-Geocoding-Fetcher/1.0 (https://github.com/ikenokazuki/Sora)' });
-      const found = parseLocation(data, query);
-      if (found) return found;
-      const gsiUrl = 'https://msearch.gsi.go.jp/address-search/AddressSearch?' + new URLSearchParams({ q: query });
-      return parseGsiLocation(await fetchJson(fetchFn, gsiUrl, 'gsi address search'), query);
+      return parseLocation(data, query);
     } finally {
       release();
     }
+  }
+
+  async function viaGsi(query: string): Promise<GeocodingResult | null> {
+    const url = 'https://msearch.gsi.go.jp/address-search/AddressSearch?' + new URLSearchParams({ q: query });
+    return parseGsiLocation(await fetchJson(fetchFn, url, 'gsi address search'), query);
+  }
+
+  async function requestLocation(query: string): Promise<GeocodingResult> {
+    if (looksLikeStreetAddress(query)) {
+      // 番地まである住所は、公的な索引（国土地理院）を先に引く。使えない間は、従来どおり Nominatim で探す。
+      try {
+        const found = await viaGsi(query);
+        if (found) return found;
+      } catch {
+        // 国土地理院の不調は、Nominatim の答えがあれば隠す
+      }
+      const found = await viaNominatim(query);
+      if (found) return found;
+    } else {
+      // 施設名・駅名・地名は Nominatim が当たる。該当なしのときだけ国土地理院へ。Nominatim が使えない間は、部分一致の別の地名を返さずエラーにする。
+      const found = (await viaNominatim(query)) ?? (await viaGsi(query));
+      if (found) return found;
+    }
+    throw new Error(`nominatim and gsi found no match: ${query}`);
   }
 
   return async (rawQuery: string, request: { noCache?: boolean } = {}): Promise<GeocodingResult> => {
