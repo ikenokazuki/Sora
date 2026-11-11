@@ -17,6 +17,7 @@ afterEach(() => {
   restore = undefined;
 });
 function stubFetch(handler: (url: URL) => unknown): string[] {
+  restore?.(); // 1 つのテストで続けて差し替えても、元の fetch に戻せるように（前の差し替えを残さない）
   const original = globalThis.fetch;
   const calls: string[] = [];
   globalThis.fetch = (async (input: string | URL | Request) => {
