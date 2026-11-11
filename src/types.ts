@@ -9,7 +9,7 @@ import { ContextUpdatesSchema, EvidencePageSchema } from './services/country_int
  * サービスのバージョン。GET / のレスポンスと OpenAPI ドキュメントで共有する。
  * package.json の version と同じ値を保つこと（以前 OpenAPI 側だけ 2.0.0 のまま取り残されていた）。
  */
-export const SORA_VERSION = '4.2.0';
+export const SORA_VERSION = '5.0.0';
 export const DEFAULT_MAX_CHARS = 30_000;
 /** 一括スクレイプ（REST の /scrape/batch と、MCP の scrape の urls）の、1 ページあたりの maxChars の上限 */
 export const SCRAPE_BATCH_MAX_CHARS = 50_000;

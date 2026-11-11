@@ -2461,7 +2461,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - キャッシュしません（読みも書きもせず、同時の要求もまとめません）。Shazam の拒否・制限・障害は 502 `SONG_RECOGNITION_UPSTREAM_ERROR`、モジュールが無効なら 404 `MODULE_DISABLED` です。
   - 当たっても、iTunes とつなぐ問い合わせが失敗したとき（時間切れ・403・429 など）は同じ 502 にします。`itunes: null` は iTunes につなげる曲が無かったときだけなので、呼び出し側は 502 なら指紋を残して照会し直せます（`/music/recognize` は今までどおり `itunes: null` で当たりを返します）。
 
-### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v4.3.0, 明示オプトイン)
+### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v5.0.0, 明示オプトイン)
 
 保存した HTS の版の一覧と、1 つの版の全件を返します。**`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。保存の仕組みは「Module 15: HTS Release Archive」を参照してください。
 
