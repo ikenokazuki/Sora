@@ -27,9 +27,9 @@ export function parseArgs(argv: string[]): Args {
 }
 
 const PASS_THROUGH_ENV = [
-  'UPS_CLIENT_ID', 'UPS_CLIENT_SECRET',
-  'FEDEX_API_KEY', 'FEDEX_CLIENT_ID', 'FEDEX_API_SECRET', 'FEDEX_CLIENT_SECRET',
-  'DHL_EXPRESS_API_KEY', 'DHL_API_KEY',
+  'SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET',
+  'SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET',
+  'SORA_TRACKING_DHL_API_KEY',
 ];
 
 function sh(cmd: string, args: string[], input?: string): { code: number; out: string } {
