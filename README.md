@@ -370,7 +370,7 @@ v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめ�
 
 - **旧名の別名は残していません。** 旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。下の表の新しいツールと引数で呼んでください。
 - **`search_tools` で旧名を検索すると、新しいツールが見つかります**（新しいツールの検索語に旧名を入れています）。
-- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスは同じで、`GET /tools` の操作の名前（`operationId`）も旧いツール名のままです（v4.2.0 からの REST の変更（`GET /client` の廃止など）は [RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節）。型付きクライアント（`client/`）の関数名も変えていません（`scrapeBatch`・`mapSite`・`getElevation` など）。
 - 統合したツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選びます。選んだ使い方に無い引数を既定と違う値で渡すと、正しい使い方を添えた入力の誤り（`isError`、「入力の誤り: …」）になります。既定と同じ値は通ります。
 - 応答の形とエラーの変化は、[RELEASE_NOTES.md](RELEASE_NOTES.md) の v5.0.0 の節にあります。
 
@@ -406,7 +406,7 @@ v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめ�
 | `get_youtube_transcript` | `get_youtube` | 動画の URL か 11 文字の動画 ID（`lang`・`fromSec`・`maxChars`） | 応答に `mode: "video"` |
 | `get_youtube_channel` | `get_youtube` | チャンネルの URL・`@ハンドル`・`UC…` の ID（`limit`） | 応答に `mode: "channel"` |
 
-### 💻 コード実行環境から使う (型付き TypeScript クライアント)
+### 💻 コード実行環境から使う (REST の直接呼び出し)
 `search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
 
 ### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
@@ -2312,7 +2312,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 回答値・対象との関連・日付整合性の評価は辞書と規則に基づきます。Eval-100の人手ラベルは未完了であり、全用途の精度改善を実証済みという意味ではありません。適応取得・複数クエリ統合の既定値は有効化していません。
 
-### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`、旧 `GET /client`)
+### 3.30 コード実行環境向けの入口 (`GET /tools`, `GET /tools/<name>`)
 
 コード実行環境から、言語を問わず（curl・Python・Node など）REST を直接呼べるように、操作の一覧と 1 つ分の定義を返します。
 
@@ -2321,7 +2321,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 - 認証は他の REST と同じです（`Authorization: Bearer` または `X-API-Key`）。
 - REST の操作の失敗は、HTTP の 4xx / 5xx と、共通の `{ error, code, status, retryable, details? }`（401・403・413・429 も同じ形。HTML の `GET /t/…` のページは除く）。
 - `GET /openapi.json`（約 580KB）の各操作には、`operationId`・`tags`（カテゴリ）・認証・共通のエラー応答を宣言しています。LLM が読むときは、全体ではなく `GET /tools` を使ってください。
-- **旧: `GET /client`・`GET /client/<path>`（型付き TypeScript クライアント、v2.40.0）** は、REST の直接呼び出しに置き換わりました。案内をやめ、OpenAPI で `deprecated` にしています。当面は残しますが、v5.0.0 で廃止する予定です。
+- 型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>`（v2.40.0 から）は、v5.0.0 で廃止しました。REST を直接呼んでください。型が要るときは、`GET /openapi.json` から標準のジェネレータで作れます。
 - 手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。
 
 ### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)

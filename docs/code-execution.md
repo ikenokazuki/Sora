@@ -18,7 +18,7 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
 - **スキル `sora-client`**: つなぎ方、`GET /tools` → `GET /tools/<name>` → 呼ぶ、の 3 手、curl と Python の例、絞り方の原則、エラーの扱い。次の 3 か所に同じ内容で置いてある。
   - プラグイン `plugins/sora-deep-research/skills/sora-client/`（Skills 対応環境に自動で認識される）
   - MCP リソース `sora-skill://sora-client`（`resources/list` に出る）
-  - `client/SKILL.md`（`GET /client/SKILL.md` で取れる）
+  - リポジトリの `client/SKILL.md`（`bun run gen:client` がプラグインのものを写す）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
 どれも `tools/list` を増やさない。
@@ -74,12 +74,11 @@ for h in official:
     print(sora("POST", "/scrape", {"url": h["url"]})["content"][:500])
 ```
 
-## 型付き TypeScript クライアント（`GET /client`）
+## 型付き TypeScript クライアント
 
-v2.40.0 から配っていた型付き TypeScript クライアント（`client/`）は、REST の直接呼び出しに置き換わった。**案内はやめた。当面は残すが、v5.0.0 で廃止する予定。** 言語や、TypeScript・bun の有無に依存するため。
+v2.40.0 から型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>` は、v5.0.0 で廃止した。言語や、TypeScript・bun の有無に依存するため。エージェントは REST を直接呼ぶ（`GET /tools` → `GET /tools/<name>` → 呼ぶ）。
 
-- `GET /client` が配布するファイルの一覧（`manifest.json`）を返し、`GET /client/<path>` が一覧に載ったファイルを返す。認証は他の REST と同じ。
-- `client/` は OpenAPI と `REST_MAP` から `bun run gen:client` で生成し、リポジトリにコミットしている。ツールや引数を変えたら再生成する（`src/client_sync.test.ts` が、コミット済みの内容との差を検出する）。
+- 生成した型付きクライアントは、リポジトリの `client/` にだけある。OpenAPI と `REST_MAP` から `bun run gen:client` で生成してコミットしている（`src/client_sync.test.ts` が、コミット済みの内容との差を検出する）。
 
 ## 実測
 
