@@ -11,7 +11,7 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
-import { envEnum } from './config.js';
+import { envEnum, envList } from './config.js';
 
 // ドメイン別サブルーター
 import { formatError } from './routes/utils.js';
@@ -207,8 +207,8 @@ if (import.meta.main) {
 
   installShutdownHandlers(() => server.stop(true));
 
-  // 住所データの事前取得は、SORA_ADDRESS_PRELOAD を指定した運用者だけ。指定が無ければ何も読み込まず、何も始めない。
-  if (process.env.SORA_ADDRESS_PRELOAD?.trim()) {
+  // 住所データの事前取得は、SORA_ADDRESS_PRELOAD を指定した運用者だけ。指定が無ければ（正しい要素が無いときも）何も読み込まず、何も始めない。
+  if (envList('SORA_ADDRESS_PRELOAD').length > 0) {
     void import('./services/address_preload.js')
       .then(({ startAddressPreload }) => startAddressPreload())
       .catch((error) => console.warn(`[Sora/Address] preload failed to start: ${error instanceof Error ? error.message : String(error)}`));

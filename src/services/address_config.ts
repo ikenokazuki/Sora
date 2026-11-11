@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { type Env, envEnum, envInt, envList, envPath } from '../config.js';
 import { getDatabasePath } from '../db.js';
 
 export type AddressMode = 'off' | 'lazy' | 'eager';
@@ -20,43 +21,32 @@ export interface AddressConfig {
 
 const MB = 1024 * 1024;
 
-function intInRange(raw: string | undefined, min: number, max: number, fallback: number): number {
-  if (raw === undefined || raw.trim() === '') return fallback;
-  const value = Number(raw);
-  return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
-}
-
-function parsePreload(raw: string | undefined): AddressConfig['preload'] {
-  const text = raw?.trim().toLowerCase();
-  if (!text) return null;
-  if (text === 'all') return 'all';
-  const codes = [...new Set(text.split(',').map((part) => part.trim()).filter((part) => /^\d{1,2}$/.test(part)).map((part) => part.padStart(2, '0')))];
+/** 事前取得の範囲。`all` は列のどこにあっても全国。正しい都道府県コードが無ければ null（事前取得しない）。 */
+function preloadOf(env: Env): AddressConfig['preload'] {
+  const codes = envList('SORA_ADDRESS_PRELOAD', env);
+  if (codes.includes('all')) return 'all';
   return codes.length > 0 ? codes : null;
 }
 
-export function loadAddressConfig(
-  env: Record<string, string | undefined> = process.env,
-  dbPath: string = getDatabasePath(),
-): AddressConfig {
-  const rawMode = env.SORA_ADDRESS?.trim().toLowerCase();
-  const mode: AddressMode = rawMode === 'off' || rawMode === 'eager' ? rawMode : 'lazy';
-  const explicitDir = env.SORA_ADDRESS_DIR?.trim();
+/** 呼び出しのたびに環境を読む（不正な値は既定値。止めるのは起動時の検査）。 */
+export function loadAddressConfig(env: Env = process.env, dbPath: string = getDatabasePath()): AddressConfig {
+  const explicitDir = envPath('SORA_ADDRESS_DIR', env);
   const dir = explicitDir
     ? resolve(explicitDir)
     : dbPath === ':memory:'
       ? join(tmpdir(), `sora-address-${process.pid}`)
       : resolve(dirname(dbPath), 'address');
   return {
-    mode,
+    mode: envEnum('SORA_ADDRESS_MODE', env),
     dir,
-    maxBytes: intInRange(env.SORA_ADDRESS_MAX_MB, 64, 1_048_576, 2048) * MB,
-    waitMs: intInRange(env.SORA_ADDRESS_WAIT_MS, 1000, 120_000, 20_000),
-    concurrency: intInRange(env.SORA_ADDRESS_BUILD_CONCURRENCY, 1, 4, 1),
-    preload: parsePreload(env.SORA_ADDRESS_PRELOAD),
+    maxBytes: envInt('SORA_ADDRESS_MAX_MB', env) * MB,
+    waitMs: envInt('SORA_ADDRESS_WAIT_MS', env),
+    concurrency: envInt('SORA_ADDRESS_BUILD_CONCURRENCY', env),
+    preload: preloadOf(env),
   };
 }
 
 /** MCP のツール登録など、設定ファイルを読まずに有効かどうかだけ知りたいとき。 */
-export function addressEnabled(env: Record<string, string | undefined> = process.env): boolean {
-  return env.SORA_ADDRESS?.trim().toLowerCase() !== 'off';
+export function addressEnabled(env: Env = process.env): boolean {
+  return envEnum('SORA_ADDRESS_MODE', env) !== 'off';
 }

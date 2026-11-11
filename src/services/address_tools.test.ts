@@ -442,7 +442,7 @@ describe('REST routes (/geo/*)', () => {
   const postJson = (path: string, body: unknown) =>
     publicDataRoutes.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-  test('SORA_ADDRESS=off では 3 つとも 404 ADDRESS_DISABLED', async () => {
+  test('SORA_ADDRESS_MODE=off では 3 つとも 404 ADDRESS_DISABLED', async () => {
     const built = createTestAddressData(dir, { mode: 'off' });
     setAddressContextForTest(createAddressContext(built.data));
     for (const [path, body] of [

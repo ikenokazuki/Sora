@@ -75,7 +75,7 @@ describe('ensure', () => {
     expect(inner.runs).toHaveLength(2);
   });
 
-  test('SORA_ADDRESS=off では AddressDisabledError で、何も構築しない', async () => {
+  test('SORA_ADDRESS_MODE=off では AddressDisabledError で、何も構築しない', async () => {
     const { data, inner } = createTestAddressData(dir, { mode: 'off' });
     expect(data.enabled).toBe(false);
     await expect(data.ensure(chiyoda)).rejects.toBeInstanceOf(AddressDisabledError);
