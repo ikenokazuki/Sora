@@ -53,7 +53,7 @@ const BRAND_ORDERS = [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2,
 /**
  * Chrome が sec-ch-ua と navigator.userAgentData.brands に並べるブランド（GREASE の名前・版・並び順）。
  * メジャーバージョンだけで決まる（Chromium の components/embedder_support/user_agent_utils.cc の規則）。
- * wreq-js の chrome_136〜149 が送る sec-ch-ua と一致し、静的取得とブラウザで同じ並びになる
+ * wreq-js の chrome_136〜154 が送る sec-ch-ua と一致し、静的取得とブラウザで同じ並びになる
  * （stealth_native.test.ts で全プロファイルを突き合わせる）。違うと、同じ Cookie の「同じ Chrome」が別物に見える。
  * greaseVersionSuffix は fullVersionList のとき '.0.0.0'（GREASE の版は 3 桁目以降が 0）。
  */

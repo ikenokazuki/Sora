@@ -5,7 +5,7 @@
  * 終了コード: 差が無ければ 0、あれば 1。
  *
  * Chromium が wreq のプロファイルより新しいと、差が出る。差が出たら、(1) ブラウザの起動引数で止められる機能なら止める
- * （browser_engine.ts の WREQ_ALIGN_DISABLED_FEATURES）、(2) 止められないなら、wreq-js の emulation の上書き
+ * （browser_engine.ts の WREQ_ALIGN_FEATURES）、(2) 止められないなら、wreq-js の emulation の上書き
  * （tlsOptions）で、実際の Chromium の値に寄せる。差の中身は、この道具の出力にそのまま出る。
  */
 import { createSession } from 'wreq-js';

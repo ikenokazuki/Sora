@@ -9,6 +9,11 @@ on:
       - bun.lock
       - vendor/**
       - scripts/image-smoke.ts
+      - scripts/tls-fingerprint/**
+      - scripts/wreq-native/**
+      - src/browser_engine.ts
+      - src/browser_stealth.ts
+      - src/http_fetcher.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}
@@ -24,4 +29,15 @@ jobs:
       - name: Build the image
         run: docker build -f Containerfile -t sora-containerfile-check .
       - name: Smoke test inside the image
-        run: docker run --rm -v "$PWD/scripts/image-smoke.ts:/app/image-smoke.ts:ro" --entrypoint /usr/local/bin/bun sora-containerfile-check /app/image-smoke.ts
+        run: |
+          docker run --rm \
+            -v "$PWD/scripts/image-smoke.ts:/app/image-smoke.ts:ro" \
+            --entrypoint /usr/local/bin/bun sora-containerfile-check /app/image-smoke.ts
+      # イメージの Chromium と、自前の native が、同じ Chrome の姿（ClientHello）を送ることを確かめる（docs/browser-alignment.md）。
+      # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため
+      - name: Browser and static fetch send the same ClientHello, inside the image
+        run: |
+          docker run --rm \
+            -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+            -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+            --entrypoint /usr/local/bin/bun sora-containerfile-check /app/scripts/tls-fingerprint/run.ts

@@ -195,18 +195,40 @@ async function stealthUserAgent(): Promise<string | undefined> {
   }
 }
 
+/** 両経路が名乗る Chrome の版（静的取得のプロファイルの版）。取れなければ 0（wreqAlignDisabledFeatures はすべて止める側に倒れる）。 */
+async function alignedProfileMajor(): Promise<number> {
+  try {
+    return Number((await import('./browser_stealth.js')).getAlignedChromeMajorVersion()) || 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Chromium が TLS の ClientHello や Accept に足す、wreq-js の chrome_149（静的取得側）には無い項目を止める機能名。
+ * Chromium が TLS の ClientHello や Accept に足す、wreq-js のプロファイル（静的取得側）には無い項目を止める機能名。
  * 静的取得とブラウザは Cookie を共有する「同じ Chrome」なので、ここが食い違うと、Chrome を名乗る UA のまま別物の指紋を送る形になる。
  * 実測では、Debian・Google 公式の Chromium 148 以降が ClientHello に足す拡張 51764 だけで、Cloudflare 系（Indeed）に
- * 403 で弾かれた（Chrome を名乗る UA のとき。止めると通る）。名前の無い版（CI の Chrome for Testing 141 など）では無視される。
+ * 403 で弾かれた（プロファイルが 51764 を持たない版のとき。止めると通る）。名前の無い版（CI の Chrome for Testing 141 など）では無視される。
+ * emulatedFrom は、wreq のプロファイルがその項目を送り始める Chrome の版。プロファイルがそれ以上なら、止めずに、ブラウザが自然に送るままにする
+ * （止めると、今度はプロファイルにだけ項目がある差になる）。null は、どのプロファイルにも、まだ無い。
+ * 上流の wreq-util（main）のプロファイルは、Chrome 152 から、拡張 51764 と署名アルゴリズムの GREASE を送る（2026-11-12 に、Debian の
+ * Chromium 156 を起動引数なしで動かした ClientHello と、全項目が同じことを確かめた。scripts/tls-fingerprint）。
  * - TLSTrustAnchorIDs / NonMtcTrustAnchorIDs: ClientHello の拡張 51764（Trust Anchor IDs）。どちらを止めても消える
  * - TlsGreaseSigalgs: 署名アルゴリズムへ足す GREASE（Chromium 150 以降）
- * - JXLImageFormat: Accept の image/jxl（Chromium 156 以降）
+ * - JXLImageFormat: Accept の image/jxl（Chromium 156 以降）。wreq-util の 154 までのプロファイルの Accept には無い
  * 署名アルゴリズムの ML-DSA（Chromium 150 以降）と、Google 公式ビルドだけの拡張 4832 は、止める機能名が無い（前者）か、
- * Debian の Chromium には無い（後者）ので、ここには含めない。
+ * Debian の Chromium には無い（後者）ので、ここには含めない。ML-DSA は、wreq のプロファイルが 150 以上なら、同じになる。
  */
-export const WREQ_ALIGN_DISABLED_FEATURES = ['TLSTrustAnchorIDs', 'NonMtcTrustAnchorIDs', 'TlsGreaseSigalgs', 'JXLImageFormat'];
+const WREQ_ALIGN_FEATURES: ReadonlyArray<{ features: readonly string[]; emulatedFrom: number | null }> = [
+  { features: ['TLSTrustAnchorIDs', 'NonMtcTrustAnchorIDs'], emulatedFrom: 152 },
+  { features: ['TlsGreaseSigalgs'], emulatedFrom: 152 },
+  { features: ['JXLImageFormat'], emulatedFrom: null },
+];
+
+/** 静的取得が使うプロファイル（Chrome の版）に合わせるために、ブラウザの起動で止める機能名。 */
+export function wreqAlignDisabledFeatures(profileMajor: number): string[] {
+  return WREQ_ALIGN_FEATURES.filter((f) => f.emulatedFrom === null || profileMajor < f.emulatedFrom).flatMap((f) => [...f.features]);
+}
 
 /**
  * SORA_BROWSER_LOW_MEMORY（既定は無効）。true・1・on・yes（大文字小文字・前後の空白は問わない）で、Chromium を
@@ -222,6 +244,7 @@ export function isBrowserLowMemory(env: NodeJS.ProcessEnv = process.env): boolea
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
   const userAgent = await stealthUserAgent();
+  const profileMajor = await alignedProfileMajor();
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -240,8 +263,8 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     '--accept-lang=ja-JP,ja,en-US,en',
     // ヘッドレスは hover / pointer が none になる。デスクトップのマウスに揃える。
     '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
-    // TLS の ClientHello と Accept を、静的取得（wreq-js の chrome_149）に揃える。理由は WREQ_ALIGN_DISABLED_FEATURES。
-    `--disable-features=${WREQ_ALIGN_DISABLED_FEATURES.join(',')}`,
+    // TLS の ClientHello と Accept を、静的取得（wreq-js の、名乗る版のプロファイル）に揃える。理由は WREQ_ALIGN_FEATURES。
+    `--disable-features=${wreqAlignDisabledFeatures(profileMajor).join(',')}`,
   ];
   if (userAgent) args.push(`--user-agent=${userAgent}`);
   if (proxy) {
