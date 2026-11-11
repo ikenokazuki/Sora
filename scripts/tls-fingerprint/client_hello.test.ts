@@ -106,6 +106,15 @@ describe('diffHellos', () => {
     expect(diffHellos(browser, wreq)).toEqual([{ field: 'signatureAlgorithms', browser: [2308, 2309, 2310, 1027], wreq: [1027] }]);
   });
 
+  test('署名アルゴリズムの GREASE（Chrome 152 以降）は、値が接続ごとに変わっても差にしない', () => {
+    const a = parseClientHello(record({ ciphers: [0x1301], extensions: [sigalgs([0x9a9a, 0x0904, 1027])] }))!;
+    const b = parseClientHello(record({ ciphers: [0x1301], extensions: [sigalgs([0xfafa, 0x0904, 1027])] }))!;
+    expect(a.signatureAlgorithms).toEqual(['GREASE', 0x0904, 1027]);
+    expect(diffHellos(a, b)).toEqual([]);
+    const without = parseClientHello(record({ ciphers: [0x1301], extensions: [sigalgs([0x0904, 1027])] }))!;
+    expect(diffHellos(a, without).map((d) => d.field)).toEqual(['signatureAlgorithms']);
+  });
+
   test('暗号スイートや拡張の種類の違いも見つける', () => {
     const a = parseClientHello(record({ ciphers: [0x1301, 0x1302], extensions: [[0xca34, []]] }))!;
     const b = parseClientHello(record({ ciphers: [0x1301], extensions: [] }))!;

@@ -15,7 +15,8 @@ export interface ClientHello {
   extensionTypes: Array<number | 'GREASE'>;
   serverName?: string;
   supportedGroups: Array<number | 'GREASE'>;
-  signatureAlgorithms: number[];
+  /** 署名アルゴリズム（送った順。Chrome 152 以降は GREASE の値を 1 つ混ぜる（TlsGreaseSigalgs）ので、GREASE は 'GREASE'） */
+  signatureAlgorithms: Array<number | 'GREASE'>;
   alpn: string[];
   supportedVersions: Array<number | 'GREASE'>;
   keyShareGroups: Array<number | 'GREASE'>;
@@ -125,7 +126,7 @@ export function parseClientHello(record: Uint8Array): ClientHello | null {
       }
       case EXT.supportedGroups: hello.supportedGroups = u16List(d.bytes(d.u16())).map(g); break;
       case EXT.ecPointFormats: hello.ecPointFormats = Array.from(d.bytes(d.u8())); break;
-      case EXT.signatureAlgorithms: hello.signatureAlgorithms = u16List(d.bytes(d.u16())); break;
+      case EXT.signatureAlgorithms: hello.signatureAlgorithms = u16List(d.bytes(d.u16())).map(g); break;
       case EXT.alpn: hello.alpn = protocolList(d.bytes(d.u16())); break;
       case EXT.padding: hello.padding = true; break;
       case EXT.compressCertificate: hello.certificateCompression = u16List(d.bytes(d.u8())); break;
