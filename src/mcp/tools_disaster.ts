@@ -129,7 +129,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
   type PlaceWhere = { address?: string; lat?: number; lon?: number; noCache?: boolean };
   type PlaceSection = { label: string; build: (where: PlaceWhere) => Promise<{ location: Record<string, unknown>; section: Record<string, unknown> }> };
   const PLACE_SECTIONS: Record<string, PlaceSection> = {
-    // 旧 get_elevation の応答を、欄の名前と値のまま、地点と標高に分ける（キャッシュの印は標高の節に）
+    // REST の /geo/elevation の応答を、欄の名前と値のまま、地点と標高に分ける（キャッシュの印は標高の節に）
     elevation: { label: 'Elevation', build: async (where) => {
       const { elevationMeters, dataAccuracy, formatted, source, cached, cachedAt, ageSeconds, ...location } =
         await fetchElevationAndCoordinates(where) as ElevationResult & { cached?: boolean; cachedAt?: string; ageSeconds?: number };
@@ -162,7 +162,7 @@ export function registerDisasterTools(context: ToolRegistrationContext): void {
       const requested = include?.length ? include : PLACE_INCLUDE_DEFAULT;
       const unsupported = requested.filter((kind) => !PLACE_KINDS.includes(kind));
       if (unsupported.length > 0) return usageError(`include に使えない値があります: ${unsupported.map((v) => JSON.stringify(v)).join(', ')}。${PLACE_USAGE}`);
-      // サービスには旧 get_elevation の引数だけを渡す
+      // サービスには REST の /geo/elevation と同じ引数だけを渡す
       const where: PlaceWhere = hasAddress ? { address } : { lat, lon };
       if (noCache !== undefined) where.noCache = noCache;
       const kinds = PLACE_KINDS.filter((kind) => requested.includes(kind));

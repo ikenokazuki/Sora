@@ -31,7 +31,7 @@ description: >
    - 初回で最大限取得する。追加検索を前提に初回を弱くしない。
    - 国地域の横断情報は `research_country_context`
    - SNSを含める場合は `includeSocial: true` とし、対象・検索語・期間は `social` で指定する。Weiboは新着順、MetaはWeb索引経由の発見＋本文取得。Xは `search_realtime` を使う。（deferred。先に `search_tools` へ「国地域」）。
-   - 代表証拠で足りなければ `get_country_context` → `get_country_context_evidence` → `get_country_context_updates` で原文・詳細を追う。
+   - 代表証拠で足りなければ `get_country_context`（`part` を省くとレポート、`"evidence"` で根拠、`"updates"` で差分）で原文・詳細を追う。
    - 一般の事実確認は `search_web`（`formats: ["markdown"]` で同コール取得も可）または `search_deep`。
    - `search_deep` の既定（`responseMode: "evidence"`）は検索語に合うハイライトだけを返し、本文の Markdown を省く（ハイライトが本文とほぼ同じ長さの結果は本文を返す。ただし本文が `maxChars` で切れた結果は、ハイライトを切る前の全文から選ぶので、入れ替えずにハイライトを返す）。網羅的な列挙・比較・全文の要約・本文の引用で裏付けたいときは `responseMode: "full"` を指定する。
    - 既知URLの精読は `scrape`、複数は `scrape` の `urls`（最大20件）。

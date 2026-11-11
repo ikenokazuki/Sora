@@ -6,7 +6,7 @@ Anthropic の記事「[Code execution with MCP](https://www.anthropic.com/engine
 
 | 記事の考え | Sora の対応 |
 |---|---|
-| ツール定義を全部読み込まず、必要なときに探す（段階的開示） | 既定で 14 ツールだけを公開し、残りは `search_tools` で探す。`detail`（`names` / `summary` / `schema`）と `activate:false` で、有効化せずに名前や入力スキーマだけを調べられる。REST では `GET /tools`（一覧）と `GET /tools/<name>`（1 つの定義）が同じ役目をする。 |
+| ツール定義を全部読み込まず、必要なときに探す（段階的開示） | 既定で 13 ツールだけを公開し、残りは `search_tools` で探す。`detail`（`names` / `summary` / `schema`）と `activate:false` で、有効化せずに名前や入力スキーマだけを調べられる。REST では `GET /tools`（一覧）と `GET /tools/<name>`（1 つの定義）が同じ役目をする。 |
 | ツールをコードの API として扱い、結果をコードで絞る | REST を直接呼ぶ。言語は問わない（curl・Python・Node など、HTTP が話せればよい）。結果の絞り込み・集計・連鎖をコード側で行い、モデルには必要な分だけ返す。 |
 | コードの実行環境はクライアント側に置く | Sora はコードを実行しない。サンドボックスは利用者側で用意する。 |
 
@@ -87,15 +87,15 @@ v2.40.0 から配っていた型付き TypeScript クライアント（`client/`
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 
-2026-11-11 に測り直した（案内を REST に書き換えた後。前の値は 2026-11-09 の既定 22,269・全ツール（53 ツール）63,529・`instructions` 8,948）。
+2026-11-12 に測り直した（v5.0.0 で MCP のツールを 33 個にまとめた後。前の値は 2026-11-11 の既定（14 ツール）22,273・全ツール（53 ツール）63,607・`instructions` 8,989）。
 
 | | 文字数 |
 |---|---|
-| 既定（14 ツール） | 22,273 |
-| 全ツール（53 ツール） | 63,607 |
-| `instructions` | 8,989 |
+| 既定（13 ツール） | 23,060 |
+| 全ツール（33 ツール） | 57,071 |
+| `instructions` | 8,729 |
 
-`search_tools` の応答（クエリ「住所」）: 既定 649、`names` 390、`summary` 594、`schema` 2,624 文字（末尾の案内の一文が 30 字長くなった。前の値は既定 619、`names` 360、`summary` 564、`schema` 2,574）。
+`search_tools` の応答（クエリ「住所」）: 既定 660、`names` 377、`summary` 605、`schema` 3,628 文字（前の値は既定 649、`names` 390、`summary` 594、`schema` 2,624。当たるのは `get_place_info`・`search_poi`・`lookup_address`）。
 
 以下の `search_deep` の表は、2026-10-26 に実際の通信で測った値（測り直していない）。
 

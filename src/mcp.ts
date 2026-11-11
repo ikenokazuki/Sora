@@ -127,7 +127,7 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
-/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（53 ツールの定義を持つため） */
+/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（ツールの定義を持つため。53 ツールだった v4 の見積もり） */
 export const DEFAULT_MAX_MCP_SESSIONS = 100;
 /** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
 export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
