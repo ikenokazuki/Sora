@@ -65,12 +65,12 @@ describe('onlyForMode', () => {
 
   test('a given key outside its modes names the given keys, the allowed modes (joined by 「か」), the current mode and the usage', () => {
     const message = onlyForMode('single', ['batch', 'stream'], { concurrency: 3, delay: undefined }, ['concurrency', 'delay'], USAGE);
-    expect(message).toBe(`concurrency は batch か stream だけ指定できます（いま: single）。${USAGE}`);
+    expect(message).toBe(`concurrency は batch か streamだけ指定できます（いま: single）。${USAGE}`);
   });
 
   test('the modes are phrases about the input; the message never says 「モード」 (the tool may have a real `mode` argument)', () => {
     const message = onlyForMode('url を指定したとき', ['urls を指定したとき'], { concurrency: 5, webhookUrl: 'https://example.com/hook' }, ['concurrency', 'webhookUrl'], USAGE);
-    expect(message).toBe(`concurrency, webhookUrl は urls を指定したとき だけ指定できます（いま: url を指定したとき）。${USAGE}`);
+    expect(message).toBe(`concurrency, webhookUrl は urls を指定したときだけ指定できます（いま: url を指定したとき）。${USAGE}`);
     expect(message).not.toContain('モード');
   });
 
@@ -118,9 +118,15 @@ describe('onlyForMode', () => {
       expect(onlyForMode('single', ['batch'], { concurrency: 3 }, ['concurrency'], USAGE, undefined)).toContain('concurrency');
     });
 
-    test('arrays and objects are compared by ===, so they never count as the default', () => {
-      expect(onlyForMode('single', ['batch'], { formats: ['markdown'] }, ['formats'], USAGE, { formats: ['markdown'] })).toContain('formats');
-      expect(onlyForMode('single', ['batch'], { headers: {} }, ['headers'], USAGE, { headers: {} })).toContain('headers');
+    test('arrays are compared by value (JSON.stringify): the same array passes, a different one is refused', () => {
+      const formats = { formats: ['markdown'] };
+      expect(onlyForMode('single', ['batch'], { formats: ['markdown'] }, ['formats'], USAGE, formats)).toBeUndefined();
+      expect(onlyForMode('single', ['batch'], { formats: ['html'] }, ['formats'], USAGE, formats)).toContain('formats');
+      expect(onlyForMode('single', ['batch'], { formats: ['markdown', 'links'] }, ['formats'], USAGE, formats)).toContain('formats');
+    });
+
+    test('an array is compared only when defaults has its key', () => {
+      expect(onlyForMode('single', ['batch'], { formats: ['markdown'] }, ['formats'], USAGE, { concurrency: 3 })).toContain('formats');
     });
 
     test('in an allowed mode, defaults change nothing', () => {

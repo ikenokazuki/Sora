@@ -154,10 +154,10 @@ describe('scrape: url は 1 ページ、urls は一括（旧 scrape_batch）', (
     ['url も urls も無い', {}, ['url・urls のどれか 1 つを指定してください']],
     ['url と urls の両方', { url: 'https://example.com/a', urls: ['https://example.com/b'] }, ['url, urls']],
     // 既定値と違う値は断る（既定値と同じ値は、下の echoed で通す）
-    ['url に concurrency: 5（既定値の 3 と違う）', { url: 'https://example.com/a', concurrency: 5 }, ['concurrency は urls を指定したとき だけ指定できます（いま: url を指定したとき）']],
-    ['url に webhookUrl', { url: 'https://example.com/a', webhookUrl: 'https://example.com/hook' }, ['webhookUrl は urls を指定したとき だけ指定できます（いま: url を指定したとき）']],
-    ['urls に fullPage: false（既定値の true と違う）', { urls: ['https://example.com/a'], fullPage: false }, ['fullPage は url を指定したとき だけ指定できます（いま: urls を指定したとき）']],
-    ['urls に keepDataImages: true（既定値の false と違う）', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages は url を指定したとき だけ指定できます（いま: urls を指定したとき）']],
+    ['url に concurrency: 5（既定値の 3 と違う）', { url: 'https://example.com/a', concurrency: 5 }, ['concurrency は urls を指定したときだけ指定できます（いま: url を指定したとき）']],
+    ['url に webhookUrl', { url: 'https://example.com/a', webhookUrl: 'https://example.com/hook' }, ['webhookUrl は urls を指定したときだけ指定できます（いま: url を指定したとき）']],
+    ['urls に fullPage: false（既定値の true と違う）', { urls: ['https://example.com/a'], fullPage: false }, ['fullPage は url を指定したときだけ指定できます（いま: urls を指定したとき）']],
+    ['urls に keepDataImages: true（既定値の false と違う）', { urls: ['https://example.com/a'], keepDataImages: true }, ['keepDataImages は url を指定したときだけ指定できます（いま: urls を指定したとき）']],
     ['urls に 50000 を超える maxChars', { urls: ['https://example.com/a'], maxChars: 50_001 }, ['maxChars', '50000']],
   ];
   for (const [label, args, mentions] of wrong) {
@@ -254,12 +254,12 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
   const LIST = 'listOnly: true のとき';
   const CRAWL = 'listOnly が無い（false を含む）とき';
   const wrong: Array<[string, Record<string, unknown>, string[]]> = [
-    ['listOnly: true に maxPages: 3（既定値の 10 と違う）', { listOnly: true, maxPages: 3 }, [`maxPages は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
-    ['listOnly: true に query・formats', { listOnly: true, query: 'q', formats: ['markdown'] }, ['formats', 'query', `は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
-    ['listOnly: true に includePatterns', { listOnly: true, includePatterns: ['/docs/**'] }, [`includePatterns は ${CRAWL} だけ指定できます（いま: ${LIST}）`]],
-    ['listOnly を省いて limit', { limit: 5 }, [`limit は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
-    ['listOnly: false に since・until', { listOnly: false, since: '2026-05-01', until: '2026-10-01' }, ['since', 'until', `は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
-    ['listOnly: false に limit: 50（既定値の 200 と違う）', { listOnly: false, limit: 50 }, [`limit は ${LIST} だけ指定できます（いま: ${CRAWL}）`]],
+    ['listOnly: true に maxPages: 3（既定値の 10 と違う）', { listOnly: true, maxPages: 3 }, [`maxPages は ${CRAWL}だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly: true に query・formats: ["html"]（既定値の ["markdown"] と違う）', { listOnly: true, query: 'q', formats: ['html'] }, ['formats', 'query', `は ${CRAWL}だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly: true に includePatterns', { listOnly: true, includePatterns: ['/docs/**'] }, [`includePatterns は ${CRAWL}だけ指定できます（いま: ${LIST}）`]],
+    ['listOnly を省いて limit', { limit: 5 }, [`limit は ${LIST}だけ指定できます（いま: ${CRAWL}）`]],
+    ['listOnly: false に since・until', { listOnly: false, since: '2026-05-01', until: '2026-10-01' }, ['since', 'until', `は ${LIST}だけ指定できます（いま: ${CRAWL}）`]],
+    ['listOnly: false に limit: 50（既定値の 200 と違う）', { listOnly: false, limit: 50 }, [`limit は ${LIST}だけ指定できます（いま: ${CRAWL}）`]],
   ];
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 取得せず、正しい使い方のエラー`, async () => {
@@ -281,6 +281,7 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
     ['listOnly: false + limit: 200', { listOnly: false, limit: 200 }, 'crawl', 'limit'],
     ['limit: 200（listOnly を省く）', { limit: 200 }, 'crawl', 'limit'],
     ['listOnly: true + maxPages: 10', { listOnly: true, maxPages: 10 }, 'map', 'maxPages'],
+    ['listOnly: true + formats: ["markdown"]（配列の既定値）', { listOnly: true, formats: ['markdown'] }, 'map', 'formats'],
   ];
   for (const [label, args, calls, ignored] of echoed) {
     test(`${label}（既定値と同じ）は通り、その引数は使われない`, async () => {
@@ -298,8 +299,7 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
     await withClient(async (client) => {
       const props = ((await client.listTools()).tools.find((t) => t.name === 'crawl_site')!.inputSchema as any).properties;
       const url = 'https://example.com/';
-      // 配列の既定値（formats）は、=== で比べないので対象外
-      for (const [base, keys] of [[{ listOnly: true }, ['maxPages', 'maxChars', 'responseMode', 'annotateTemporal', 'includeMedia']], [{}, ['limit']]] as const) {
+      for (const [base, keys] of [[{ listOnly: true }, ['maxPages', 'maxChars', 'formats', 'responseMode', 'annotateTemporal', 'includeMedia']], [{}, ['limit']]] as const) {
         for (const key of keys) {
           expect(props[key].default, `${key} の default`).not.toBeUndefined();
           const res: any = await client.callTool({ name: 'crawl_site', arguments: { url, ...base, [key]: props[key].default } });

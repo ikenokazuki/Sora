@@ -210,9 +210,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     },
     async (args) => {
       const mode = args.listOnly === true ? LIST_ONLY_TRUE : LIST_ONLY_OFF;
-      // 既定値は、上のスキーマの .meta({ default }) と同じ値（配列の formats は対象外）
+      // 既定値は、上のスキーマの .meta({ default }) と同じ値
       const invalid = onlyForMode(mode, [LIST_ONLY_TRUE], args, ['limit', 'since', 'until'], CRAWL_USAGE, { limit: 200 })
-        ?? onlyForMode(mode, [LIST_ONLY_OFF], args, ['maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'responseMode', 'annotateTemporal', 'highlightMaxCount', 'includeMedia'], CRAWL_USAGE, { maxPages: 10, maxChars: 15000, responseMode: 'full', annotateTemporal: false, includeMedia: true });
+        ?? onlyForMode(mode, [LIST_ONLY_OFF], args, ['maxPages', 'maxChars', 'includePatterns', 'excludePatterns', 'formats', 'query', 'responseMode', 'annotateTemporal', 'highlightMaxCount', 'includeMedia'], CRAWL_USAGE, { maxPages: 10, maxChars: 15000, formats: ['markdown'], responseMode: 'full', annotateTemporal: false, includeMedia: true });
       if (invalid) return usageError(invalid);
       const { url, listOnly, limit, since, until, ...crawl } = args;
       if (listOnly) {

@@ -33,15 +33,17 @@ export function onlyWith(args: Record<string, unknown>, key: string, allowedWhen
  * usage を添えたエラーの文。モードに合わない引数を、黙って無視せずに知らせる。
  * mode と allowedModes は、そのまま LLM に見せる。入力の形で言う（'urls を指定したとき'・'listOnly: true のとき' など）。
  * 引数の mode（auto・fast・browser など）と紛れないよう、文に「モード」の語は使わない。
- * defaults は、引数の既定値（`.meta({ default })` と同じ値）。既定値と同じ値（===）で指定された引数は、指定されたと数えない
- * （LLM が JSON Schema の default をそのまま入れても断らない）。配列・オブジェクトは === で一致しないので、いつも指定されたと数える。
+ * defaults は、引数の既定値（`.meta({ default })` と同じ値）。既定値と同じ値で指定された引数は、指定されたと数えない
+ * （LLM が JSON Schema の default をそのまま入れても断らない）。比べるのは defaults にそのキーがあるときだけで、
+ * 配列（formats: ["markdown"] など）も値で比べる（JSON.stringify）。
  * 引数に zod の `.default()` は付けない（省いても値が入り、いつも指定されたことになる）。`.meta({ default })` だけを付ける。
  */
 export function onlyForMode(mode: string, allowedModes: string[], args: Record<string, unknown>, keys: string[], usage: string, defaults?: Record<string, unknown>): string | undefined {
   if (allowedModes.includes(mode)) return undefined;
-  const set = keys.filter((k) => given(args[k]) && args[k] !== defaults?.[k]);
+  const isDefault = (k: string) => defaults !== undefined && k in defaults && JSON.stringify(args[k]) === JSON.stringify(defaults[k]);
+  const set = keys.filter((k) => given(args[k]) && !isDefault(k));
   if (set.length === 0) return undefined;
-  return `${set.join(', ')} は ${allowedModes.join(' か ')} だけ指定できます（いま: ${mode}）。${usage}`;
+  return `${set.join(', ')} は ${allowedModes.join(' か ')}だけ指定できます（いま: ${mode}）。${usage}`;
 }
 
 /** MCP のエラー応答（入力の誤り）。 */
