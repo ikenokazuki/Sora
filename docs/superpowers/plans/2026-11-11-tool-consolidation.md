@@ -15,6 +15,8 @@
 - `include` の既定は、いまの応答のまま。応答を膨らませない。
 - 旧名の別名は残さない。旧名は、新しいツールの `registerTool` の `keywords` に入れる（`search_tools` で旧名を検索しても新しいツールが見つかるように）。
 - コア（`defaultEnabled: true`）14 ツールの `description` の合計は 3500 字未満（`src/llm_contract_sync.test.ts`。この計画の開始時点で 3499 字）。初期の tools/list の合計は 30000 字未満（開始時点で 22,957 字）。コアのツールの説明を長くするときは、同じ作業の中で、意味を変えずに他のコアの説明を縮める。説明の決まりのテスト（先頭が「【」、「必須・公式・直結・速報」のどれかを含む）は保つ。新しいツールは遅延読み込み（コアにしない）。ただし、旧ツールがコアだった統合先は、コアのまま。
+- `src/mcp/instructions.ts` の本文は 9000 字以内（`src/llm_contract_sync.test.ts`。Task 2 の終わりで 8972 字で、余白は 28 字）。名前を書き換えるときに、字数を増やさない（増えるなら、同じ作業の中で他を縮める）。
+- **`onlyForMode` に、引数の既定値の一覧（`defaults`）を渡す**（Task 2b で足す）。モード専用の引数を、**既定値と同じ値**で指定した呼び出し（LLM が、JSON Schema の `default` をそのまま入れる場合）は、「指定された」と数えず、断らない。既定値と違う値だけを、モード違いとして断る。
 - 統合したツールは、元のツールが属していたモジュールに置く（`registerTool` の第 5 引数）。モジュールが無効なら、そのツールは出ない。
 - 遅延読み込みのツールは `default.<名前>` の別名（`registerTool` が自動で作る）を持つ。新しい名前でも同じ。
 - **型つきクライアント（`client/`）の関数名は変えない。** 統合したツールの `REST_MAP` の各ルートに、そのルートに当たる**旧いツール**の名前（camelCase。例: `scrapeBatch`・`mapSite`・`fetchXPost`・`searchSong`・`watchRegister`・`searchImage`）を `fn` として持たせる（`RestRoute.fn`。Task 1b で追加済み）。新しいツール名が旧いツールの名前と同じで、1 つ目のルートがその旧ツールのものなら、`fn` は省略できる（1 つ目のルートは、camelCase のツール名になる）。1 つ目のルートが別の旧ツールのもの（例: `watch` の 1 つ目は `watchRegister`、`search_media` の 1 つ目は `searchImage`）なら、`fn` を付ける。
