@@ -356,12 +356,6 @@ export function mergeYahooWebQueryBatches(
     // 診断失敗時は無視
   }
 
-  if (!isRrfEnabled()) {
-    for (const item of merged) {
-      delete (item as any).__insertionOrder;
-    }
-    return merged;
-  }
   merged.sort((a: any, b: any) => {
     if (b.rrfScore !== a.rrfScore) return b.rrfScore - a.rrfScore;
     const aMin = Math.min(...a.providerRanks.map((p: any) => p.rank));
@@ -373,14 +367,6 @@ export function mergeYahooWebQueryBatches(
     delete (item as any).__insertionOrder;
   }
   return merged;
-}
-
-/** Rollback flags (RFC rollback strategy). Default true = Retrieval v2 behavior. */
-export function isWebNativeRankingEnabled(): boolean {
-  return process.env.SORA_WEB_NATIVE_RANKING !== 'false';
-}
-export function isRrfEnabled(): boolean {
-  return process.env.SORA_RRF_ENABLED !== 'false';
 }
 
 /** Retrieval confidence 判定 (追加検索が必要な弱い取得か) */
@@ -467,9 +453,8 @@ export interface YahooWebSearchDeps {
 /** Stable coalescing key for one Yahoo Web search (flags included). */
 export function yahooWebSearchFlightKey(options: YahooWebSearchOptions): string {
   const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
-  const native = process.env.SORA_WEB_NATIVE_RANKING !== 'false' ? 'native' : 'legacy';
   const v = options.verbose === true ? 'verbose' : 'compact';
-  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
+  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + v;
 }
 
 /**
@@ -754,16 +739,6 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
           }
         } catch {
           // 診断失敗時は無視
-        }
-        // Rollback: legacy mode restores BM25 global reorder (providerRank kept for shadow compare).
-        if (!isWebNativeRankingEnabled()) {
-          json.items = rerankSearchResults(filtered, options.query);
-          json.count = json.items.length;
-          json.source = 'web';
-          json.effectiveQuery = q;
-          json.isFallback = i > 0;
-          json.nativeRanking = false;
-          return json;
         }
         // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
         // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
