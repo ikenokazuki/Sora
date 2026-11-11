@@ -322,7 +322,7 @@ export type ScrapeOutput = {
   ageSeconds?: number;
 };
 
-/** 【単一URL・PDF本文抽出】既知 URL の Web ページまたは PDF の本文をクリーンな Markdown で取得します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? } */
+/** 【単一URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? } */
 export function scrape(input: ScrapeInput): Promise<ScrapeOutput> {
   return callSora<ScrapeOutput>({ method: 'POST', path: '/scrape' }, input);
 }

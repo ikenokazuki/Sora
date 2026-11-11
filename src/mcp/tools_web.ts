@@ -20,7 +20,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'scrape',
     'web',
-    '【単一URL・PDF本文抽出】既知 URL の Web ページまたは PDF の本文をクリーンな Markdown で取得します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
+    '【単一URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }',
     {
       url: z.string().url().describe('スクレイピング対象の完全な URL (http/https) (例: "https://example.com/article")'),
       maxChars: z
@@ -132,7 +132,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_deep',
     'web',
-    '【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（既定 evidence / full）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
+    '【万能深層Web検索・包括調査】Web検索＋上位サイト本文の自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで根拠のあるソースを上位にする（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に。返却量は responseMode（既定 evidence / full）。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }',
     INTEGRATED_SEARCH_INPUT_SHAPE,
     async ({ query, limit, scrapeContent, adaptiveScrape, scrapeBudget, includeRealtime, realtimeSort, realtimeFocus, realtimeAnchor, realtimeLimit, officialAccountId, maxChars, includeMedia, noCache, includeDomains, excludeDomains, updated, formats, onlyMainContent, verbose, annotateTemporal, highlightMaxCount, responseMode, maxTotalChars, scrapeDeadlineMs, videos }) => {
       try {
@@ -265,7 +265,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_web',
     'web',
-    '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索します（URL/スニペット探索）。formats を指定すると上位結果を追加スクレイプし、本文や指定形式を同じ呼び出しで返します（同一呼出での本文抽出）。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }',
+    '【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索（URL/スニペット探索）。formats 指定で上位結果の本文や指定形式も同じ呼び出しで返す。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }',
     SEARCH_WEB_INPUT_SHAPE,
     async (options) => {
       try {
@@ -284,7 +284,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_social_posts',
     'web',
-    '【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。',
+    '【公開SNS投稿検索】Weiboのキーワード新着検索と、Threads/Instagram/Facebookの公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外（search_realtime を使う）。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable なら failures を確認、empty は一致なし。',
     {
       platform: SocialPlatformSchema.describe('対象SNS'),
       query: z.string().min(1).max(500).describe('検索語（現地語推奨）'),
@@ -318,7 +318,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'fetch_social_post',
     'web',
-    '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応（Metaのコメントは対象外）。Xの投稿は対象外のため fetch_x_post を使ってください。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }',
+    '【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }',
     {
       url: z.string().min(1).describe('公開投稿URL'),
       commentLimit: z.number().int().min(0).max(20).optional().default(10).describe('Weiboコメント取得件数 (デフォルト: 10, Metaでは無視)'),

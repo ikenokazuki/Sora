@@ -12,10 +12,10 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
   // =========================================================================
   mcpServer.tool(
     'search_tools',
-    '【追加ツール検索・動的有効化】現在 tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
-      '一致したツールを現在のセッションで有効化します。すでに tools/list に表示されているツールは直接実行してください。' +
-      '荷物追跡（track_package）やフライト情報（get_flight_status）、音楽詳細、国会会議録など、初期状態で非表示の追加機能を使う際に使用します。' +
-      '見つからない場合は該当モジュールが無効か利用不可です。返却: 有効化したツールの一覧（テキスト）',
+    '【追加ツール検索・動的有効化】tools/list に表示されていないSoraの追加ツールをキーワードで検索し、' +
+      '一致したツールをこのセッションで有効化する。表示済みのツールは直接実行してください。' +
+      '例: 荷物追跡（track_package）、フライト情報（get_flight_status）、音楽詳細、国会会議録。' +
+      '見つからなければ該当モジュールが無効か利用不可。返却: 有効化したツールの一覧（テキスト）',
     {
       query: z.string().describe('検索キーワードまたはカテゴリ名（例: "荷物追跡", "ヤマト", "佐川", "郵便", "UPS", "音楽", "国会", "trade", "life"）'),
       detail: z.enum(['names', 'summary', 'schema']).optional().describe('names=名前とカテゴリのみ / summary=説明の要約（既定） / schema=入力スキーマ付き（最大8件）。activate:false を付けないと、見つけたツールを有効にもする'),

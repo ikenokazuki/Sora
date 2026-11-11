@@ -68,7 +68,7 @@ export type SearchDisasterWarningsOutput = {
   ageSeconds?: number;
 };
 
-/** 【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、一般Web検索の古い情報に頼らず必ず本ツールで市区町村単位でリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] } */
+/** 【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、古いWeb情報に頼らず必ず本ツールで市区町村単位にリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] } */
 export function searchDisasterWarnings(input: SearchDisasterWarningsInput): Promise<SearchDisasterWarningsOutput> {
   return callSora<SearchDisasterWarningsOutput>({ method: 'POST', path: '/disaster/warnings' }, input);
 }

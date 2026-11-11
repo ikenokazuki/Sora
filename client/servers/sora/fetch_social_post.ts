@@ -56,7 +56,7 @@ export type FetchSocialPostOutput = {
   warnings: string[];
 };
 
-/** 【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応（Metaのコメントは対象外）。Xの投稿は対象外のため fetch_x_post を使ってください。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures } */
+/** 【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures } */
 export function fetchSocialPost(input: FetchSocialPostInput): Promise<FetchSocialPostOutput> {
   return callSora<FetchSocialPostOutput>({ method: 'POST', path: '/social/fetch' }, input);
 }

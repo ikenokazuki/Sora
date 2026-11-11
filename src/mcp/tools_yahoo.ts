@@ -113,7 +113,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_chiebukuro',
     'yahoo',
-    '【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }',
+    '【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを返す。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }',
     {
       query: z.string().min(1).describe('知恵袋検索キーワード (例: "おすすめ プログラミング言語", "引越し 挨拶")'),
       limit: ChiebukuroSearchRequestSchema.shape.limit,
@@ -173,7 +173,7 @@ export function registerYahooTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'search_realtime',
     'yahoo',
-    '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報把握に最適。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)',
+    '【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウントの告知の調査に。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報に。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)',
     {
       query: z
         .string()

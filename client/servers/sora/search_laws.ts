@@ -36,7 +36,7 @@ export type SearchLawsOutput = {
   ageSeconds?: number;
 };
 
-/** 【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source } */
+/** 【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名・法令番号・公布年月日の一覧を返す。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source } */
 export function searchLaws(input: SearchLawsInput): Promise<SearchLawsOutput> {
   return callSora<SearchLawsOutput>({ method: 'POST', path: '/gov/laws' }, input);
 }

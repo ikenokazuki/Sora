@@ -63,7 +63,7 @@
     "name": "check_product_compliance",
     "fn": "checkProductCompliance",
     "category": "trade",
-    "description": "【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書および2026年7月eFiling義務を一連のパイプラインとして一括実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }",
+    "description": "【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書・2026年7月eFiling義務を一括で判定し、通関前アクションプラン付きの総合診断を返す。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }",
     "keywords": [
       "商品判定",
       "コンプライアンス",
@@ -103,7 +103,7 @@
     "name": "fetch_social_post",
     "fn": "fetchSocialPost",
     "category": "web",
-    "description": "【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得します。Weiboは長文・人気コメントの補完に対応（Metaのコメントは対象外）。Xの投稿は対象外のため fetch_x_post を使ってください。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }",
+    "description": "【既知SNS投稿の取得】Weibo/Threads/Instagram/Facebookの公開投稿URLから本文・日時・反応を取得。Weiboは長文・人気コメントも補完（Metaのコメントは対象外）。Xは対象外（fetch_x_post を使う）。返却: { status, post?: { url, author, text, publishedAt, metrics, comments }, failures }",
     "keywords": [
       "SNS",
       "Weibo",
@@ -260,7 +260,7 @@
     "name": "get_weather",
     "fn": "getWeather",
     "category": "life",
-    "description": "【公式直結・推測厳禁】日本国内各地の天気予報・予想気温・降水確率・概況は、一般的な推測を行わず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: \"天童市\", \"軽井沢\", \"石垣島\"）または都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報を取得可能。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }",
+    "description": "【公式直結・推測厳禁】日本国内の天気予報・予想気温・降水確率・概況は、推測せず必ず気象庁公式オープンデータ直結の本ツールを実行してください。全国 1,805 市区町村名（例: \"天童市\", \"軽井沢\", \"石垣島\"）・都道府県名・地点IDに対応。今日から最大7日先（計8日分）の週間予報。返却: { source, title, forecasts: [{ date, telop, temperature, chanceOfRain }] }",
     "keywords": [
       "天気予報",
       "気象",
@@ -433,7 +433,7 @@
     "name": "scrape",
     "fn": "scrape",
     "category": "web",
-    "description": "【単一URL・PDF本文抽出】既知 URL の Web ページまたは PDF の本文をクリーンな Markdown で取得します（既知URLの精読・本文抽出）。動的・SPA サイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト全体巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }",
+    "description": "【単一URL・PDF本文抽出】Webページ・PDFの本文をクリーンなMarkdownで取得（既知URLの精読・本文抽出）。動的・SPAサイトの描画待機、イベント構造化、テーブル2D正規化に対応。候補URL探索は search_web / search_deep、サイト巡回は crawl_site、対話操作は browser_action。返却: { url, title, content, highlights?, tables?, events? }",
     "keywords": [
       "スクレイプ",
       "Web抽出",
@@ -485,7 +485,7 @@
     "name": "search_chiebukuro",
     "fn": "searchChiebukuro",
     "category": "yahoo",
-    "description": "【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }",
+    "description": "【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを返す。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] }",
     "keywords": [
       "知恵袋",
       "Q&A",
@@ -501,7 +501,7 @@
     "name": "search_deep",
     "fn": "searchDeep",
     "category": "web",
-    "description": "【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（既定 evidence / full）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }",
+    "description": "【万能深層Web検索・包括調査】Web検索＋上位サイト本文の自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで根拠のあるソースを上位にする（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に。返却量は responseMode（既定 evidence / full）。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? }",
     "keywords": [
       "深層検索",
       "統合検索",
@@ -546,7 +546,7 @@
     "name": "search_disaster_warnings",
     "fn": "searchDisasterWarnings",
     "category": "disaster",
-    "description": "【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、一般Web検索の古い情報に頼らず必ず本ツールで市区町村単位でリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] }",
+    "description": "【気象庁公式防災直結】大雨・土砂災害・暴風・大雪・波浪等の特別警報・危険警報・警報・注意報は、古いWeb情報に頼らず必ず本ツールで市区町村単位にリアルタイム取得してください。河川の氾濫は含まない。返却: { areaName, warnings: [{ name, level, status }] }",
     "keywords": [
       "気象警報",
       "注意報",
@@ -596,7 +596,7 @@
     "name": "search_laws",
     "fn": "searchLaws",
     "category": "gov",
-    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名、法令番号、公布年月日の一覧を取得します。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
+    "description": "【必須・推測回答厳禁】日本の法律・政令・府省令の検索・調査では、学習知識で条文番号や法令名を推測せず、必ずデジタル庁・総務省公式e-Gov法令API v2直結の本ツールを実行してください。現行法令名・法令番号・公布年月日の一覧を返す。返却: { count, items: [{ id, title, lawNum, promulgationDate }], source }",
     "keywords": [
       "法令検索",
       "法律",
@@ -687,7 +687,7 @@
     "name": "search_realtime",
     "fn": "searchRealtime",
     "category": "yahoo",
-    "description": "【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウント告知調査用。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報把握に最適。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)",
+    "description": "【必須・Web検索代替不可】X上の最新ポスト・世論・特定アカウントの告知の調査に。Yahoo公式仕様で特定アカウント・宛先・ハッシュタグ・除外・OR検索に対応。物販タイテ・緊急告知・現地速報に。返却: { query, effectiveQuery, isFallback, sort, focus, count, items, missingTerms?, aliasTerms?, omittedCount? } (missingTerms=揃わなかった語、aliasTerms=代わりに検索した別名、omittedCount=省いた件数。一部失敗時はpartialとproviderErrors)",
     "keywords": [
       "リアルタイム検索",
       "X",
@@ -721,7 +721,7 @@
     "name": "search_route",
     "fn": "searchRoute",
     "category": "life",
-    "description": "【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測で不正確な案内をせず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }",
+    "description": "【公式直結・推測運賃厳禁】日本国内の電車・新幹線・地下鉄等の駅間最適ルート・所要時間・乗換回数・IC/きっぷ運賃は、推測せず必ずYahoo!路線情報直結の本ツールで探索してください。経由駅指定（最大3駅）や日時指定に対応。返却: { routes: [{ index, totalTime, transfers, fare, sections, summary }] }",
     "keywords": [
       "乗換案内",
       "電車",
@@ -738,7 +738,7 @@
     "name": "search_social_posts",
     "fn": "searchSocialPosts",
     "category": "web",
-    "description": "【公開SNS投稿検索】Weiboのキーワード新着検索、Threads/Instagram/Facebookの公開投稿の発見＋本文取得を行います。追加費用・ログイン不要。Xの投稿は対象外のため search_realtime を使ってください。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable の場合は failures を確認し、empty は一致なしの意味です。",
+    "description": "【公開SNS投稿検索】Weiboのキーワード新着検索と、Threads/Instagram/Facebookの公開投稿の発見＋本文取得。追加費用・ログイン不要。Xは対象外（search_realtime を使う）。返却: { status, platform, query, searchMode, items: [{ id, url, author, text, textKind, publishedAt, timeStatus, inRequestedWindow, method, metrics, comments }], matchedInWindow, unknownTime, excluded, failures }。status が partial/unavailable なら failures を確認、empty は一致なし。",
     "keywords": [
       "SNS",
       "Weibo",
@@ -808,7 +808,7 @@
     "name": "search_web",
     "fn": "searchWeb",
     "category": "web",
-    "description": "【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索します（URL/スニペット探索）。formats を指定すると上位結果を追加スクレイプし、本文や指定形式を同じ呼び出しで返します（同一呼出での本文抽出）。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }",
+    "description": "【万能Web検索・候補探索】ニュース、イベント日程、発売日、営業時間、公式告知などの候補URLと概要スニペットを高速探索（URL/スニペット探索）。formats 指定で上位結果の本文や指定形式も同じ呼び出しで返す。深層調査は search_deep、既知URLの精読は scrape。返却: { count, items: [{ title, url, snippet, markdown? }] }",
     "keywords": [
       "Web検索",
       "検索",

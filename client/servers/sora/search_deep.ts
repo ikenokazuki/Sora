@@ -673,7 +673,7 @@ export type SearchDeepOutput = {
   ageSeconds?: number;
 };
 
-/** 【万能深層Web検索・包括調査】Web検索＋上位サイト本文自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで回答根拠のあるソースを最上位化します（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に使用します。返却量は responseMode（既定 evidence / full）で選べます。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? } */
+/** 【万能深層Web検索・包括調査】Web検索＋上位サイト本文の自動スクレイピング＋Xリアルタイム速報を一括取得し、深層エビデンス駆動リランキングで根拠のあるソースを上位にする（Web+X統合深層調査）。最新事実、ライブ・公演日程、新製品・発売日、営業時間、人物動向等の包括調査に。返却量は responseMode（既定 evidence / full）。候補URL探索は search_web、既知URLの精読は scrape。返却: { query, count, schedule?, results: [{ url, title, markdown?, highlights? }], realtime?, contextSufficiency? } */
 export function searchDeep(input: SearchDeepInput): Promise<SearchDeepOutput> {
   return callSora<SearchDeepOutput>({ method: 'POST', path: '/search/deep' }, input);
 }

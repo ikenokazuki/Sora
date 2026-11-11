@@ -44,7 +44,7 @@ export type SearchChiebukuroOutput = {
   }[];
 };
 
-/** 【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを取得します。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] } */
+/** 【必須・Web検索代替不可】Yahoo! 知恵袋の Q&A・人々の悩み・生活の知恵・利用者のリアルな体験談や口コミは、一般Web検索ではなく必ず本ツールで検索してください。質問タイトル・本文スニペット・回答数・解決ステータスを返す。返却: { source, query, count, items: [{ title, url, status, bestAnswer, snippet }] } */
 export function searchChiebukuro(input: SearchChiebukuroInput): Promise<SearchChiebukuroOutput> {
   return callSora<SearchChiebukuroOutput>({ method: 'POST', path: '/search/chiebukuro' }, input);
 }
