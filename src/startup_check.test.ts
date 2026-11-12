@@ -151,7 +151,7 @@ describe('what the start-up check refuses', () => {
 async function start(args: string[], vars: Env) {
   const env: Env = { PATH: process.env.PATH, HOME: process.env.HOME, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars };
   if (process.env.LD_LIBRARY_PATH) env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH;
-  const proc = Bun.spawn(['bun', ...args], { cwd: `${import.meta.dir}/..`, env, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn([process.execPath, ...args], { cwd: `${import.meta.dir}/..`, env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' });
   const timer = setTimeout(() => proc.kill(), 15_000);
   try {
     const [code, stdout, stderr] = await Promise.all([proc.exited, new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
