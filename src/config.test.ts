@@ -96,6 +96,17 @@ const INTS: Record<string, [number, number | undefined, number | undefined, numb
 /** 既定で有効な真偽値（ほかの真偽値は既定で無効）。 */
 const BOOLS_ON_BY_DEFAULT = ['SORA_MCP_DEFER_TOOLS', 'SORA_FETCH_DEFAULT_REFERER', 'SORA_X_DETAIL_PROVIDER', 'SORA_INTEL_SCRAPE', 'SORA_INTEL_WEB_SEARCH'];
 
+/** 組で設定する名前と、その相手の正しい値（片方だけだと checkEnv が組の検査で知らせる）。ほかのことを確かめるテストは、相手も入れる。 */
+const PARTNER: Record<string, [string, string]> = {
+  SORA_HTS_CROSS_INDEX_URL: ['SORA_HTS_CROSS_INDEX_SHA256', 'a'.repeat(64)],
+  SORA_HTS_CROSS_INDEX_SHA256: ['SORA_HTS_CROSS_INDEX_URL', 'https://index.example.test/cross.jsonl.gz'],
+  SORA_TRACKING_UPS_CLIENT_ID: ['SORA_TRACKING_UPS_CLIENT_SECRET', 'x'],
+  SORA_TRACKING_UPS_CLIENT_SECRET: ['SORA_TRACKING_UPS_CLIENT_ID', 'x'],
+  SORA_TRACKING_FEDEX_CLIENT_ID: ['SORA_TRACKING_FEDEX_CLIENT_SECRET', 'x'],
+  SORA_TRACKING_FEDEX_CLIENT_SECRET: ['SORA_TRACKING_FEDEX_CLIENT_ID', 'x'],
+};
+const partnerOf = (name: string): Record<string, string> => (PARTNER[name] ? { [PARTNER[name][0]]: PARTNER[name][1] } : {});
+
 /** 3 回計って、いちばん速い値（ミリ秒）。負荷で 1 回が遅れても、線形かどうかの判定が揺れないようにする */
 function fastestOf3(fn: () => unknown): number {
   return Math.min(...Array.from({ length: 3 }, () => {
@@ -523,7 +534,7 @@ describe('checkEnv', () => {
   });
 
   test.each(Object.entries(REFUSED))('(b) %s next to its new name is ignored with a warning', (old, [to, value]) => {
-    const { errors, warnings } = checkEnv({ [old]: 'x', [to]: value });
+    const { errors, warnings } = checkEnv({ [old]: 'x', [to]: value, ...partnerOf(to) });
     expect(errors).toEqual([]);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain(old);
@@ -558,7 +569,7 @@ describe('checkEnv', () => {
 
   test.each(Object.entries(RENAMED_WARN))('(b) %s alone warns with its replacement %s, without printing the value', (old, to) => {
     const value = 'distinctive-old-value-7f3a';
-    for (const env of [{ [old]: value }, { [old]: value, [to]: 'x' }]) {
+    for (const env of [{ [old]: value }, { [old]: value, [to]: 'x', ...partnerOf(to) }]) {
       const { errors, warnings } = checkEnv(env);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(old);
@@ -599,7 +610,7 @@ describe('checkEnv', () => {
       ['SORA_GCC_CUSTODIAN', '{oops', 'JSON'],
     ];
     for (const [name, raw, form] of cases) {
-      const { errors } = checkEnv({ [name]: raw });
+      const { errors } = checkEnv({ ...partnerOf(name), [name]: raw });
       expect(errors).toHaveLength(1);
       expect(errors[0]).toContain(name);
       expect(errors[0]).toContain(form);
@@ -651,6 +662,31 @@ describe('checkEnv', () => {
     expect(envError('PORT', {})).toBeUndefined();
     expect(envError('PORT', { PORT: '  ' })).toBeUndefined();
     expect(() => envError('NOT_A_SETTING' as never, {})).toThrow('Unknown setting: NOT_A_SETTING');
+  });
+
+  test('the HTS cross index URL and SHA-256 are a pair: one without the other refuses to start', () => {
+    const URL_ = 'https://index.example.test/cross.jsonl.gz';
+    const SHA = 'a'.repeat(64);
+    expect(checkEnv({ SORA_HTS_CROSS_INDEX_URL: URL_, SORA_HTS_CROSS_INDEX_SHA256: SHA })).toEqual({ errors: [], warnings: [] });
+    for (const [set, missing, env] of [
+      ['SORA_HTS_CROSS_INDEX_URL', 'SORA_HTS_CROSS_INDEX_SHA256', { SORA_HTS_CROSS_INDEX_URL: URL_ }],
+      ['SORA_HTS_CROSS_INDEX_SHA256', 'SORA_HTS_CROSS_INDEX_URL', { SORA_HTS_CROSS_INDEX_SHA256: SHA, SORA_HTS_CROSS_INDEX_URL: '  ' }],
+    ] as const) {
+      const { errors, warnings } = checkEnv(env);
+      expect(warnings, set).toEqual([]);
+      expect(errors, set).toEqual([`SORA_HTS_CROSS_INDEX_URL と SORA_HTS_CROSS_INDEX_SHA256 は組で設定します。${set} だけでは効かないので、起動しません（${missing} も設定するか、${set} を消してください）`]);
+    }
+  });
+
+  test.each([['UPS'], ['FEDEX']])('the %s client ID and secret are a pair: one without the other warns (the browser lookup is used), without printing the value', (carrier) => {
+    const [id, secret] = [`SORA_TRACKING_${carrier}_CLIENT_ID`, `SORA_TRACKING_${carrier}_CLIENT_SECRET`];
+    expect(checkEnv({ [id]: 'id-4k', [secret]: 'secret-4k' })).toEqual({ errors: [], warnings: [] });
+    for (const [set, missing] of [[id, secret], [secret, id]]) {
+      const { errors, warnings } = checkEnv({ [set]: 'value-9r', [missing]: ' ' });
+      expect(errors, set).toEqual([]);
+      expect(warnings, set).toEqual([`${id} と ${secret} は組で設定します。${set} だけでは効かず、API を使わずにブラウザで照会します（${missing} も設定するか、${set} を消してください）`]);
+      expect(warnings[0]).not.toContain('value-9r');
+    }
   });
 
   test('the output is deterministic', () => {

@@ -611,14 +611,22 @@ export function envError(name: EnvName, env: Env = process.env): string | undefi
   return `${name} の値（${shown(s, raw as string)}）は不正です。正しい形: ${formOf(s)}`;
 }
 
+/** 組で設定する名前と、片方だけのときの扱い（error は起動を拒否。warn は、その結果を添えて警告）。 */
+const PAIRS: readonly (readonly [SettingName, SettingName, 'error' | string])[] = [
+  ['SORA_HTS_CROSS_INDEX_URL', 'SORA_HTS_CROSS_INDEX_SHA256', 'error'],
+  ['SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET', 'API を使わずにブラウザで照会します'],
+  ['SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET', 'API を使わずにブラウザで照会します'],
+];
+
 /** 旧名のうち、SORA_ の付かない汎用の名前に添える文（ほかのプログラムの設定かもしれない）。 */
 const OTHER_PROGRAMS = 'ほかのプログラムのものなら、そのままで構いません';
 
 /**
  * 起動時の検査（純粋な関数）。errors があれば起動を止める（呼ぶのは起動の処理だけ）。
  * (a) 未知の SORA_* は警告 (b) 旧名は警告（置き換え先つき。新名があれば旧名は無視）
- * (c) 旧名だけで新名が無いとき、拒否の 10 個は errors (d) 不正な値は errors（秘密は「設定済み、長さ N」）。
- * キーも SORA_ALLOW_ANONYMOUS も無いのはエラーにしない（Fail-Open）。
+ * (c) 旧名だけで新名が無いとき、拒否の 10 個は errors (d) 不正な値は errors（秘密は「設定済み、長さ N」）
+ * (e) 組の片方だけ（判例の索引の URL と SHA-256 は errors、運送会社の ID と秘密は警告）。
+ * キーも SORA_ALLOW_ANONYMOUS も無いのはエラーにしない（Fail-Open）。ファイルの有無は見ない（起動の処理の startup_check.ts が見る）。
  */
 export function checkEnv(env: Env = process.env): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
@@ -645,6 +653,14 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
     } else {
       warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください${generic ? `（${OTHER_PROGRAMS}）` : ''}`);
     }
+  }
+
+  for (const [a, b, effect] of PAIRS) {
+    if (isBlank(env[a]) === isBlank(env[b])) continue;
+    const [set, missing] = isBlank(env[a]) ? [b, a] : [a, b];
+    const fix = `（${missing} も設定するか、${set} を消してください）`;
+    if (effect === 'error') errors.push(`${a} と ${b} は組で設定します。${set} だけでは効かないので、起動しません${fix}`);
+    else warnings.push(`${a} と ${b} は組で設定します。${set} だけでは効かず、${effect}${fix}`);
   }
 
   for (const name of Object.keys(env).sort()) {
