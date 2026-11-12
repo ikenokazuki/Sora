@@ -133,7 +133,7 @@ ${summary}
 
 1. 修正の内容と、悪用の有無を確かめる: [Chrome Releases](https://chromereleases.googleblog.com/)、[Debian Security Tracker](https://security-tracker.debian.org/tracker/source-package/chromium)、[Bun のセキュリティ勧告](https://github.com/oven-sh/bun/security/advisories)
 2. Chromium が新しいとき: 新しい Chromium で、ブラウザと静的取得の TLS のずれを確かめる: \`bun scripts/tls-fingerprint/run.ts\`（手順は docs/browser-alignment.md）
-3. CI の Bun が古いとき: 手元でその版の Bun で全テストを通してから、test.yml・live-tools.yml の \`bun-version\` を上げる
+3. CI の Bun が古いとき: 手元でその版の Bun で全テストを通してから、test.yml・live-tools.yml・wreq-native-update.yml の \`bun-version\` を上げる
 4. イメージの Chromium・Bun・distroless の土台が古いとき: パッチリリースを出す（タグの公開パイプラインが、その時点の Debian の chromium・\`oven/bun:1\`・distroless の \`latest\` でイメージを作る）。distroless の土台は、[Debian Security Tracker](https://security-tracker.debian.org/) で、更新されたパッケージ（glibc・OpenSSL など）の内容を確かめる
 
 この issue は、週 1 回の確認（.github/workflows/runtime-update-check.yml）が作ります。すべて解消すると、自動で閉じます。

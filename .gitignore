@@ -12,3 +12,4 @@ data/
 *.db-wal
 *.db-shm
 *.tsbuildinfo
+wreq-native-update/

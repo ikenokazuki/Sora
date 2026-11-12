@@ -1,0 +1,89 @@
+name: wreq-native update
+
+# 週に 1 回、上流（wreq-util の main）に、いまの上限より新しい Chrome のプロファイルがあるかを見る（scripts/wreq-native/trial.sh）。
+# あれば、その rev で native を作り直したイメージを試しにビルドし、ブラウザと静的取得の ClientHello を比べて、
+# 通れば、vendor/wreq-js と WREQ_MAX_CHROME_PROFILE を更新する PR を作る（scripts/wreq-native/open-pr.sh）。マージは人が決める（名乗る版が変わるため）。
+# 上流のコードをビルド・実行する trial には、書き込みの権限を渡さない。PR を作る pr は、trial が作った patch と文面だけを扱う。
+#
+# 手動（workflow_dispatch）: wreq_util で rev を選べる。force で、新しいプロファイルが無くても最後まで回し、固定に差があれば PR も作る。
+# この workflow を変える PR では、試しビルドを最後まで回す（PR は作らない）。
+# PR を作るには、リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」が要る。
+
+on:
+  schedule:
+    - cron: '41 21 * * 2'
+  workflow_dispatch:
+    inputs:
+      wreq_util:
+        description: 'wreq-util の rev かブランチ（既定 main）'
+        default: main
+      force:
+        description: '新しいプロファイルが無くても、最後まで回す（固定に差があれば PR も作る）'
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/wreq-native-update.yml
+      - scripts/wreq-native/**
+      - scripts/verify-image.sh
+
+concurrency:
+  group: wreq-native-update-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      changed: ${{ steps.trial.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # Bun は test.yml と同じ版にする（上げるときは、test.yml・live-tools.yml と一緒に）
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - id: trial
+        env:
+          WREQ_UTIL: ${{ inputs.wreq_util }}
+          FORCE: ${{ (github.event_name == 'pull_request' || inputs.force) && '1' || '' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          CONTAINER_RUNTIME: docker
+        run: bash scripts/wreq-native/trial.sh
+      - name: Show the verification output
+        if: always()
+        run: |
+          if [ -f wreq-native-update/verify.log ]; then
+            { echo '### イメージの中の確認'; echo; echo '```'; cat wreq-native-update/verify.log; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: steps.trial.outputs.changed == 'true'
+        with:
+          name: wreq-native-update
+          path: wreq-native-update
+          retention-days: 7
+
+  pr:
+    needs: trial
+    if: github.event_name != 'pull_request' && needs.trial.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: wreq-native-update
+          path: wreq-native-update
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/wreq-native/open-pr.sh wreq-native-update

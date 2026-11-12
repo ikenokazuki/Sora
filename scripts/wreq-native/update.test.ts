@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { parseWreqUtilPatchRevs, patchCargoToml, readContainerfilePins, readPackageVersion } from './update.js';
+import { parseMaxChromeProfile, parseWreqUtilPatchRevs, patchCargoToml, readContainerfilePins, readMaxChromeProfile, readPackageVersion, setMaxChromeProfile } from './update.js';
 
 const UPSTREAM_CARGO = `[package]
 name = "wreq-js"
@@ -68,6 +68,60 @@ btls-sys = { git = "https://github.com/0x676e67/btls", rev = "129887582a538b8f4d
   test('rev が無い・btls と btls-sys の rev が違うときは落とす', () => {
     expect(() => parseWreqUtilPatchRevs(WREQ_UTIL_CARGO.replace(/^wreq = .*$/m, 'wreq = "0.16"'))).toThrow('wreq の 40 桁の rev');
     expect(() => parseWreqUtilPatchRevs(WREQ_UTIL_CARGO.replace(/(btls-sys.*rev = ")1298/, '$1ffff'))).toThrow('rev が違う');
+  });
+});
+
+describe('parseMaxChromeProfile（wreq-util の src/emulate.rs）', () => {
+  const EMULATE_RS = `define_enum!(
+    Profile, Chrome100,
+    Emulation,
+
+    // Chrome versions
+    Chrome100 => ("chrome_100", v100::emulation),
+    Chrome153 => ("chrome_153", v153::emulation),
+    Chrome154 => ("chrome_154", v154::emulation),
+    // Edge versions
+    Edge101 => ("edge_101", edge101::emulation),
+    Firefox139 => ("firefox_139", firefox139::emulation),
+);`;
+
+  test('Profile の一覧から、Chrome の最大の版を読む（edge・firefox は数えない）', () => {
+    expect(parseMaxChromeProfile(EMULATE_RS)).toBe(154);
+  });
+
+  test('並びに依らず、最大を返す（文字列の比べ方ではなく、数として）', () => {
+    expect(parseMaxChromeProfile('("chrome_155", a), ("chrome_100", b)')).toBe(155);
+  });
+
+  test('chrome のプロファイルが 1 つも読めなければ落とす（上流の書き方が変わった）', () => {
+    expect(() => parseMaxChromeProfile('Firefox139 => ("firefox_139", f),')).toThrow('chrome_');
+  });
+});
+
+describe('readMaxChromeProfile / setMaxChromeProfile', () => {
+  const CONTAINERFILE = 'ARG WREQ_JS_VERSION=3.2.0\nARG WREQ_MAX_CHROME_PROFILE=154\nFROM x AS y\n';
+
+  test('ARG WREQ_MAX_CHROME_PROFILE を読む', () => {
+    expect(readMaxChromeProfile(CONTAINERFILE)).toBe(154);
+  });
+
+  test('その 1 行だけを書き換える', () => {
+    expect(setMaxChromeProfile(CONTAINERFILE, 155)).toBe(CONTAINERFILE.replace('=154', '=155'));
+  });
+
+  test('136 未満・3 桁でない版は、書かずに落とす', () => {
+    for (const bad of [135, 15, 1550, 154.5, Number.NaN]) expect(() => setMaxChromeProfile(CONTAINERFILE, bad)).toThrow('Chrome の版');
+  });
+
+  test('ARG が無い・2 つあるときは落とす（形が変わったのを、黙って通さない）', () => {
+    expect(() => readMaxChromeProfile('FROM x\n')).toThrow('WREQ_MAX_CHROME_PROFILE');
+    expect(() => setMaxChromeProfile(`${CONTAINERFILE}ARG WREQ_MAX_CHROME_PROFILE=150\n`, 155)).toThrow('WREQ_MAX_CHROME_PROFILE');
+  });
+
+  test('実際の Containerfile から読める', () => {
+    const max = readMaxChromeProfile(readFileSync(new URL('../../Containerfile', import.meta.url), 'utf8'));
+    expect(max).toBeGreaterThanOrEqual(136);
+    expect(max).toBeLessThan(1000);
   });
 });
 
