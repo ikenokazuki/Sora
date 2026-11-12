@@ -260,6 +260,20 @@ describe('CONNECT: 中継の作法', () => {
     expect((await readBytes(reply.socket, 5, reply.rest)).toString()).toBe('early');
   });
 
+  test('宛先への接続を待っている間に、クライアントが送ったバイトも、失わずに宛先へ渡す', async () => {
+    const echo = await startEchoServer();
+    // 名前の解決に 200ms かかる。その間（50ms 後）に、クライアントが続きのバイトを送る
+    const resolve = async () => {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+      return ['127.0.0.1'];
+    };
+    const { port } = await startGateway({ resolve, allowedPorts: [echo.port], ...treatLoopbackAsPublic });
+
+    const reply = await rawRequest(port, connectHead(`slow.test:${echo.port}`), 'early-bytes');
+    expect(reply.status).toBe(200);
+    expect((await readBytes(reply.socket, 11, reply.rest)).toString()).toBe('early-bytes');
+  });
+
   test('宛先が接続を閉じたら、クライアント側も閉じる（接続を残さない）', async () => {
     const server = await startTcpServer((socket) => socket.destroy());
     const { resolve } = fakeResolver({ 'gone.test': ['127.0.0.1'] });
@@ -427,6 +441,58 @@ describe('入口の頑丈さ', () => {
     const { port } = await startGateway();
     const reply = await rawRequest(port, `CONNECT example.test:443 HTTP/1.1\r\nX-Junk: ${'a'.repeat(20 * 1024)}`);
     expect(reply.status).toBe(431);
+  });
+
+  test('拒否の応答を返したあと、クライアントが接続を閉じてこなくても、一定の時間で切る（接続を溜めさせない）', async () => {
+    const { port } = await startGateway({ denyLingerMs: 100 });
+    // 自分からは閉じないクライアント（こちらの送信終了を受けても、閉じ返さない）
+    const socket = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
+    socket.on('error', () => {}); // 切られたあとに送ると、RST を受ける
+    cleanups.push(() => void socket.destroy());
+    await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+    socket.write('EHLO example.test\r\n\r\n'); // 400 になる要求
+    socket.resume(); // 読み出さないと、end が発生しない
+    await new Promise<void>((resolve) => socket.once('end', () => resolve())); // 応答と、こちらへの送信終了（FIN）を受けた
+    await new Promise((resolve) => setTimeout(resolve, 300)); // 100ms を過ぎるのを待つ
+
+    // ゲートウェイが切っていれば、いま送ると RST が返り、こちらの接続も閉じる（切っていなければ、閉じない）
+    socket.write('x');
+    expect(await closesWithin(socket, 2000)).toBe(true);
+  });
+
+  test('閉じてこないクライアントに、接続数の枠を取られ続けない（拒否したあとの接続は、数から外れる）', async () => {
+    const { port } = await startGateway({ denyLingerMs: 100, maxConnections: 2 });
+    const hostile: net.Socket[] = [];
+    for (let i = 0; i < 2; i++) {
+      const socket = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
+      cleanups.push(() => void socket.destroy());
+      hostile.push(socket);
+      await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
+      socket.write('EHLO example.test\r\n\r\n');
+    }
+    await Promise.all(hostile.map((socket) => closesWithin(socket, 2000)));
+
+    // 枠が空いている: 正常な（書式の誤りで 400 になるだけの）要求が、503 でなく処理される
+    const reply = await rawRequest(port, 'EHLO example.test\r\n\r\n');
+    expect(reply.status).toBe(400);
+  });
+
+  test('拒否のあと、クライアントがすぐ閉じれば、接続数の枠もすぐ空く（待たされない）', async () => {
+    // 切る時間は長くしておく（それを待たずに、枠が空くことを見る）
+    const { port } = await startGateway({ maxConnections: 1, denyLingerMs: 60_000 });
+    const first = await rawRequest(port, 'EHLO example.test\r\n\r\n');
+    expect(first.status).toBe(400);
+    expect(await closesWithin(first.socket, 2000)).toBe(true); // クライアントが閉じた
+
+    let status = 0;
+    expect(
+      await waitUntil(() => {
+        void rawRequest(port, 'EHLO example.test\r\n\r\n').then((reply) => {
+          status = reply.status;
+        }, () => {});
+        return status === 400;
+      }, 3000),
+    ).toBe(true); // 503（枠が空いていない）でなく、400（処理された）
   });
 
   test('頭部が来ない接続は、時間切れで閉じる（接続を溜めさせない）', async () => {
@@ -946,6 +1012,20 @@ describe('http:// の転送: 要求の枠（Content-Length）を超えたバイ�
     const reply = await rawRequest(port, head);
     expect(reply.status).toBe(400);
     expect(calls).toEqual([]);
+  });
+
+  test('宛先への接続を待っている間に届いた本文も、失わずに転送する', async () => {
+    const origin = await startOrigin('ok');
+    const resolve = async () => {
+      await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+      return ['127.0.0.1'];
+    };
+    const { port } = await startGateway({ resolve, allowedPorts: [origin.port], ...treatLoopbackAsPublic });
+
+    // 頭部と本文の最初の 3 バイトを送り、50ms 後に残りを送る。名前の解決の途中に、残りが届く
+    const reply = await rawRequest(port, `POST http://slow.test:${origin.port}/p HTTP/1.1\r\nContent-Length: 10\r\n\r\nabc`, 'defghij');
+    expect(reply.status).toBe(200);
+    expect(origin.requests[0].body.toString()).toBe('abcdefghij');
   });
 
   test('Content-Length が同じ値で重なっていれば、受け付ける', async () => {

@@ -34,6 +34,8 @@ export interface EgressGatewayOptions {
   idleTimeoutMs?: number;
   /** 同時に受ける、クライアントの接続数の上限。超えたら 503 */
   maxConnections?: number;
+  /** 拒否・失敗の応答を返したあと、クライアントが接続を閉じてこなくても、この時間が過ぎたら切る */
+  denyLingerMs?: number;
   /**
    * 運用者の上流の http プロキシ（SORA_PROXY_*）。あれば、すべての宛先を、ここへの CONNECT・絶対 URI の要求にする。
    * 名前の解決は上流が行うので、ここでの検査は、名前・IP リテラル・ポートまで（答えの IP は見えない。上流が内部に届かないことは、運用者が保証する）。
@@ -55,6 +57,7 @@ const DEFAULTS = {
   connectTimeoutMs: 10_000,
   idleTimeoutMs: 5 * 60_000,
   maxConnections: 512,
+  denyLingerMs: 5_000,
 };
 
 /** 拒否・失敗を、応答（状態コードと、拒否の理由）にして運ぶ */
@@ -144,6 +147,7 @@ export class EgressGateway {
       connectTimeoutMs: options.connectTimeoutMs ?? DEFAULTS.connectTimeoutMs,
       idleTimeoutMs: options.idleTimeoutMs ?? DEFAULTS.idleTimeoutMs,
       maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
+      denyLingerMs: options.denyLingerMs ?? DEFAULTS.denyLingerMs,
     };
   }
 
@@ -216,6 +220,10 @@ export class EgressGateway {
     if (error.reason) incrementSecurityCounter(`sora_egress_denied_${error.reason}_total`);
     const header = error.reason ? `X-Sora-Egress-Deny: ${error.reason}\r\n` : '';
     client.end(`HTTP/1.1 ${error.status} ${STATUS_TEXT[error.status] ?? 'Error'}\r\n${header}Content-Length: 0\r\nConnection: close\r\n\r\n`);
+    // 頭部を読んだあと一時停止していたので、読み始める（相手の送信終了を受け、届いたバイトは捨てる）。
+    // 閉じてこない相手の接続は、一定の時間で切る（閉じてこない接続を溜めさせると、上限まで埋まって、正常な要求が断られる）
+    client.resume();
+    client.setTimeout(this.limits.denyLingerMs, () => client.destroy());
   }
 
   private async handle(client: net.Socket, head: string, rest: Buffer): Promise<void> {
