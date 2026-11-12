@@ -97,6 +97,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **E8**（サンドボックス有効・非 root と、従来の root・`--no-sandbox`）: canvas のハッシュ・WebGL の vendor/renderer/パラメータ/ピクセル・navigator・画面・フォントのどれにも、**差がない**。
 - **E9・E10**（パイプ接続の安定性。Chromium 148）: **Bun 1.4.4 は、起動と終了 15 回・5 並行 ×3・強制終了（SIGKILL）の検知（`disconnected`）・再起動が、すべて通る。** **Bun 1.3.3 は、同じ耐久試験で「Connection closed.」になり、並行の起動のテストのあとに、パイプ接続が 60 秒止まった**（1 回ずつの操作と、12MB の応答は通る）。パイプは、Bun 1.4.4 以上でだけ使う。
 - **E11**（イメージの中。Bun 1.4.4・Chromium 156・root）: Sora の起動のまま、パイプで起動し（`--remote-debugging-pipe` があり、ポートの引数がない）、12MB の文字列と縦長のフルページ・スクリーンショットが完全に届く。強制終了は 50ms で検知し、次の `getBrowser()` が新しいブラウザを起動して描画できる。
+- **E12**（PR 1c。ビルドしたイメージの中。Bun 1.4.4・Chromium 156・root・rootless Podman の既定）: Sora の起動のまま、Chromium が **uid 65532・補助グループなし**で動き、サンドボックスは有効（`chrome://sandbox` が「You are adequately sandboxed.」）。root の Sora 本体からは読める `/proc/<Sora の pid>/environ` を、Chromium に `file://` で開かせても、読めない。プロファイルは `/tmp/sora-chromium-*`（所有者は Chromium の uid・0700）で、`closeSharedBrowser()` のあとに消える。ユーザー名前空間を拒否する seccomp（`unshare`・`setns`・`CLONE_NEWUSER` つきの `clone`・`clone3` を拒否。Docker の既定と同じ種類のもの）をかけると、最初の起動が失敗して警告を出し、`--no-sandbox` に戻して起動し、同じ検査を通る（サンドボックスは off、uid は 65532 のまま）。実際の Docker の既定の seccomp での確認は、まだ。起動用バイナリは 376KB で、イメージの大きさはほとんど変わらない。落とした Chromium は dumpable でなくなるので、root でも `CAP_SYS_PTRACE` が無ければ `/proc/<pid>/environ` は読めない。この検査は `scripts/browser-isolation-check.ts` で、`scripts/verify-image.sh` が、CI のイメージのビルドで回す。
 
 ## 設計
 
@@ -124,11 +125,11 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 ### 2. ブラウザのプロセス（I1・I5）
 
-- **起動を、自前の `spawn` と `puppeteer.connect({ transport })` に変える。** `puppeteer.launch` は uid を渡せないため。E3a のとおり、Bun で `uid`・`gid`・パイプ接続が使える。
+- **uid を落とす起動は、小さな起動用バイナリ（`native/chromium-launcher`。Rust）に任せる**（PR 1c）。`puppeteer.launch` は uid を渡せないので、`executablePath` に起動用バイナリを渡し、本物の Chromium の場所と落とし先の uid・gid を環境変数で伝える。起動用バイナリは、`PR_SET_NO_NEW_PRIVS` を立て、gid・uid を落とし、その環境変数を消してから Chromium を `exec` する（uid・gid が 0 の指定は断る）。puppeteer の起動・パイプ接続・終了の扱いをそのまま使えるので、当初案の自前の `spawn` と `puppeteer.connect({ transport })` は要らなくなった。Sora が root でないとき、または起動用バイナリが無いときは、これまでどおり直に起動する。
 - **環境変数は許可リストだけ**: `PATH`・`TZ`・`LANG`・`HOME`（プロファイルの場所）と、フォント・描画に要るもの（実測して決める）。運用者の秘密は渡さない。
-- **別 uid**: root の Sora 本体から、65532 以降の uid で起動する。プロファイルは、その uid だけが読める一時ディレクトリ（0700）に置き、終了時に消す。Sora が root でないとき（開発機など）は、uid を切り替えない。
+- **別 uid**: root の Sora 本体から、65532 以降の uid で起動する。プロファイルは、その uid だけが読める一時ディレクトリ（0700）に置き、終了時に消す。Sora が root でないとき（開発機など）は、uid を切り替えない。PR 1c で実装した（既定は 65532。`SORA_BROWSER_UID` で別の数か `off`。プロファイルは `/tmp/sora-chromium-*`）。tenant ごとの uid の池は、段階 6。
 - **tenant ごとのプロセスと uid**（`strict`）: tenant ごとに別のプロセス・別の uid（uid の池から割り当てる）。同じコンテナの中でも、ほかの tenant のプロセスの `/proc`・プロファイル・シグナルに届かない。プロセス数の上限と、使われなくなったプロセスの閉じ方（LRU）が要る。コンテナを増やさずに、tenant を分けられる。
-- **サンドボックスを有効にする**（`--no-sandbox` を外す）: E2・E3b のとおり、rootless Podman の既定で動く。Docker の既定の seccomp ではユーザー名前空間が作れず、動かない見込み（未検証）。そこで 3 段階にする。`auto`（既定。試して、使えなければ `--no-sandbox` に戻して警告し、状態を `/health` に出す）・`on`（使えなければ起動しない。`strict` の既定）・`off`。
+- **サンドボックスを有効にする**（`--no-sandbox` を外す）: E2・E3b のとおり、rootless Podman の既定で動く。Docker の既定の seccomp ではユーザー名前空間が作れず、動かない見込み（未検証）。そこで 3 段階にする。`auto`（既定。試して、使えなければ `--no-sandbox` に戻して警告し、状態を `/health` に出す）・`on`（使えなければ起動しない。`strict` の既定）・`off`。PR 1c で実装した（`SORA_BROWSER_SANDBOX`）。`auto` が試すのは、プロセスで最初の起動の 1 回だけで、結果を覚える（使えない環境で、起動のたびに 1 回余計に失敗しないように）。サンドボックスで起動できたあとの失敗は、戻さずに投げる。root のまま起動する（`SORA_BROWSER_UID=off` か起動用バイナリが無い）ときは、サンドボックスを使えないので、`on` は起動の計画の時点で断る。テスト（`NODE_ENV=test`）の既定は `off`。`/health` への表示は、`/health` の認証を決める段階（未決の 8）で入れる（認証なしの口に「サンドボックス off」を出さないため）。いまは、戻したときの警告のログだけ。
 - **CDP はパイプ**（TCP のデバッグポートを開かない）。Bun 1.4.4 以上でだけ使い（`browserCdpMode`。実測 E9・E10）、それ未満はポートのまま。`SORA_BROWSER_PIPE` で上書きできる。PR 1b で入れた。
 - **利用者のバイト列を処理する用途**（`recognize_song` の音声のデコード。穴 28）は、`strict` では、その tenant の専用のブラウザのプロセス（uid の池の 1 枠）で、`setupPageSecurity` を付けたページで、ナビゲーションなしに行う。長期的には、ブラウザを使わないデコーダーにする。
 - **ブラウザを開くすべての経路**（追跡の `browser_track`・Weibo・音声のデコード）を、`browserSemaphore` と tenant の上限の下に置く（穴 22）。
@@ -191,7 +192,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 マージは、その都度の承認。各 PR は、`standard` で今までの挙動を変えない。
 
-1. **ブラウザの起動**（2 の前半）: 自前の起動（別 uid・許可リストの環境変数・パイプ・サンドボックスの自動判定）。子プロセスの環境変数の許可リストと、webhook URL のログ（穴 27・30）も、ここで。
+1. **ブラウザの起動**（2 の前半）: 別 uid・許可リストの環境変数・パイプ・サンドボックスの自動判定。子プロセスの環境変数の許可リストと、webhook URL のログ（穴 27・30）も、ここで。3 つの PR に分けた。1a = 子プロセスの環境変数の許可リストと webhook のログ（#92）、1b = CDP をパイプに（#93）、1c = 別 uid の起動と、サンドボックスの自動判定。
 2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。
 3. **tenant**（4）: 複数の鍵・MCP の tenant の一本化・`X-Forwarded-For`（穴 15・29）。
 4. **状態の分離**（5）: ウォッチ・共有キャッシュの規則・intel・全体に効く操作・REST のモジュール・`/health`（穴 14・16〜20）。

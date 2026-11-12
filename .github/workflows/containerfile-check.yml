@@ -12,7 +12,10 @@ on:
       - scripts/verify-image.sh
       - scripts/tls-fingerprint/**
       - scripts/wreq-native/**
+      - scripts/browser-isolation-check.ts
+      - native/chromium-launcher/**
       - src/browser_engine.ts
+      - src/browser_launch_plan.ts
       - src/browser_stealth.ts
       - src/http_fetcher.ts
       - .github/workflows/containerfile-check.yml
@@ -29,7 +32,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build the image
         run: docker build -f Containerfile -t sora-containerfile-check .
-      # イメージの中で、(1) 置き換えた native を読めていること、(2) イメージの Chromium と自前の native が、同じ Chrome の姿（ClientHello）を送ることを確かめる
-      # （docs/browser-alignment.md）。wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
+      # イメージの中で、(1) 置き換えた native を読めていること、(2) イメージの Chromium と自前の native が、同じ Chrome の姿（ClientHello）を送ること
+      # （docs/browser-alignment.md）、(3) Chromium が root でなく別 uid で動き、運用者の秘密を読めないこと（サンドボックスは使えなければ off でよい）を確かめる。
+      # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check

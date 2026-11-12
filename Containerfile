@@ -126,6 +126,13 @@ FROM builder AS ca-bundle
 COPY --from=browser-harvester /etc/ssl/certs/ca-certificates.crt /tmp/system-ca.crt
 RUN bun scripts/build-ca-bundle.ts /tmp/system-ca.crt /tmp/ca-bundle.pem
 
+# Stage 3d: Chromium を root のまま動かさないための起動用バイナリ（native/chromium-launcher）。
+# root の Sora 本体が、これを puppeteer の executablePath にして、uid 65532（distroless の nonroot）に落としてから Chromium を exec する
+# （src/browser_launch_plan.ts。SORA_BROWSER_UID=off で従来どおり root）。wreq-native と同じ Rust のイメージ（glibc が最終段と同じ）。
+FROM docker.io/library/rust:1.99.1-bookworm AS chromium-launcher
+COPY native/chromium-launcher/main.rs /src/main.rs
+RUN rustc -O -C panic=abort -C strip=symbols -o /sora-chromium-launch /src/main.rs
+
 # Stage 4: Final Minimal Distroless Image
 FROM gcr.io/distroless/cc-debian12:latest
 WORKDIR /app
@@ -155,6 +162,8 @@ COPY --from=rs-trafilatura /src/LICENSE-MIT /src/LICENSE-APACHE /usr/share/licen
 # PID 1 で孤児プロセスを回収する init。bun が PID 1 だと、共有 Chromium を閉じるたびに
 # 補助プロセス（zygote・crashpad）がゾンビとして残る
 COPY --from=browser-harvester /usr/bin/tini-static /usr/bin/tini
+# Chromium を別 uid に落として起動する（Stage 3d）。Sora 本体は root のまま
+COPY --from=chromium-launcher /sora-chromium-launch /usr/local/bin/sora-chromium-launch
 
 ENV PORT=8000 \
     NODE_ENV=production \
