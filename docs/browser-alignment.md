@@ -76,7 +76,7 @@ ML-DSA は、npm の wreq-js の native（wreq-util 0.2.1）が持つ BoringSSL 
 
 - 上流のコードをビルド・実行する 2 の側（`trial` ジョブ）には、書き込みの権限を渡さない。PR を作る 3 の側（`pr` ジョブ）は、patch（`vendor/wreq-js` と Containerfile だけを触るものに限る）と文面だけを扱う。
 - PR を作るには、リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」を有効にする（既定は無効。無効だと、`pr` ジョブが PR を作れずに失敗する。枝は push 済みなので、そこから手で PR にできる）。
-- Actions が作った PR には、PR の CI は動かない。試しビルドが、同じ確認（イメージのビルドと `verify-image.sh`）を済ませている。マージすると、main への push で、通常どおり Test と公開のパイプラインが動く。
+- Actions が作った PR の CI（Test・Containerfile）は、承認待ち（`action_required`）で止まる。走らせたいときは、PR の画面の「Approve and run workflows」を押す（`gh api -X POST repos/<owner>/<repo>/actions/runs/<run_id>/approve` でも承認できる）。試しビルドが、同じ確認（イメージのビルドと `verify-image.sh`）を済ませているので、走らせなくてもよい。マージすると、main への push で、通常どおり Test と公開のパイプラインが動く。
 - 手動: Actions の「wreq-native update」を実行する。`wreq_util` で rev を選べる。`force` を付けると、新しいプロファイルが無くても最後まで回し、固定に差があれば PR も作る（上流の rev だけを更新したいとき）。
 - 手元: `bun install` のあと `bash scripts/wreq-native/trial.sh`（作業ツリーの `vendor/wreq-js` と Containerfile を書き換えるので、捨てられる場所で）。
 - 自動では確かめないこと: Accept の `image/jxl`（`WREQ_ALIGN_FEATURES`）と、HTTP/2 の SETTINGS・接続の窓・疑似ヘッダの並び。PR の本文に、マージの前に見る項目として書く。
