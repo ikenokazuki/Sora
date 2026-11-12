@@ -23,6 +23,28 @@ describe('extractMainContentWithRs', () => {
     });
   });
 
+  test('does not hand the operator secrets to the command (PATH and the like are kept)', async () => {
+    const dump = join(dir, 'env.dump');
+    const path = join(dir, 'envdump');
+    writeFileSync(path, `#!/bin/sh\ncat > /dev/null\nenv > "${dump}"\nprintf '%s' '{"content_html":"<p>x</p>"}'\n`);
+    chmodSync(path, 0o755);
+    const saved = { sora: process.env.SORA_API_KEY, ups: process.env.UPS_CLIENT_SECRET };
+    process.env.SORA_API_KEY = 'sk-test-secret';
+    process.env.UPS_CLIENT_SECRET = 'ups-test-secret';
+    try {
+      await extractMainContentWithRs('<html></html>', 'https://example.com/', path);
+    } finally {
+      if (saved.sora === undefined) delete process.env.SORA_API_KEY;
+      else process.env.SORA_API_KEY = saved.sora;
+      if (saved.ups === undefined) delete process.env.UPS_CLIENT_SECRET;
+      else process.env.UPS_CLIENT_SECRET = saved.ups;
+    }
+    const dumped = readFileSync(dump, 'utf8');
+    expect(dumped).not.toContain('sk-test-secret');
+    expect(dumped).not.toContain('ups-test-secret');
+    expect(dumped).toContain('PATH=');
+  });
+
   test('asks the command to keep links in the content HTML', async () => {
     // 偽のコマンドは、受け取った引数を本文として返す
     const path = join(dir, 'args');

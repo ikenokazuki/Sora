@@ -199,6 +199,18 @@ export function calculateContentStats(text: string): {
   };
 }
 
+/**
+ * ログに出す webhook の宛先。URL のパス・クエリ・認証情報に、通知先のトークンが入りやすい（Slack・Discord など）ので、
+ * ホスト名（とポート）だけを出す。URL として読めないときは、元の文字列も出さない。
+ */
+export function webhookLabel(webhookUrl: string): string {
+  try {
+    return new URL(webhookUrl).host;
+  } catch {
+    return '(不正な URL)';
+  }
+}
+
 /** Webhook URL の SSRF 安全性検証 (ホスト名 & DNS 解決後 IP の二重チェック) */
 async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
   if (process.env.ALLOW_LOCAL_FETCH === 'true') return true;
@@ -228,7 +240,7 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
 
   const isSafe = await isSafeWebhookUrl(webhookUrl);
   if (!isSafe) {
-    console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookUrl}`);
+    console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookLabel(webhookUrl)}`);
     return false;
   }
 
@@ -249,11 +261,11 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
-      console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookUrl}: HTTP ${res.status}`);
+      console.warn(`[web-fetcher/webhook] Failed to send webhook to ${webhookLabel(webhookUrl)}: HTTP ${res.status}`);
     }
     return res.ok;
   } catch (err) {
-    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookUrl}:`, errorMessage(err));
+    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookLabel(webhookUrl)}:`, errorMessage(err));
     return false;
   }
 }

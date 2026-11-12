@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressBuilder } from './address_data.js';
+import { childEnv } from '../security/child_env.js';
 import { AddressUnavailableError } from './address_errors.js';
 import { jobArtifactId, type BuildJob } from './address_store.js';
 
@@ -37,7 +38,7 @@ export class ChildProcessBuilder implements AddressBuilder {
   async run(job: BuildJob): Promise<void> {
     const id = jobArtifactId(job);
     const timeoutMs = this.options.timeoutMs?.(job) ?? DEFAULT_TIMEOUT_MS[job.kind];
-    const proc = Bun.spawn(this.command(job), { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe' });
+    const proc = Bun.spawn(this.command(job), { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: childEnv() });
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
