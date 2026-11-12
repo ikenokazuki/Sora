@@ -24,7 +24,7 @@ function warnOnce(message: string): void {
  * （打ち間違いで、ゲートウェイが off になる・ポートが既定になる・運用者のプロキシを迂回して直接つなぐ、を防ぐ）。
  * 登録簿と同じ文（変数名と正しい形。秘密の値は出さない）で、エラーにする。
  */
-function rejectInvalid(env: Env | undefined, ...names: ('SORA_EGRESS_GATEWAY' | 'SORA_EGRESS_PORTS' | 'SORA_PROXY_URL')[]): void {
+function rejectInvalid(env: Env | undefined, ...names: ('SORA_EGRESS_GATEWAY' | 'SORA_EGRESS_PORTS' | 'SORA_PROXY_URL' | 'SORA_PROXY_LIST')[]): void {
   for (const name of names) {
     const problem = envError(name, env);
     if (problem) throw new Error(problem);
@@ -51,7 +51,9 @@ export function isEgressGatewayEnabled(env?: Env): boolean {
  * NO_PROXY の宛先は、上流を使わない。SORA_EGRESS_PORTS が未設定なら、ポートはゲートウェイの既定（80・443）。env を省略すると、プロセスの環境を読む。
  */
 export function egressGatewayOptionsFromEnv(env?: Env): EgressGatewayOptions {
-  rejectInvalid(env, 'SORA_EGRESS_PORTS', 'SORA_PROXY_URL');
+  rejectInvalid(env, 'SORA_EGRESS_PORTS', 'SORA_PROXY_URL', 'SORA_PROXY_LIST');
+  // SORA_PROXY_LIST は、静的取得が、リクエストごとに替える一覧。ゲートウェイの上流は 1 つなので、黙って無視すると、替えているつもりで 1 つに偏る
+  if (envList('SORA_PROXY_LIST', env).length > 0) throw new Error('SORA_PROXY_LIST（リクエストごとに替えるプロキシの一覧）は、SORA_EGRESS_GATEWAY=on のときは使えない（ゲートウェイの上流は、SORA_PROXY_URL などの 1 つ）');
   const options: EgressGatewayOptions = {};
   const allowedPorts = envList('SORA_EGRESS_PORTS', env).map(Number);
   if (allowedPorts.length > 0) options.allowedPorts = allowedPorts;

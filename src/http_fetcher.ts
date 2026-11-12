@@ -9,6 +9,7 @@ import { envBool, envError, envInt, envList, envRaw } from './config.js';
 import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
+import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { isProxyBypassed } from './net/no_proxy.js';
 import { errorMessage } from './errors.js';
 
@@ -277,9 +278,12 @@ export class NativeFetchSession implements UniversalHttpSession {
       const cookieStr = Array.from(jar.entries()).map(([k, v]) => `${k}=${v}`).join('; ');
       headers.set('Cookie', cookieStr);
     }
+    // 出口のゲートウェイを使うときは、これも通す（wreq が使えないときの代わりが、ゲートウェイを迂回する穴にならないように）
+    const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
     const res = await fetch(url, {
       ...init,
       headers,
+      ...(gateway ? { proxy: gateway.url } : {}),
     });
 
     // Set-Cookie ヘッダーの収集 (response origin scope only)
@@ -450,8 +454,13 @@ export async function fetchWithSafeRedirects(
     : undefined;
 
   const initialDomain = new URL(initialUrl).hostname;
+  // 出口のゲートウェイを使うときは、すべての通信が、ゲートウェイ（と、その上流の運用者のプロキシ）を通る。取得ごとの別のプロキシは、
+  // 黙って無視すると、ゲートウェイを迂回したと思わせるので、エラーにする
+  const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
+  if (gateway && proxyUrl) throw new Error('SORA_EGRESS_GATEWAY=on のときは、取得ごとのプロキシの指定は使えない（すべての通信が、出口のゲートウェイを通る）');
   // 環境変数由来のプロキシは NO_PROXY の除外先には使わない（ブラウザ側と同じ扱い）。明示指定の proxyUrl はそのまま使う
-  const effectiveProxyUrl = proxyUrl
+  const effectiveProxyUrl = gateway?.url
+    ?? proxyUrl
     ?? (isProxyBypassed(initialDomain, getProxyConfig().proxyBypassList) ? undefined : pickProxyUrl());
   const browser = pickBrowserProfile();
   // 資格情報付きリクエストは専用のジャーで動かす。通常セッションと共有すると、認証で得た Set-Cookie が
