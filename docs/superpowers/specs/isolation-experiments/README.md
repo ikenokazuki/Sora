@@ -30,6 +30,9 @@ podman run --rm --http-proxy=false --user 65532:65532 -e HOME=/tmp -v "$PWD/$EXP
 # E5: 出口プロキシの試作（外のネットワークに出られる環境で）
 podman run --rm --http-proxy=false -v "$PWD/$EXP:/app/exp:ro" \
   --entrypoint /usr/local/bin/bun "$IMG" /app/exp/e5_egress_proxy.ts
+# E6: Bun の fetch が、実行中に設定した HTTP(S)_PROXY・NO_PROXY と proxy オプションを守るか
+podman run --rm --http-proxy=false -v "$PWD/$EXP:/app/exp:ro" \
+  --entrypoint /usr/local/bin/bun "$IMG" /app/exp/e6_bun_env_proxy.ts
 ```
 
 `--http-proxy=false` は、ホストの `HTTP(S)_PROXY` を Podman がコンテナへ渡し、Chromium の通信が変わるのを避けるため（付けないと、E1 の遷移が失敗した）。
