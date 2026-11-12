@@ -33,7 +33,7 @@ import * as yahoo from './services/yahoo.js';
 import { withEnv } from './test_fixtures/env.js';
 
 // v5.0.0 の環境変数の名前（全体・認証・ログ・通知・MCP・ブラウザ・静的取得・プロキシ・検索・Yahoo・X・OpenPOI・住所・HTS・追跡・国地域）。新しい名前で効き、旧名は別名として読まない（旧名を知らせるのは起動時の検査）。
-// 旧名を書くテストは、このファイルと config.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
+// 旧名を書くテストは、このファイルと config.test.ts と startup_check.test.ts だけにする（ほかのテストは新しい名前だけを使う）。
 
 /**
  * モジュールの読み込み時に読む値は、子プロセスで確かめる（このプロセスの値は、読み込んだときのまま）。
@@ -41,7 +41,7 @@ import { withEnv } from './test_fixtures/env.js';
  */
 async function loadTimeResult(code: string, names: string[], vars: Record<string, string>): Promise<string> {
   const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !names.includes(k)));
-  const proc = Bun.spawn([process.execPath, '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
+  const proc = Bun.spawn([process.execPath, '--no-env-file', '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
   const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
   return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
 }

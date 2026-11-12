@@ -3,7 +3,7 @@
  * 出力は標準エラーだけ（stdio では標準出力が MCP の JSON-RPC の流れ）。秘密の値は checkEnv が「設定済み、長さ N」にする。
  */
 import { existsSync } from 'node:fs';
-import { checkEnv, envPath, type Env } from './config.js';
+import { checkEnv, envPath, LEGACY, type Env } from './config.js';
 
 /** 同梱の実行ファイルのパスと、ファイルが無いときに起きること。 */
 const BUNDLED = {
@@ -12,10 +12,16 @@ const BUNDLED = {
 } as const;
 
 /**
- * stdio では検査しない名前。stdio は待ち受けず、認証の中間層も通らないので使わない。どれも SORA_ の付かない汎用の名前で、
- * 受け継いだシェルの環境では、ほかのプログラムの設定かもしれない（ほかの名前は stdio でも検査する）。
+ * stdio では検査しない名前: PORT と、認証の鍵・1 日の上限の旧名。stdio は待ち受けず、認証の中間層も通らないので使わない。
+ * どれも SORA_ の付かない汎用の名前で、受け継いだシェルの環境では、ほかのプログラムの設定かもしれない（ほかの名前は stdio でも検査する）。
+ * 旧名は登録簿の LEGACY から導く（名前をここに書き写さない）。
  */
-const NOT_USED_BY_STDIO: readonly string[] = ['PORT', 'API_KEY', 'WEB_FETCHER_API_KEY', 'DAILY_REQUEST_LIMIT'];
+const NOT_USED_BY_STDIO: readonly string[] = [
+  'PORT',
+  ...Object.entries(LEGACY)
+    .filter(([, { to }]) => to === 'SORA_API_KEY' || to === 'SORA_AUTH_DAILY_LIMIT')
+    .map(([old]) => old),
+];
 
 const PREFIX = '[Sora/Config]';
 
