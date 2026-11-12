@@ -47,6 +47,16 @@ export function isEgressGatewayEnabled(env?: Env): boolean {
 }
 
 /**
+ * ブラウザが、この宛先の名前を、Sora の手元で（OS の DNS で）引くか。出口のゲートウェイ・運用者のプロキシ越しなら、相手が解決するので、引かない。
+ * NO_PROXY の宛先は、プロキシを通さず、直接つなぐので、手元で引く（ゲートウェイを使うときは、NO_PROXY の宛先も、ゲートウェイが解決する）。
+ */
+export function browserResolvesLocally(host: string, env?: Env): boolean {
+  if (isEgressGatewayEnabled(env)) return false;
+  const { proxyServer, proxyBypassList } = getProxyConfig(env);
+  return !proxyServer || isProxyBypassed(host, proxyBypassList);
+}
+
+/**
  * 環境変数から、ゲートウェイの設定を作る。運用者のプロキシは、上流にする（http・https・socks5 に対応。ほかは、エラー: 黙って、上流なしにしない）。
  * NO_PROXY の宛先は、上流を使わない。SORA_EGRESS_PORTS が未設定なら、ポートはゲートウェイの既定（80・443）。env を省略すると、プロセスの環境を読む。
  */

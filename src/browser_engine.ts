@@ -4,7 +4,6 @@ import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { envBool, envInt, envPath, envRaw, envStr, type Env } from './config.js';
-import { errorMessage } from './errors.js';
 import {
   browserProxyArgs,
   createProfileDir,
@@ -18,7 +17,7 @@ import {
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
-import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
+import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
 
 // 判定の本体は net/ip_policy.ts に移した。ここからも、これまでどおり import できるようにしておく
@@ -560,8 +559,13 @@ export const BLOCKED_TRACKER_DOMAINS = [
   'pagead2.googlesyndication.com',
 ];
 
-/** DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策＋インメモリキャッシュ） */
-export async function validateHostIpDns(hostname: string): Promise<string[]> {
+/**
+ * DNS 解決後の実 IP アドレスを検証（DNS Rebinding 攻撃対策＋インメモリキャッシュ）。
+ * 名前を解決できないとき（失敗か、答えが空）は、これまでどおり、空を返して通す（接続のときの解決に任せる）。failClosed: true なら、遮断する。
+ * Sora の手元で名前を引いて接続するとき（プロキシもゲートウェイも通さないとき）は、true にする。攻撃者が、自分の DNS で、検査のときだけ失敗させ、
+ * 接続のときに内部の IP を答えると、検査を抜けられるため。名前を相手（運用者のプロキシ・出口のゲートウェイ）が解決するときは、手元の DNS が失敗するのは普通なので、通す。
+ */
+export async function validateHostIpDns(hostname: string, options: { failClosed?: boolean } = {}): Promise<string[]> {
   if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) return [];
 
   const cleanHost = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
@@ -575,26 +579,19 @@ export async function validateHostIpDns(hostname: string): Promise<string[]> {
     return cached.addresses;
   }
 
-  try {
-    const addresses = await dnsPromises.lookup(cleanHost, { all: true });
-    if (!addresses || addresses.length === 0) {
-      return [];
-    }
-    for (const addr of addresses) {
-      if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
-        throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
-      }
-    }
-    const result = addresses.map((a) => a.address);
-    dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
-    return result;
-  } catch (err) {
-    const message = errorMessage(err);
-    if (message && (message.includes('DNS Rebinding') || message.includes('プライベートネットワーク'))) {
-      throw err;
-    }
+  const addresses = await dnsPromises.lookup(cleanHost, { all: true }).catch(() => []);
+  if (addresses.length === 0) {
+    if (options.failClosed) throw new Error(`名前を解決できないため、宛先の IP を確かめられず、遮断されました: ${hostname}`);
     return [];
   }
+  for (const addr of addresses) {
+    if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
+      throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
+    }
+  }
+  const result = addresses.map((a) => a.address);
+  dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
+  return result;
 }
 
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
@@ -665,18 +662,21 @@ export async function setupPageSecurity(
           return proceed();
         }
 
-        try {
-          const addresses = await dnsPromises.lookup(host, { all: true });
-          for (const addr of addresses) {
-            if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
-              return req.abort('accessdenied');
-            }
+        const addresses = await dnsPromises.lookup(host, { all: true }).catch(() => []);
+        if (addresses.length === 0) {
+          // 名前を解決できない（失敗か、答えが空）。ブラウザが、手元で名前を引いて直接つなぐときは、検査を抜けさせない
+          if (browserResolvesLocally(host)) return req.abort('namenotresolved');
+          return proceed();
+        }
+        for (const addr of addresses) {
+          if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
+            return req.abort('accessdenied');
           }
-          dnsValidationCache.set(host, {
-            addresses: addresses.map((a) => a.address),
-            expiresAt: now + DNS_CACHE_TTL_MS,
-          });
-        } catch {}
+        }
+        dnsValidationCache.set(host, {
+          addresses: addresses.map((a) => a.address),
+          expiresAt: now + DNS_CACHE_TTL_MS,
+        });
         proceed();
       } catch {
         req.abort('failed');

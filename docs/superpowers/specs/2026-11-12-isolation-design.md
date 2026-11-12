@@ -39,7 +39,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 5. **ページ内の通信の検査に隙がある。**
    - 検査は Node 側の `dnsPromises.lookup` で、ブラウザが後で別に名前を解決する。DNS rebinding で、検査のあとに宛先を内部に替えられる（攻撃の再現はしていない）。
    - 検証結果は一定時間キャッシュされる。
-   - `validateHostIpDns` は、DNS の失敗を通す（`catch` で空を返す）。攻撃者が自分の DNS で最初の問い合わせだけ失敗させれば、検査を抜けられる。
+   - `validateHostIpDns` は、DNS の失敗を通す（`catch` で空を返す）。攻撃者が自分の DNS で最初の問い合わせだけ失敗させれば、検査を抜けられる。（PR 2c-2 で、Sora の手元で名前を引いて接続するときは、閉じた。下の「実装の状態」）
    - `SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（v4 までは `ALLOW_LOCAL_FETCH`）で全部通る。
 6. **静的取得も、検証した IP に接続を固定していない。** 検証は `validateHostIpDns`（`http_fetcher.ts`）、接続は wreq-js が別に解決する。
 7. **`/metrics` は認証なしの公開**（`PUBLIC_PATHS`）。中身に tenant の情報が無いかは未確認。
@@ -101,7 +101,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **E13**（PR 1d。Docker でサンドボックスを使う条件）: GitHub Actions のランナー（Ubuntu 26.04・kernel 7.0・Docker 29.4.2・`kernel.apparmor_restrict_unprivileged_userns=1`）で、公開イメージの Chromium を、非 root（65532）で、`--no-sandbox` なしに直接起動した（`--headless=new --dump-dom about:blank`）。(A) 既定の seccomp・既定の AppArmor: 失敗（`Failed to move to new namespace: ... errno = Operation not permitted`）。(B) `deploy/seccomp-sora.json`（既定の AppArmor）: 成功。(C) B に `apparmor=unconfined`: 失敗。(D) `seccomp=unconfined`: 成功。(E) 両方 unconfined: 失敗。(F) B に `--cap-drop=ALL`: 成功。(G) B に `no-new-privileges`: 成功。C・E が失敗するのは、このホストの sysctl が、AppArmor の制限を受けない（unconfined な）プロセスのユーザー名前空間を禁じるため。docker-default に閉じ込められた状態のほうが、使える。足す syscall の最小の組み合わせ（rootless Podman。moby 29.9.3 の既定に足す）: 既定の capability では `clone`・`unshare`（`setns` は要らない）。`--cap-drop=ALL` では、`chroot`（既定では `CAP_SYS_CHROOT` の条件つき）も要る。Sora のイメージの中（`verify-image.sh` の 6・7）では、`SORA_BROWSER_SANDBOX=on` で、`--cap-drop=ALL` に 5 つの capability と `no-new-privileges` を重ねた構成でも、サンドボックスが有効になり、`chrome://sandbox` が有効と答える。
 - **E14**（PR 2a。手元の確認）: ゲートウェイを、既定の設定で起動し、Bun の `fetch`（`proxy` オプション）から、実際のサイトに届くかを確かめた。直接: `https://example.com/` は 200（CONNECT）、`http://example.com/` も 200（転送）。`https://127.0.0.1/`・`http://169.254.169.254/`・`https://example.com:8443/` は、いずれも 403（`private_ip`・`private_ip`・`port`）。上流（このホストの、運用者のプロキシ。CONNECT 専用）を指定すると、`https://example.com/` は 200。`http://example.com/` は、上流が 405 で断る（上流の制約。ゲートウェイの拒否ではない）。内部・メタデータ・許していないポートは、上流を指定しても、ゲートウェイが 403 で拒否する。単体テストは 100 件余りで、実装を 1 か所ずつ壊して、テストが落ちることを確かめた。
 - **E15**（PR 2b-2。ブラウザをゲートウェイに通す確認。`scripts/browser-egress-check.ts`）: Sora の `getBrowser()` を `SORA_EGRESS_GATEWAY=on` で起動し、Chromium の起動の引数と通信を確かめた。起動の引数は `--proxy-server=http://127.0.0.1:<ポート>`・`--proxy-bypass-list=<-loopback>`・`--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1`・`--disable-quic`。(1) 既定の方針: `http://127.0.0.1:<ポート>/` は 403 と `X-Sora-Egress-Deny: private_ip`、`https://127.0.0.1:<ポート>/` はトンネルの失敗、`http://2130706433:<ポート>/`（別の書き方）も断られ、宛先のサーバーには、要求が 1 件も届かない（拒否のカウンターが増える）。(2) 名前の解決: OS では解決できない名前（`web.test`）の宛先に、ゲートウェイが（差し替えた resolver で）解決して届き、宛先は origin-form の `GET /p?x=1` を受ける。(3) ClientHello: ゲートウェイ越し（SNI `capture.test`）と直接（`SORA_EGRESS_GATEWAY=off`。SNI `localhost`）を、`diffHellos` で比べると、SNI 以外の全項目（暗号スイート・拡張の種類と順序・署名アルゴリズム・ALPN・鍵共有・ECH・ALPS など）が同じ。手元の Chromium 148、イメージの Chromium 156（Debian。rootless Podman の既定）、サンドボックス有効・`--cap-drop=ALL` に 5 つ・`no-new-privileges`・`deploy/seccomp-sora.json` の構成の、どれでも通った。確認が壊れたときに失敗することは、実装を壊して確かめた（ブラウザにゲートウェイの引数を渡さない・名前解決を止める引数を外す・ループバックをプロキシから外さない、のどれも失敗した。最後のものは、内部のサーバーに要求が届いて検出）。`verify-image.sh` の 8（既定の運用）・9（硬化した運用）が、CI のイメージで回す。実在のサイトでの補足: ECH を公開する Cloudflare の `https://crypto.cloudflare.com/cdn-cgi/trace`・`https://www.cloudflare.com/cdn-cgi/trace` を、手元の Chromium 148 とイメージの Chromium 156 で、直接（`SORA_EGRESS_GATEWAY=off`）とゲートウェイ越しで開くと、4 通りとも `http=http/2 tls=TLSv1.3 sni=plaintext`（実際の ECH は、どちらでも使われない = 差なし）。DoH などで HTTPS レコードを引く環境では、直接のときだけ ECH を使いうるが、未確認。
-- **E16**（PR 2c-1。静的取得をゲートウェイに通す確認。`scripts/static-egress-check.ts`）: `fetchWithSafeRedirects`（wreq-js）を `SORA_EGRESS_GATEWAY=on` で動かして確かめた。(1) DNS rebinding（取得の前の検査の DNS では解決できない名前が、ゲートウェイの解決では 127.0.0.1 になる）: http は 403 と `X-Sora-Egress-Deny: private_ip`、https は接続の失敗で、宛先のサーバーには、要求が 1 件も届かない（拒否のカウンターが増える）。(2) 名前の解決: OS では解決できない名前（`web.test`）の宛先に、ゲートウェイが解決して届き、宛先は origin-form の `GET /p?x=1` を受ける。(3) ClientHello: ゲートウェイ越し（SNI `capture.test`）と直接（`SORA_EGRESS_GATEWAY=off`。SNI `localhost`）を、`diffHellos` で比べると、SNI 以外の全項目が同じ。手元（npm の wreq-js・`chrome_149`）と、イメージ（自前の native）の、どちらでも通った。確認が壊れたときに失敗することは、実装を壊して確かめた（wreq にゲートウェイを渡さない・ゲートウェイが内部の IP も通す、のどちらも失敗した）。平文 http の要求の頭部は、ゲートウェイを通しても、wreq が出した順序・表記のままで（`Host` は先頭）、違うのは `Host`（宛先の名前）と、末尾に付く `Connection: close` だけ（単体テスト `src/http_fetcher_egress.test.ts`。ゲートウェイの書き換えを 4 通りに壊して、すべて検出した）。`verify-image.sh` の 10 が、CI のイメージで回す。
+- **E16**（PR 2c-1。静的取得をゲートウェイに通す確認。`scripts/static-egress-check.ts`）: `fetchWithSafeRedirects`（wreq-js）を `SORA_EGRESS_GATEWAY=on` で動かして確かめた。(1) DNS rebinding（取得の前の検査の DNS では解決できない名前が、ゲートウェイの解決では 127.0.0.1 になる）: http は 403 と `X-Sora-Egress-Deny: private_ip`、https は接続の失敗で、宛先のサーバーには、要求が 1 件も届かない（拒否のカウンターが増える）。(2) 名前の解決: OS では解決できない名前（`web.test`）の宛先に、ゲートウェイが解決して届き、宛先は origin-form の `GET /p?x=1` を受ける。(3) ClientHello: ゲートウェイ越し（SNI `capture.test`）と直接（`SORA_EGRESS_GATEWAY=off`。SNI `localhost`）を、`diffHellos` で比べると、SNI 以外の全項目が同じ。手元（npm の wreq-js・`chrome_149`）と、イメージ（自前の native）の、どちらでも通った。確認が壊れたときに失敗することは、実装を壊して確かめた（wreq にゲートウェイを渡さない・ゲートウェイが内部の IP も通す、のどちらも失敗した）。平文 http の要求の頭部は、ゲートウェイを通しても、wreq が出した順序・表記のままで（`Host` は先頭）、違うのは `Host`（宛先の名前）と、末尾に付く `Connection: close` だけ（単体テスト `src/http_fetcher_egress.test.ts`。ゲートウェイの書き換えを 4 通りに壊して、すべて検出した）。`verify-image.sh` の 10 が、CI のイメージで回す。実在のサイトでの補足（2026-11-12。手元から直接）: `fetchWithSafeRedirects` で、`https://example.com/`・`http://example.com/`・`http://www.cloudflare.com/`（https への転送）・`https://www.cloudflare.com/cdn-cgi/trace`・`https://ja.wikipedia.org/wiki/日本`（本文 1.7MB）・`https://www.yahoo.co.jp/` を、ゲートウェイなし・ありで取ると、状態コード（すべて 200）・最終の URL・本文の大きさ（動的な部分を除く）・所要時間が同じ（`cdn-cgi/trace` は、どちらも `http=http/2 tls=TLSv1.3`）。許していないポートの `https://example.com:8443/` は、ゲートウェイなしでは 6 秒の時間切れ、ありでは 16ms で接続に失敗する（ゲートウェイが拒否。理由は、呼び出し側には出ず、カウンター `sora_egress_denied_port_total` に出る）。
 
 ## 設計
 
@@ -147,6 +147,10 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
   - 取得の前の検査（`validateHostIpDns`）は、そのまま残す（二重の防御。on のときは、ゲートウェイが、接続の固定まで行う）。検査の DNS の失敗を閉じること（`standard` の挙動の変更）は、次の PR（2c-2）。
   - 平文の `http://` の転送は、1 接続で 1 要求（末尾に `Connection: close`）。Chrome は HTTP/1.1 で `Connection` ヘッダーを付けないので、平文の `http://` を取る要求は、その分だけ、頭部が違う。https（CONNECT）は、端から端のままで、影響が無い。
   - 確認は、イメージの中で、実際の wreq で行う（E16。`scripts/static-egress-check.ts`）。
+- **実装の状態（PR 2c-2。#101。検査の DNS の失敗を閉じる。`standard` の挙動が変わる）**: `validateHostIpDns(hostname, { failClosed })` は、名前を解決できないとき（失敗か、答えが空）、`failClosed: true` なら遮断する。既定（false）は、これまでどおり、空を返して通す。実装で決めたこと:
+  - 閉じるのは、**Sora の手元で名前を引いて接続するときだけ**。名前を相手（運用者のプロキシ・出口のゲートウェイ）が解決するときは、手元の DNS が失敗するのは普通なので、これまでどおり通す（一律に閉じると、DNS が使えず、プロキシが名前を解決している運用が壊れる）。静的取得は、`fetchWithSafeRedirects` が決めたプロキシ（`effectiveProxyUrl`）が無いとき。ブラウザは、`browserResolvesLocally(host, env?)`（ゲートウェイが無効で、運用者のプロキシが無いか、`NO_PROXY` の宛先）のとき。
+  - 閉じる場所は 3 つ: 静的取得の検査（`fetchWithSafeRedirects`）、ブラウザの `navigate`（`browser_session.ts`）、ブラウザのページの副要求の検査（`setupPageSecurity`。中止の理由は `namenotresolved`）。副要求の検査は、答えが空のときも、同じに扱う（これまでは、空をキャッシュして通していた）。
+  - 防げるのは、検査のときだけ DNS を失敗させ、接続のときに内部の IP を答える手口。検査のあとに、接続のときの解決で答えを替える DNS rebinding（穴 6）は、これでは防げず、出口のゲートウェイ（on）が受け持つ。
 
 ### 2. ブラウザのプロセス（I1・I5）
 
@@ -218,7 +222,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 マージは、その都度の承認。各 PR は、`standard` で今までの挙動を変えない。
 
 1. **ブラウザの起動**（2 の前半）: 別 uid・許可リストの環境変数・パイプ・サンドボックスの自動判定。子プロセスの環境変数の許可リストと、webhook URL のログ（穴 27・30）も、ここで。4 つの PR に分けた。1a = 子プロセスの環境変数の許可リストと webhook のログ（#92）、1b = CDP をパイプに（#93）、1c = 別 uid の起動と、サンドボックスの自動判定（#95）、1d = Docker でサンドボックスを使う seccomp プロファイルと、CI の確認（#96）。
-2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。6 つの PR に分ける。2a = ゲートウェイの核と、IP 判定の共通化（#97。どこにもつなげない。既定の挙動は変わらない）、2b は 2 つに分けた: 2b-1 = 運用者の上流のプロキシの種類を広げる（socks5・https。#98）、2b-2 = ブラウザを通す（`SORA_EGRESS_GATEWAY=on` で有効化。#99）。2c も 2 つに分ける: 2c-1 = 静的取得（wreq）を通す（`SORA_EGRESS_GATEWAY=on` で有効化。#100）、2c-2 = 検査の DNS の失敗を閉じる（`standard` の挙動が変わる）。2d = Bun の `fetch` と子プロセスを通す。
+2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。6 つの PR に分ける。2a = ゲートウェイの核と、IP 判定の共通化（#97。どこにもつなげない。既定の挙動は変わらない）、2b は 2 つに分けた: 2b-1 = 運用者の上流のプロキシの種類を広げる（socks5・https。#98）、2b-2 = ブラウザを通す（`SORA_EGRESS_GATEWAY=on` で有効化。#99）。2c も 2 つに分ける: 2c-1 = 静的取得（wreq）を通す（`SORA_EGRESS_GATEWAY=on` で有効化。#100）、2c-2 = 検査の DNS の失敗を閉じる（`standard` の挙動が変わる。#101）。2d = Bun の `fetch` と子プロセスを通す。
 3. **tenant**（4）: 複数の鍵・MCP の tenant の一本化・`X-Forwarded-For`（穴 15・29）。
 4. **状態の分離**（5）: ウォッチ・共有キャッシュの規則・intel・全体に効く操作・REST のモジュール・`/health`（穴 14・16〜20）。
 5. **資源の公平と増幅の上限**（6）: tenant ごとの上限・待ち行列の時間切れ・サイトマップ・ウォッチ・正規表現・`browser_action`・DB の上限（穴 21〜26）。
@@ -238,7 +242,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 ## 互換性（挙動が変わるところ）
 
-- `standard` で変わりうるのは、DNS の失敗を閉じること（検査の DNS が失敗したら、取得を始めない。いまは、取得側の解決に任せて続ける）と、ブラウザのプロセスの uid・環境変数・サンドボックス（使えるときだけ）。取得結果・指紋は変えない。
+- `standard` で変わりうるのは、DNS の失敗を閉じること（検査の DNS が失敗したら、取得を始めない。いまは、取得側の解決に任せて続ける。ただし、名前を相手が解決する取得（運用者のプロキシ・出口のゲートウェイ越し）は、これまでどおり。PR 2c-2）と、ブラウザのプロセスの uid・環境変数・サンドボックス（使えるときだけ）。取得結果・指紋は変えない。
 - ブラウザの通信をゲートウェイ経由にすること（`standard` でも入れるか）は、未決の 5。入れる場合、HTTP/3（QUIC）は使えなくなる（静的取得の指紋とは、むしろそろう）。
 - 上限（増幅・ウォッチ・`browser_action` など）は、`standard` では緩い既定値にして、今までの利用を止めない。`strict` で締める。
 - `strict` は、新しい水準で、既存の運用者には影響しない。

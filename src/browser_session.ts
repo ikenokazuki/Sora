@@ -20,6 +20,7 @@ import {
 } from './scraper.js';
 import { envBool } from './config.js';
 import { errorMessage } from './errors.js';
+import { browserResolvesLocally } from './net/egress.js';
 
 const EVALUATE_FORBIDDEN = 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set SORA_BROWSER_ALLOW_EVALUATE=true to enable)';
 
@@ -337,7 +338,7 @@ async function runActionsOnPage(
             throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
           }
           if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
-            await validateHostIpDns(parsedUrl.hostname);
+            await validateHostIpDns(parsedUrl.hostname, { failClosed: browserResolvesLocally(parsedUrl.hostname) });
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
           await bypassCloudflareTurnstile(page);
