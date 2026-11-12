@@ -12,6 +12,7 @@ import {
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
 import { envEnum, envList } from './config.js';
+import { checkStartupEnv } from './startup_check.js';
 
 // ドメイン別サブルーター
 import { formatError } from './routes/utils.js';
@@ -191,6 +192,8 @@ installShutdownHandlers();
 // 5. サーバー起動 (Bun.serve)
 // ==========================================
 if (import.meta.main) {
+  // 環境変数の検査。誤りがあれば、待ち受ける前に exit(1)（テストが index.js を import しても走らない）
+  checkStartupEnv();
   const server = Bun.serve({
     port: PORT,
     idleTimeout: 255, // Bun の最大アイドルタイムアウト (255秒 = 4分15秒)。SSE ストリームや深層スクレイピング中の切断を防止
