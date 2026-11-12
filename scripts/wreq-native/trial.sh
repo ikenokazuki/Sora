@@ -127,7 +127,7 @@ $(cat "$OUT/verify.log")
 
 ## マージのあと
 
-Actions が作った PR には、PR の CI が動きません。上の確認は、試しビルドの実行が済ませています。マージすると、main への push で、通常どおり Test と公開のパイプラインが動きます。
+Actions が作った PR の CI（Test・Containerfile）は、承認待ち（\`action_required\`）で止まります。走らせたいときは、PR の画面の「Approve and run workflows」を押してください（上の確認は、試しビルドの実行が済ませているので、押さなくても構いません）。マージすると、main への push で、通常どおり Test と公開のパイプラインが動きます。
 BODY
 
 note "新しい固定でビルドと確認が通った。PR の材料を作った（上限 ${current_max} → ${max}）。"
