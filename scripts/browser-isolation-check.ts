@@ -5,9 +5,12 @@
  *           --entrypoint /usr/local/bin/bun <イメージ> /app/scripts/browser-isolation-check.ts
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md（設計 2）
  */
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { browserSandboxStatus, closeSharedBrowser, getBrowser } from '../src/browser_engine.js';
 import { DEFAULT_LAUNCHER } from '../src/browser_launch_plan.js';
+import { initDatabase } from '../src/db.js';
 
 // テストの既定（サンドボックスなし）を、本番と同じ auto にする
 process.env.SORA_BROWSER_SANDBOX ??= 'auto';
@@ -48,6 +51,23 @@ for (const [label, env] of refusals) {
   const result = Bun.spawnSync([DEFAULT_LAUNCHER, '--version'], { env });
   check(result.exitCode === 126, `起動用バイナリが、${label}で止まらない: exit=${result.exitCode}`);
 }
+
+// 運用者の DB（Cookie・キャッシュを持つ）は、0600 で作られ、落とした uid が読めない（src/db.ts）。ディレクトリは、ボリュームの /data と同じ 0755
+const dbDir = mkdtempSync(join(tmpdir(), 'sora-isolation-db-'));
+chmodSync(dbDir, 0o755);
+initDatabase(join(dbDir, 'sora.db'));
+const dbProbe = Bun.spawnSync(
+  [
+    DEFAULT_LAUNCHER,
+    '-e',
+    'const fs = require("node:fs"); const dir = process.env.DB_DIR; console.log(JSON.stringify(fs.readdirSync(dir).map((name) => { try { fs.readFileSync(dir + "/" + name); return name + ":READABLE"; } catch (error) { return name + ":" + error.code; } })));',
+  ],
+  { env: { ...launcherEnv, DB_DIR: dbDir } },
+);
+const dbResults = dbProbe.exitCode === 0 ? (JSON.parse(dbProbe.stdout.toString()) as string[]) : [];
+check(dbResults.some((entry) => entry.startsWith('sora.db:')), `DB のファイルを調べられない: exit=${dbProbe.exitCode} ${dbProbe.stderr.toString().trim()}`);
+check(dbResults.every((entry) => entry.endsWith(':EACCES')), `落とした uid が、運用者の DB を読める: ${dbResults.join(' ')}`);
+rmSync(dbDir, { recursive: true, force: true });
 
 const { browser } = await getBrowser();
 const pid = browser.process()?.pid;
