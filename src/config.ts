@@ -611,9 +611,9 @@ export function envError(name: EnvName, env: Env = process.env): string | undefi
   return `${name} の値（${shown(s, raw as string)}）は不正です。正しい形: ${formOf(s)}`;
 }
 
-/** 組で設定する名前と、片方だけのときの扱い（error は起動を拒否。warn は、その結果を添えて警告）。 */
-const PAIRS: readonly (readonly [SettingName, SettingName, 'error' | string])[] = [
-  ['SORA_HTS_CROSS_INDEX_URL', 'SORA_HTS_CROSS_INDEX_SHA256', 'error'],
+/** 組で設定する名前。片方だけのとき、結果の文が無い組は起動を拒否し、ある組は、その結果を添えて警告する。 */
+const PAIRS: readonly (readonly [SettingName, SettingName, string?])[] = [
+  ['SORA_HTS_CROSS_INDEX_URL', 'SORA_HTS_CROSS_INDEX_SHA256'],
   ['SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET', 'API を使わずにブラウザで照会します'],
   ['SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET', 'API を使わずにブラウザで照会します'],
 ];
@@ -659,7 +659,7 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
     if (isBlank(env[a]) === isBlank(env[b])) continue;
     const [set, missing] = isBlank(env[a]) ? [b, a] : [a, b];
     const fix = `（${missing} も設定するか、${set} を消してください）`;
-    if (effect === 'error') errors.push(`${a} と ${b} は組で設定します。${set} だけでは効かないので、起動しません${fix}`);
+    if (!effect) errors.push(`${a} と ${b} は組で設定します。${set} だけでは効かないので、起動しません${fix}`);
     else warnings.push(`${a} と ${b} は組で設定します。${set} だけでは効かず、${effect}${fix}`);
   }
 
