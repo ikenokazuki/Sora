@@ -45,11 +45,13 @@ function parseUid(raw: string | undefined, warnings: string[]): { uid: number; e
 
 /**
  * uid を落とすのに要る capability: プロファイルを渡す chown、Chromium の終了後に、別 uid 所有の 0700 のプロファイルを消す DAC_OVERRIDE、
+ * 別 uid の Chromium に信号を送る KILL（無いと、puppeteer の後始末の process.kill が EPERM になり、プロセスが異常終了する）、
  * 起動用バイナリの setgroups・setgid・setuid。Docker の既定にはあるが、--cap-drop=ALL では無い。
  */
 const DROP_CAPABILITIES = [
   ['CAP_CHOWN', 0],
   ['CAP_DAC_OVERRIDE', 1],
+  ['CAP_KILL', 5],
   ['CAP_SETGID', 6],
   ['CAP_SETUID', 7],
 ] as const;

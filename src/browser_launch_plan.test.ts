@@ -75,7 +75,7 @@ describe('planBrowserLaunch（別 uid で起動するか・サンドボックス
     expect(planBrowserLaunch({ ...base, nodeEnv: 'test', currentUid: 1000, env: { SORA_BROWSER_SANDBOX: 'auto' } }).plan.sandbox).toBe('try');
   });
 
-  test('root でも、uid を落とすのに要る capability（CHOWN・DAC_OVERRIDE・SETGID・SETUID）が足りなければ（--cap-drop=ALL）、既定（auto）は、落とさず、警告して、従来どおり起動する', () => {
+  test('root でも、uid を落とすのに要る capability（CHOWN・DAC_OVERRIDE・KILL・SETGID・SETUID）が足りなければ（--cap-drop=ALL）、既定（auto）は、落とさず、警告して、従来どおり起動する', () => {
     const { plan, warnings } = planBrowserLaunch({ ...base, missingCapabilities: ['CAP_CHOWN', 'CAP_SETUID'] });
     expect(plan).toEqual({ drop: null, sandbox: 'none' });
     expect(warnings).toHaveLength(1);
@@ -103,18 +103,19 @@ describe('planBrowserLaunch（別 uid で起動するか・サンドボックス
 describe('missingDropCapabilities（/proc/self/status の CapEff から、uid を落とすのに足りない capability）', () => {
   const status = (capEff: string) => `Name:\tbun\nCapInh:\t0000000000000000\nCapPrm:\t${capEff}\nCapEff:\t${capEff}\nCapBnd:\t${capEff}\n`;
 
-  test('Docker の既定の capability（a80425fb）には、4 つとも入っている', () => {
+  test('Docker の既定の capability（a80425fb）には、5 つとも入っている', () => {
     expect(missingDropCapabilities(status('00000000a80425fb'))).toEqual([]);
     expect(missingDropCapabilities(status('000001ffffffffff'))).toEqual([]);
-    expect(missingDropCapabilities(status('00000000000000c3'))).toEqual([]);
+    expect(missingDropCapabilities(status('00000000000000e3'))).toEqual([]);
   });
 
-  test('--cap-drop=ALL（0）では 4 つとも足りない。1 つだけ足りないときは、その 1 つ', () => {
-    expect(missingDropCapabilities(status('0000000000000000'))).toEqual(['CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_SETGID', 'CAP_SETUID']);
-    expect(missingDropCapabilities(status('00000000000000c2'))).toEqual(['CAP_CHOWN']);
-    expect(missingDropCapabilities(status('00000000000000c1'))).toEqual(['CAP_DAC_OVERRIDE']);
-    expect(missingDropCapabilities(status('0000000000000083'))).toEqual(['CAP_SETGID']);
-    expect(missingDropCapabilities(status('0000000000000043'))).toEqual(['CAP_SETUID']);
+  test('--cap-drop=ALL（0）では 5 つとも足りない。1 つだけ足りないときは、その 1 つ', () => {
+    expect(missingDropCapabilities(status('0000000000000000'))).toEqual(['CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_KILL', 'CAP_SETGID', 'CAP_SETUID']);
+    expect(missingDropCapabilities(status('00000000000000e2'))).toEqual(['CAP_CHOWN']);
+    expect(missingDropCapabilities(status('00000000000000e1'))).toEqual(['CAP_DAC_OVERRIDE']);
+    expect(missingDropCapabilities(status('00000000000000c3'))).toEqual(['CAP_KILL']);
+    expect(missingDropCapabilities(status('00000000000000a3'))).toEqual(['CAP_SETGID']);
+    expect(missingDropCapabilities(status('0000000000000063'))).toEqual(['CAP_SETUID']);
   });
 
   test('読めない・CapEff の行がなければ、足りているとみなす（試して、失敗すれば、起動のエラーになる）', () => {
