@@ -195,7 +195,7 @@ export const SETTINGS = {
   },
   SORA_BROWSER_ALLOW_EVALUATE: {
     area: 'browser', kind: 'bool', default: false, legacy: ['ALLOW_BROWSER_EVALUATE'], legacyOnly: 'warn',
-    doc: '`true` のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断',
+    doc: '`true`（`1`・`on`・`yes` も可）のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断',
   },
   SORA_BROWSER_LOW_MEMORY: {
     area: 'browser', kind: 'bool', default: false,
@@ -399,9 +399,9 @@ export const EXTERNAL = {
   CHROME_PATH: { area: 'browser', kind: 'path', defaultDoc: '*(自動検出)*', doc: 'Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索）' },
   CHROME_BIN: { area: 'browser', kind: 'path', defaultDoc: '*(自動検出)*', doc: '`CHROME_PATH` と同じ（`CHROME_PATH` が無いか、そのファイルが無いときに見ます）' },
   PUPPETEER_EXECUTABLE_PATH: { area: 'browser', kind: 'path', defaultDoc: '*(自動検出)*', doc: '`CHROME_PATH` と同じ（`CHROME_PATH`・`CHROME_BIN` の次に見ます）' },
-  HTTPS_PROXY: { area: 'proxy', kind: 'str', doc: '標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`）' },
+  HTTPS_PROXY: { area: 'proxy', kind: 'str', doc: '標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`）。外部 API を呼ぶ Bun の fetch には、Bun が自動で適用します' },
   https_proxy: { area: 'proxy', kind: 'str', doc: '`HTTPS_PROXY` の小文字の綴り（`HTTPS_PROXY` が無いときに見ます）' },
-  HTTP_PROXY: { area: 'proxy', kind: 'str', doc: '標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます）' },
+  HTTP_PROXY: { area: 'proxy', kind: 'str', doc: '標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます。Bun の fetch には、Bun が自動で適用します）' },
   http_proxy: { area: 'proxy', kind: 'str', doc: '`HTTP_PROXY` の小文字の綴り（`HTTP_PROXY` が無いときに見ます）' },
   ALL_PROXY: { area: 'proxy', kind: 'str', doc: '標準の汎用プロキシ URL（SOCKS5 など。`HTTP_PROXY` が無いときに見ます）' },
   all_proxy: { area: 'proxy', kind: 'str', doc: '`ALL_PROXY` の小文字の綴り（`ALL_PROXY` が無いときに見ます）' },

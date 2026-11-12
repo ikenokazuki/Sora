@@ -2516,10 +2516,11 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 起動のとき（待ち受ける前に）、環境変数を検査します。
 
 - **エラー（起動しません）**: 値が正しい形でないとき（変数の名前と正しい形を示します）、v5.0.0 で名前が変わった設定のうち、効かないと困るもの（認証キー・`SORA_MODULES` など）を旧名だけで設定しているとき（新しい名前を示します。旧名と扱いの一覧は `RELEASE_NOTES.md` の v5.0.0）、組で設定する判例の索引の URL と SHA-256 の片方だけのとき。エラーをすべて出してから、件数の行を出して終了コード 1 で止まります。
-- **警告（起動を続けます）**: 知らない `SORA_*` の名前（綴りの誤り）、効かない旧名・廃止した名前、運送会社の ID と秘密の片方だけ、同梱の実行ファイルのパス（`SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH`）にファイルが無いとき。
+- **警告（起動を続けます）**: 知らない `SORA_*` の名前（綴りの誤り）、効かない旧名・廃止した名前、運送会社の ID と秘密の片方だけ、空白だけの `SORA_API_KEY`、同梱の実行ファイルのパス（`SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH`）にファイルが無いとき。
 - 秘密の値（API キー・プロキシの URL・運送会社の鍵など）は表示せず、「設定済み、長さ N」とだけ出します。出力はすべて標準エラーで、行の先頭は `[Sora/Config] エラー:`・`[Sora/Config] 警告:` です（stdio でも標準出力には何も出しません）。
-- stdio（`bun run stdio`）は待ち受けも認証もしないので、`PORT` と、認証キー・1 日の上限の v4 までの名前は検査しません（ほかの検査は同じです）。
-- `SORA_API_KEY` も `SORA_ALLOW_ANONYMOUS` も無いのは、エラーにしません。認証なしで起動します（Fail-Open。最初の要求でキー無しの警告を 1 回出します）。
+- 真偽値の設定は、`true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`（大文字小文字は問いません）を読みます。ほかの値は、読むときは既定に戻り、起動のときの検査がエラーにします。
+- stdio（`bun run stdio`）は待ち受けも認証もしないので、`PORT` と、`SORA_API_KEY`・`SORA_AUTH_DAILY_LIMIT` の旧名（`RELEASE_NOTES.md` の v5.0.0 の表）は検査しません（ほかの検査は同じです）。
+- `SORA_API_KEY` も `SORA_ALLOW_ANONYMOUS` も無いのは、エラーにしません。認証なしで起動します（Fail-Open。公開のパス（`/health` など）以外の最初の要求で、キー無しの警告を 1 回出します）。
 - 公開イメージは、DB を `/data/sora.db` に置きます（`SORA_DB_PATH`。住所データ・HTS は隣の `/data/address`・`/data/hts`）。`-v sora-data:/data` のように名前つきの volume を `/data` に付けると、コンテナを作り直しても残ります（付けなければ匿名の volume ができます）。
 - プロキシ: `SORA_PROXY_URL` はブラウザ（Chromium）と静的取得の両方に効きます。`SORA_PROXY_LIST` は静的取得だけに効き（静的取得では `SORA_PROXY_URL` より優先）、ブラウザには効きません。どちらも無いときは、標準の `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY` を使います。
 
@@ -2575,7 +2576,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `CHROME_BIN` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH` が無いか、そのファイルが無いときに見ます） |
 | `CHROME_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
 | `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH`・`CHROME_BIN` の次に見ます） |
-| `SORA_BROWSER_ALLOW_EVALUATE` | `false` | `true` のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断 |
+| `SORA_BROWSER_ALLOW_EVALUATE` | `false` | `true`（`1`・`on`・`yes` も可）のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断 |
 | `SORA_BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
 | `SORA_BROWSER_LOW_MEMORY` | `false` | `true` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`SORA_BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
 | `SORA_BROWSER_MAX_CONCURRENCY` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1 以上。50 を超える値は 50 にします）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます |
@@ -2596,9 +2597,9 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 |---|---|---|
 | `ALL_PROXY` | *(未設定)* | 標準の汎用プロキシ URL（SOCKS5 など。`HTTP_PROXY` が無いときに見ます） |
 | `all_proxy` | *(未設定)* | `ALL_PROXY` の小文字の綴り（`ALL_PROXY` が無いときに見ます） |
-| `HTTPS_PROXY` | *(未設定)* | 標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`） |
+| `HTTPS_PROXY` | *(未設定)* | 標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`）。外部 API を呼ぶ Bun の fetch には、Bun が自動で適用します |
 | `https_proxy` | *(未設定)* | `HTTPS_PROXY` の小文字の綴り（`HTTPS_PROXY` が無いときに見ます） |
-| `HTTP_PROXY` | *(未設定)* | 標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます） |
+| `HTTP_PROXY` | *(未設定)* | 標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます。Bun の fetch には、Bun が自動で適用します） |
 | `http_proxy` | *(未設定)* | `HTTP_PROXY` の小文字の綴り（`HTTP_PROXY` が無いときに見ます） |
 | `NO_PROXY` | *(未設定)* | プロキシを通さないホストのカンマ区切り（例: `localhost,127.0.0.1,.local`）。ブラウザと静的取得に効きます |
 | `no_proxy` | *(未設定)* | `NO_PROXY` の小文字の綴り（`NO_PROXY` が無いときに見ます） |
