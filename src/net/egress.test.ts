@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import net from 'node:net';
 import { resetSecurityMetrics } from '../security/metrics.js';
-import { egressGatewayOptionsFromEnv, getEgressGateway, isEgressGatewayEnabled, parseAllowedPorts, stopEgressGateway } from './egress.js';
+import { egressGatewayOptionsFromEnv, getEgressGateway, isEgressGatewayEnabled, stopEgressGateway } from './egress.js';
 import { connectHead, createEgressTestKit, fakeResolver, readBytes } from './egress_test_kit.js';
 
 const kit = createEgressTestKit();
@@ -21,31 +21,34 @@ describe('isEgressGatewayEnabled: 外向きの通信を、出口のゲートウ�
     expect(isEgressGatewayEnabled(value === undefined ? {} : { SORA_EGRESS_GATEWAY: value })).toBe(false);
   });
 
-  test('認識できない値は、使わず、警告を出す（打ち間違いに気づけるように）。同じ値の警告は 1 回だけ', () => {
+  test.each(['enable-typo', 'auto', '2', 'onn'])('書き方の誤り %j は、使わないことにせず、変数名と正しい形のエラー（打ち間違いで、検査が黙って外れない）', (value) => {
+    let message = '';
+    try {
+      isEgressGatewayEnabled({ SORA_EGRESS_GATEWAY: value });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('SORA_EGRESS_GATEWAY');
+    expect(message).toContain('true・false・1・0・on・off・yes・no');
+  });
+
+  test('SORA_FETCH_ALLOW_PRIVATE_NETWORK=true（内部への取得を許す、開発・テスト用の設定）のときは、使わない。警告を出す', () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     try {
-      expect(isEgressGatewayEnabled({ SORA_EGRESS_GATEWAY: 'enable-typo' })).toBe(false);
-      expect(isEgressGatewayEnabled({ SORA_EGRESS_GATEWAY: 'enable-typo' })).toBe(false);
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain('SORA_EGRESS_GATEWAY');
-      expect(String(warn.mock.calls[0][0])).toContain('enable-typo');
+      expect(isEgressGatewayEnabled({ SORA_EGRESS_GATEWAY: 'on', SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' })).toBe(false);
+      expect(String(warn.mock.calls[0][0])).toContain('SORA_FETCH_ALLOW_PRIVATE_NETWORK');
     } finally {
       warn.mockRestore();
     }
   });
 
-  test('ALLOW_LOCAL_FETCH=true（内部への取得を許す、開発・テスト用の設定）のときは、使わない。警告を出す', () => {
-    const warn = spyOn(console, 'warn').mockImplementation(() => {});
-    try {
-      expect(isEgressGatewayEnabled({ SORA_EGRESS_GATEWAY: 'on', ALLOW_LOCAL_FETCH: 'true' })).toBe(false);
-      expect(String(warn.mock.calls[0][0])).toContain('ALLOW_LOCAL_FETCH');
-    } finally {
-      warn.mockRestore();
-    }
+  test.each([undefined, 'false', '0', 'off'])('SORA_FETCH_ALLOW_PRIVATE_NETWORK=%j のときは、on なら使う', (value) => {
+    const env = value === undefined ? { SORA_EGRESS_GATEWAY: 'on' } : { SORA_EGRESS_GATEWAY: 'on', SORA_FETCH_ALLOW_PRIVATE_NETWORK: value };
+    expect(isEgressGatewayEnabled(env)).toBe(true);
   });
 });
 
-describe('parseAllowedPorts: 許す宛先ポート（SORA_EGRESS_PORTS）', () => {
+describe('SORA_EGRESS_PORTS: 許す宛先ポート', () => {
   test.each([
     [undefined, undefined],
     ['', undefined],
@@ -54,12 +57,15 @@ describe('parseAllowedPorts: 許す宛先ポート（SORA_EGRESS_PORTS）', () =
     ['80,443', [80, 443]],
     [' 80 , 8080,443 ', [80, 8080, 443]],
     ['65535', [65535]],
-  ])('%j は %j', (raw, expected) => {
-    expect(parseAllowedPorts(raw)).toEqual(expected);
+    // ほかの列の設定と同じ読み方: 空の要素は読み飛ばし、先頭の 0 は外し、重複は 1 つにする
+    ['80,,443', [80, 443]],
+    ['080,80', [80]],
+  ])('%j は %j（未設定は、ゲートウェイの既定の 80・443）', (raw, expected) => {
+    expect(egressGatewayOptionsFromEnv(raw === undefined ? {} : { SORA_EGRESS_PORTS: raw }).allowedPorts).toEqual(expected);
   });
 
-  test.each(['abc', '0', '65536', '80,,443', '80;443', '-1', '1.5', '80 443'])('%j は、理由を添えたエラー（起動のときに気づく）', (raw) => {
-    expect(() => parseAllowedPorts(raw)).toThrow('SORA_EGRESS_PORTS');
+  test.each(['abc', '0', '65536', '80;443', '-1', '1.5', '80 443', '80,abc'])('%j は、変数名と正しい形のエラー（黙って、既定のポートにしない）', (raw) => {
+    expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_PORTS: raw })).toThrow('SORA_EGRESS_PORTS');
   });
 });
 
@@ -94,8 +100,21 @@ describe('egressGatewayOptionsFromEnv: 環境変数から、ゲートウェイ�
     expect(bypass?.('10.1.2.4')).toBe(false);
   });
 
-  test('対応していない上流（socks4 など）は、理由を添えたエラー。黙って、上流なしにはしない', () => {
-    expect(() => egressGatewayOptionsFromEnv({ SORA_PROXY_URL: 'socks4://proxy.example:1080' })).toThrow('socks4');
+  test('SORA_PROXY_URL が対応していない方式（socks4 など）なら、変数名と正しい形のエラー（値は出さない）。黙って、上流なしにはしない', () => {
+    let message = '';
+    try {
+      egressGatewayOptionsFromEnv({ SORA_PROXY_URL: 'socks4://user:secret@proxy.example:1080' });
+    } catch (error) {
+      message = String(error);
+    }
+    expect(message).toContain('SORA_PROXY_URL');
+    expect(message).toContain('socks5');
+    expect(message).not.toContain('secret');
+    expect(message).not.toContain('proxy.example');
+  });
+
+  test('標準の HTTPS_PROXY が対応していない方式（socks4）のときも、理由を添えたエラー。黙って、上流なしにはしない', () => {
+    expect(() => egressGatewayOptionsFromEnv({ HTTPS_PROXY: 'socks4://proxy.example:1080' })).toThrow('socks4');
   });
 
   test('SORA_EGRESS_PORTS を、許すポートにする。誤りは、エラー', () => {

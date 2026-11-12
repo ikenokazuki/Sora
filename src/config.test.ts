@@ -116,8 +116,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 6 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(59);
+  test('counts match the design (53 + 8 settings, 13 standard names, 40 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(61);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(40);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -185,7 +185,7 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the six settings added after the design are registered', () => {
+  test('the eight settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
@@ -195,6 +195,10 @@ describe('registry', () => {
     expect(SETTINGS.SORA_BROWSER_UID).toMatchObject({ area: 'browser', kind: 'str', default: 'auto' });
     expect(SETTINGS.SORA_BROWSER_SANDBOX).toMatchObject({ area: 'browser', kind: 'enum', values: ['auto', 'on', 'off'] });
     expect(SETTINGS.SORA_BROWSER_SANDBOX).not.toHaveProperty('default');
+    // 出口のゲートウェイ（領域 egress）。ポートの既定（80・443）は、ゲートウェイの側が持つので、登録簿には default を置かない
+    expect(SETTINGS.SORA_EGRESS_GATEWAY).toMatchObject({ area: 'egress', kind: 'bool', default: false });
+    expect(SETTINGS.SORA_EGRESS_PORTS).toMatchObject({ area: 'egress', kind: 'list' });
+    expect(SETTINGS.SORA_EGRESS_PORTS).not.toHaveProperty('default');
   });
 
   test('names follow the naming rules and do not collide', () => {
@@ -322,6 +326,36 @@ describe('the browser isolation settings (SORA_BROWSER_PIPE, SORA_BROWSER_UID, S
 
   test('all three are known names, so checkEnv does not warn about them', () => {
     expect(checkEnv({ SORA_BROWSER_PIPE: 'true', SORA_BROWSER_UID: 'off', SORA_BROWSER_SANDBOX: 'on' })).toEqual({ errors: [], warnings: [] });
+  });
+});
+
+describe('the egress gateway settings (SORA_EGRESS_GATEWAY, SORA_EGRESS_PORTS)', () => {
+  test('SORA_EGRESS_GATEWAY is off by default: every spelling reads true or false; anything else reads off and stops startup (a typo must not silently switch the check off)', () => {
+    const name = 'SORA_EGRESS_GATEWAY';
+    for (const raw of ['on', 'ON', 'true', '1', 'yes', ' TRUE ']) expect(envBool(name, { [name]: raw }), raw).toBe(true);
+    for (const raw of ['off', 'false', '0', 'no', ' Off ', undefined, '', '   ']) expect(envBool(name, { [name]: raw }), String(raw)).toBe(false);
+    for (const raw of ['enable-typo', 'auto', '2', 'onn']) {
+      expect(envBool(name, { [name]: raw }), raw).toBe(false);
+      expect(checkEnv({ [name]: raw }).errors, raw).toEqual([
+        `SORA_EGRESS_GATEWAY の値（${JSON.stringify(raw)}）は不正です。正しい形: true・false・1・0・on・off・yes・no のどれか（大文字小文字は問わない）`,
+      ]);
+    }
+  });
+
+  test('SORA_EGRESS_PORTS: comma-separated ports 1-65535 (trimmed, empty entries skipped, leading zeros dropped, duplicates merged); unset reads an empty list (the gateway default 80,443 applies)', () => {
+    const name = 'SORA_EGRESS_PORTS';
+    expect(envList(name, {})).toEqual([]);
+    expect(envList(name, { [name]: ' 80 , 8080,443 ' })).toEqual(['80', '8080', '443']);
+    expect(envList(name, { [name]: '80,,443' })).toEqual(['80', '443']);
+    expect(envList(name, { [name]: '080,80,65535' })).toEqual(['80', '65535']);
+    for (const raw of ['abc', '0', '65536', '80;443', '-1', '1.5', '80 443', '80,abc']) {
+      expect(envError(name, { [name]: raw }), raw).toContain('SORA_EGRESS_PORTS の値');
+    }
+    expect(checkEnv({ [name]: '0' }).errors).toEqual(['SORA_EGRESS_PORTS の値（"0"）は不正です。正しい形: カンマ区切りの 1〜65535 のポート（例: `80,443`）']);
+  });
+
+  test('both are known names, so checkEnv does not warn about them', () => {
+    expect(checkEnv({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_PORTS: '80,443,8443' })).toEqual({ errors: [], warnings: [] });
   });
 });
 

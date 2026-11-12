@@ -21,6 +21,7 @@ export const AREAS = {
   browser: 'ブラウザ',
   fetch: '静的取得',
   proxy: 'プロキシ',
+  egress: '出口のゲートウェイ',
   search: '検索',
   yahoo: 'Yahoo',
   x: 'X',
@@ -96,6 +97,8 @@ const moduleName = (value: string) => {
 const prefecture = (value: string) => (/^\d{1,2}$/.test(value) && Number(value) >= 1 && Number(value) <= 47 ? value.padStart(2, '0') : undefined);
 const providerId = (value: string) => (/^[a-z0-9_-]+$/.test(value) ? value : undefined);
 const did = (value: string) => (/^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/.test(value) ? value : undefined);
+/** TCP のポート（1〜65535。先頭の 0 は外す） */
+const port = (value: string) => (/^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535 ? String(Number(value)) : undefined);
 
 const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'];
 const isParty = (value: unknown) =>
@@ -105,7 +108,7 @@ const PARTY_FORM = 'JSON のオブジェクト（`name`・`street`・`city`・`s
 
 const MODULES_IN_ALL = MODULE_NAMES.filter((m) => !EXPLICIT_ONLY_MODULES.includes(m)).join(',');
 
-/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 6 個）。 */
+/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 8 個）。 */
 export const SETTINGS = {
   // --- 全体 ---
   SORA_API_KEY: {
@@ -253,6 +256,19 @@ export const SETTINGS = {
     area: 'proxy', kind: 'list', item: (value: string) => url(value, PROXY_SCHEMES), secret: true,
     form: 'カンマ区切りのプロキシ URL（http・https・socks5）',
     doc: '静的取得だけに使うプロキシ URL のカンマ区切りリスト。設定時はリクエストごとにランダムでローテーションします（`SORA_PROXY_URL` より優先。ブラウザには効きません）。SSRF 対策のため、MCP・REST のリクエストの引数からは指定できません',
+  },
+
+  // --- 出口のゲートウェイ ---
+  SORA_EGRESS_GATEWAY: {
+    area: 'egress', kind: 'bool', default: false,
+    defaultDoc: '*(未設定 = off)*',
+    doc: 'ブラウザ（Chromium）の外向きの通信を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、ブラウザを最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。書き方の誤りは、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。いまは、ブラウザの通信だけが対象です（静的取得などは通りません）。',
+  },
+  SORA_EGRESS_PORTS: {
+    area: 'egress', kind: 'list', item: port,
+    form: 'カンマ区切りの 1〜65535 のポート（例: `80,443`）',
+    defaultDoc: '`80,443`',
+    doc: '出口のゲートウェイが通す、宛先のポートです（カンマ区切り、1〜65535）。これ以外のポートへの接続は、403 で断ります。書き方の誤りは、起動のときにエラーにして止めます。`SORA_EGRESS_GATEWAY` が有効なときだけ効きます。',
   },
 
   // --- 検索 ---

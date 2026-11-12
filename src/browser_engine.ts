@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
-import { envBool, envInt, envPath, envRaw, envStr, envUrl, type Env } from './config.js';
+import { envBool, envInt, envPath, envRaw, envStr, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import {
   browserProxyArgs,
