@@ -250,7 +250,7 @@ export const SETTINGS = {
   SORA_YAHOO_MCP_PATH: {
     area: 'yahoo', kind: 'path', legacy: ['YAHOO_MCP_PATH'], legacyOnly: 'warn',
     defaultDoc: '*(自動検出。公開イメージは `/app/yahoo-search-mcp`)*',
-    doc: '同梱の Yahoo 検索の実行ファイル（`yahoo-search-mcp`）のパス。未設定なら `/usr/local/bin/yahoo-search-mcp`・リポジトリの `bin/yahoo-search-mcp`・`PATH` の順に探します。起動のときに読みます',
+    doc: '同梱の Yahoo 検索の実行ファイル（`yahoo-search-mcp`）のパス。未設定か、そのファイルが無いとき（起動時に警告します）は、`/usr/local/bin/yahoo-search-mcp`・リポジトリの `bin/yahoo-search-mcp`・`PATH` の順に探します。起動のときに読みます',
   },
   SORA_YAHOO_MIN_INTERVAL_MS: {
     area: 'yahoo', kind: 'int', min: 0, default: 500,
