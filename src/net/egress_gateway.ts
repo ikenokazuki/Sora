@@ -55,6 +55,11 @@ export interface EgressGatewayOptions {
    * 名前の解決は上流が行うので、ここでの検査は、名前・IP リテラル・ポートまで（答えの IP は見えない。上流が内部に届かないことは、運用者が保証する）。
    */
   upstream?: EgressUpstream;
+  /**
+   * 上流のプロキシを使わず、直接つなぐ宛先か（NO_PROXY）。整えた名前（小文字・末尾のドットなし）か IP リテラルを渡す。
+   * 直接つなぐときも、検査（解決は 1 回・公開の IP だけ・検査した IP に固定）は、同じに受ける。
+   */
+  bypassUpstream?: (host: string) => boolean;
 }
 
 /** コンストラクターで整えた、上流のプロキシ。authorization は、http・https の上流に付ける Proxy-Authorization の値 */
@@ -68,10 +73,11 @@ interface ResolvedUpstream {
   authorization?: string;
 }
 
-/** 検査を通した宛先への接続。leftover は、上流のプロキシの 200 の頭部と同じ送信に混じっていた、トンネルのバイト */
+/** 検査を通した宛先への接続。leftover は、上流のプロキシの 200 の頭部と同じ送信に混じっていた、トンネルのバイト。upstream は、この接続が通った上流（直接なら undefined） */
 interface Opened {
   socket: net.Socket;
   leftover: Buffer;
+  upstream: ResolvedUpstream | undefined;
 }
 
 const DEFAULT_PORTS: readonly number[] = [80, 443];
@@ -189,6 +195,7 @@ export class EgressGateway {
   private readonly isPrivateIp: (ip: string) => boolean;
   private readonly limits: typeof DEFAULTS;
   private readonly upstream: ResolvedUpstream | undefined;
+  private readonly bypassUpstream: ((host: string) => boolean) | undefined;
   private server: net.Server | undefined;
   private readonly sockets = new Set<net.Socket>();
   /** 受けているクライアントの接続の数（maxConnections の判定に使う） */
@@ -201,6 +208,7 @@ export class EgressGateway {
     this.resolveName =
       options.resolve ?? (async (host) => (await dns.lookup(host, { all: true, verbatim: true })).map((entry) => entry.address));
     this.isPrivateIp = options.isPrivateIp ?? defaultIsPrivateIp;
+    this.bypassUpstream = options.bypassUpstream;
     const upstream = options.upstream;
     this.upstream = upstream && {
       type: upstream.type ?? 'http',
@@ -330,12 +338,12 @@ export class EgressGateway {
     if (!opened) return;
     const authority = formatHost(destination.host) + (destination.port === 80 ? '' : `:${destination.port}`);
     // http・https のプロキシへは、絶対 URI の要求（プロキシが宛先へ送る）。直接つなぐときと、socks5（宛先への接続を確立済み）は、宛先への origin-form
-    const viaHttpProxy = this.upstream !== undefined && this.upstream.type !== 'socks5';
+    const viaHttpProxy = opened.upstream !== undefined && opened.upstream.type !== 'socks5';
     const forwarded = [
       `${method} ${viaHttpProxy ? `http://${authority}${destination.path}` : destination.path} HTTP/1.1`,
       `Host: ${authority}`,
       ...headers.map(([name, value]) => `${name}: ${value}`),
-      ...(viaHttpProxy && this.upstream?.authorization ? [`Proxy-Authorization: ${this.upstream.authorization}`] : []),
+      ...(viaHttpProxy && opened.upstream?.authorization ? [`Proxy-Authorization: ${opened.upstream.authorization}`] : []),
       'Connection: close',
     ];
     opened.socket.write(`${forwarded.join('\r\n')}\r\n\r\n`);
@@ -348,9 +356,10 @@ export class EgressGateway {
    */
   private async open(client: net.Socket, host: string, port: number, purpose: 'tunnel' | 'forward'): Promise<Opened | undefined> {
     this.checkDestination(host, port);
-    const opened = this.upstream
-      ? await this.dialUpstream(this.upstream, host, port, purpose)
-      : { socket: await this.dialDirect(host, port), leftover: Buffer.alloc(0) };
+    const upstream = this.upstream && !this.bypassUpstream?.(host) ? this.upstream : undefined;
+    const opened: Opened = upstream
+      ? await this.dialUpstream(upstream, host, port, purpose)
+      : { socket: await this.dialDirect(host, port), leftover: Buffer.alloc(0), upstream: undefined };
     if (client.destroyed) {
       opened.socket.destroy();
       return undefined;
@@ -443,7 +452,7 @@ export class EgressGateway {
       if (error instanceof GatewayError && error.warn) throw error;
       throw new GatewayError(502, `${describeUpstream(upstream)}に接続できない`, undefined, true);
     }
-    if (purpose === 'forward') return { socket, leftover: Buffer.alloc(0) };
+    if (purpose === 'forward') return { socket, leftover: Buffer.alloc(0), upstream };
     const authority = `${formatHost(host)}:${port}`;
     const request = [`CONNECT ${authority} HTTP/1.1`, `Host: ${authority}`, ...(upstream.authorization ? [`Proxy-Authorization: ${upstream.authorization}`] : [])];
     socket.write(`${request.join('\r\n')}\r\n\r\n`);
@@ -451,7 +460,7 @@ export class EgressGateway {
       const response = await this.readHead(socket, `${describeUpstream(upstream)}の応答の頭部を読めない`);
       const status = /^HTTP\/1\.[01] (\d{3})/.exec(response.head)?.[1];
       if (status !== '200') throw new GatewayError(502, `${describeUpstream(upstream)}が CONNECT を断った: ${status ?? '読めない応答'}`, undefined, true);
-      return { socket, leftover: response.rest };
+      return { socket, leftover: response.rest, upstream };
     } catch (error) {
       socket.destroy();
       throw error;
@@ -503,7 +512,7 @@ export class EgressGateway {
     }
     socket.allowHalfOpen = true; // 片側が送信を終えても、反対向きの転送を続ける（直接つないだときと同じ）
     this.track(socket);
-    return { socket, leftover: Buffer.alloc(0) };
+    return { socket, leftover: Buffer.alloc(0), upstream };
   }
 
   /** ソケットから、空行までの頭部を読む（大きさの上限・時間切れつき）。読んだあとは一時停止し、頭部のあとのバイトは rest で返す */

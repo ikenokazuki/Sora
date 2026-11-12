@@ -482,3 +482,96 @@ describe('上流の接続の失敗: 設定の誤りに気づけるよう、同�
     });
   });
 });
+
+// ---- 上流を使わない宛先（NO_PROXY）: 直接つなぐが、検査は受ける ----
+
+describe('上流を使わない宛先（bypassUpstream）: 直接つなぐ。検査（解決は 1 回・公開の IP だけ・IP に固定）は、同じに受ける', () => {
+  test('指定した宛先は、上流を通さず、ゲートウェイが解決して、検査した IP に直接つなぐ。ほかの宛先は、上流を通る', async () => {
+    const echo = await kit.startEchoServer();
+    const proxy = await kit.startFakeHttpProxy();
+    const { resolve, calls } = fakeResolver({ 'direct.test': ['127.0.0.1'] });
+    const { port } = await startGateway({
+      resolve,
+      allowedPorts: [echo.port, 443],
+      isPrivateIp: () => false,
+      upstream: { host: '127.0.0.1', port: proxy.port },
+      bypassUpstream: (host) => host === 'direct.test',
+    });
+
+    const direct = await rawRequest(port, connectHead(`direct.test:${echo.port}`));
+    expect(direct.status).toBe(200);
+    direct.socket.write('ping');
+    expect((await readBytes(direct.socket, 4, direct.rest)).toString()).toBe('ping');
+    expect(calls).toEqual(['direct.test']);
+    expect(proxy.connections).toHaveLength(0);
+
+    const viaProxy = await rawRequest(port, connectHead('other.test:443'));
+    expect(viaProxy.status).toBe(200);
+    expect(proxy.heads[0].split('\r\n')[0]).toBe('CONNECT other.test:443 HTTP/1.1');
+    expect(calls).toEqual(['direct.test']); // other.test は、ここでは解決しない
+  });
+
+  test('指定した宛先でも、非公開の IP に解決されたら拒否する（上流を使わないことが、検査を外さない）', async () => {
+    const echo = await kit.startEchoServer();
+    const { resolve } = fakeResolver({ 'direct.test': ['127.0.0.1'] });
+    const { port } = await startGateway({
+      resolve,
+      allowedPorts: [echo.port],
+      upstream: { host: '127.0.0.1', port: await closedPort() },
+      bypassUpstream: () => true,
+    });
+
+    const reply = await rawRequest(port, connectHead(`direct.test:${echo.port}`));
+    expect(reply.status).toBe(403);
+    expect(reply.headers['x-sora-egress-deny']).toBe('private_ip');
+    expect(echo.connections).toHaveLength(0);
+  });
+
+  test('指定した宛先でも、解決できなければ閉じる（502・dns）', async () => {
+    const { port } = await startGateway({
+      resolve: fakeResolver({}).resolve,
+      upstream: { host: '127.0.0.1', port: await closedPort() },
+      bypassUpstream: () => true,
+    });
+
+    const reply = await rawRequest(port, connectHead('nx.test:443'));
+    expect(reply.status).toBe(502);
+    expect(reply.headers['x-sora-egress-deny']).toBe('dns');
+  });
+
+  test('http:// の転送も、指定した宛先は、上流向けのヘッダーなしの origin-form で、直接送る', async () => {
+    const origin = await kit.startOrigin('ok');
+    const proxy = await kit.startFakeHttpProxy();
+    const { resolve } = fakeResolver({ 'direct.test': ['127.0.0.1'] });
+    const { port } = await startGateway({
+      resolve,
+      allowedPorts: [origin.port],
+      isPrivateIp: () => false,
+      upstream: { host: '127.0.0.1', port: proxy.port, username: 'u', password: 'p' },
+      bypassUpstream: (host) => host === 'direct.test',
+    });
+
+    const reply = await rawRequest(port, `GET http://direct.test:${origin.port}/a?x=1 HTTP/1.1\r\nHost: wrong\r\n\r\n`);
+    expect(reply.status).toBe(200);
+    expect(origin.requests).toHaveLength(1);
+    const lines = origin.requests[0].head.split('\r\n');
+    expect(lines[0]).toBe('GET /a?x=1 HTTP/1.1');
+    expect(lines.slice(1).sort()).toEqual(['Connection: close', `Host: direct.test:${origin.port}`]);
+    expect(proxy.connections).toHaveLength(0);
+  });
+
+  test('判定には、解決の前に整えた名前（小文字・末尾のドットなし）を渡す', async () => {
+    const seen: string[] = [];
+    const { port } = await startGateway({
+      resolve: fakeResolver({}).resolve,
+      upstream: { host: '127.0.0.1', port: await closedPort() },
+      bypassUpstream: (host) => {
+        seen.push(host);
+        return true;
+      },
+    });
+
+    await rawRequest(port, connectHead('Direct.TEST.:443'));
+    expect(seen).toEqual(['direct.test']);
+  });
+});
