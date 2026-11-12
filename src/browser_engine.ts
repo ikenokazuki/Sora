@@ -7,6 +7,7 @@ import { errorMessage } from './errors.js';
 import {
   createProfileDir,
   DEFAULT_LAUNCHER,
+  missingDropCapabilities,
   planBrowserLaunch,
   removeProfileDir,
   SandboxFallback,
@@ -294,6 +295,14 @@ function warnLaunchOnce(message: string): void {
   console.warn(`[Sora] ${message}`);
 }
 
+function readSelfStatus(): string | undefined {
+  try {
+    return readFileSync('/proc/self/status', 'utf8');
+  } catch {
+    return undefined; // Linux 以外
+  }
+}
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
   const userAgent = await stealthUserAgent();
@@ -334,6 +343,8 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     currentUid: typeof process.getuid === 'function' ? process.getuid() : undefined,
     launcherExists: chromePath !== undefined && existsSync(DEFAULT_LAUNCHER),
     nodeEnv: process.env.NODE_ENV,
+    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
+    missingCapabilities: missingDropCapabilities(readSelfStatus()),
   });
   for (const warning of warnings) warnLaunchOnce(warning);
   const drop = plan.drop && chromePath ? { ...plan.drop, chromePath } : null;

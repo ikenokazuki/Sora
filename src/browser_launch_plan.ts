@@ -30,16 +30,39 @@ export interface LaunchPlan {
 /** 4294967295 は、uid_t の -1（変更しない）の意味なので使えない */
 const MAX_UID = 4_294_967_294;
 
-function parseUid(raw: string | undefined, warnings: string[]): number | 'off' {
+/** explicit = 数を明示した（auto・不正な値は、false） */
+function parseUid(raw: string | undefined, warnings: string[]): { uid: number; explicit: boolean } | 'off' {
   const text = raw?.trim().toLowerCase();
-  if (!text || text === 'auto') return DEFAULT_BROWSER_UID;
+  if (!text || text === 'auto') return { uid: DEFAULT_BROWSER_UID, explicit: false };
   if (text === 'off') return 'off';
   if (/^\d+$/.test(text)) {
     const uid = Number(text);
-    if (uid >= 1 && uid <= MAX_UID) return uid;
+    if (uid >= 1 && uid <= MAX_UID) return { uid, explicit: true };
   }
   warnings.push(`SORA_BROWSER_UID=${JSON.stringify(raw)} は、1 以上の整数・auto・off のどれでもないので、auto（${DEFAULT_BROWSER_UID}）として扱う`);
-  return DEFAULT_BROWSER_UID;
+  return { uid: DEFAULT_BROWSER_UID, explicit: false };
+}
+
+/**
+ * uid を落とすのに要る capability: プロファイルを渡す chown、Chromium の終了後に、別 uid 所有の 0700 のプロファイルを消す DAC_OVERRIDE、
+ * 起動用バイナリの setgroups・setgid・setuid。Docker の既定にはあるが、--cap-drop=ALL では無い。
+ */
+const DROP_CAPABILITIES = [
+  ['CAP_CHOWN', 0],
+  ['CAP_DAC_OVERRIDE', 1],
+  ['CAP_SETGID', 6],
+  ['CAP_SETUID', 7],
+] as const;
+
+/**
+ * /proc/self/status の CapEff（いまの実効 capability）から、uid を落とすのに足りない capability を返す。
+ * 読めなければ（Linux 以外など）、足りているとみなす: 試して、失敗すれば、起動のエラーになる。
+ */
+export function missingDropCapabilities(procStatus: string | undefined): string[] {
+  const hex = procStatus?.match(/^CapEff:\s*([0-9a-fA-F]+)\s*$/m)?.[1];
+  if (!hex) return [];
+  const effective = BigInt(`0x${hex}`);
+  return DROP_CAPABILITIES.filter(([, bit]) => ((effective >> BigInt(bit)) & 1n) === 0n).map(([name]) => name);
 }
 
 function parseSandbox(raw: string | undefined, nodeEnv: string | undefined, warnings: string[]): 'auto' | 'on' | 'off' {
@@ -53,7 +76,8 @@ function parseSandbox(raw: string | undefined, nodeEnv: string | undefined, warn
 
 /**
  * 起動の計画を決める。
- * - SORA_BROWSER_UID: auto（既定: 65532）・off・数。root で、起動用バイナリがあるときだけ、落とす
+ * - SORA_BROWSER_UID: auto（既定: 65532）・off・数。root で、起動用バイナリがあるときだけ、落とす。
+ *   落とすのに要る capability が足りなければ（--cap-drop=ALL）、auto は、警告して、落とさずに従来どおり起動する（既定の挙動を壊さない）。数を明示したときは、失敗させる
  * - SORA_BROWSER_SANDBOX: auto（既定）・on・off。root のまま（落とせない）の Chromium は、サンドボックスを使えない
  */
 export function planBrowserLaunch(options: {
@@ -63,19 +87,32 @@ export function planBrowserLaunch(options: {
   launcherExists: boolean;
   nodeEnv: string | undefined;
   launcher?: string;
+  /** uid を落とすのに足りない capability（missingDropCapabilities）。既定は、足りている */
+  missingCapabilities?: readonly string[];
 }): { plan: LaunchPlan; warnings: string[] } {
   const warnings: string[] = [];
   const uid = parseUid(options.env.SORA_BROWSER_UID, warnings);
   const mode = parseSandbox(options.env.SORA_BROWSER_SANDBOX, options.nodeEnv, warnings);
   const isRoot = options.currentUid === 0;
-  const drop = isRoot && uid !== 'off' && options.launcherExists ? { uid, gid: uid, launcher: options.launcher ?? DEFAULT_LAUNCHER } : null;
+  const wantsDrop = isRoot && uid !== 'off' && options.launcherExists;
+  const missing = wantsDrop ? (options.missingCapabilities ?? []) : [];
+  if (uid !== 'off' && missing.length > 0) {
+    const list = missing.join(', ');
+    if (uid.explicit) {
+      throw new Error(`SORA_BROWSER_UID=${uid.uid} を指定したが、uid を落とすのに要る capability が足りない（${list}）。コンテナに足すか（--cap-add）、SORA_BROWSER_UID=auto・off にする`);
+    }
+    warnings.push(
+      `Chromium を別の uid に落とせない: capability が足りない（${list}。--cap-drop=ALL など）。Sora と同じ uid（root）で起動する。落とすには、${missing.map((name) => `--cap-add=${name.slice(4)}`).join(' ')} を足す。落とさないなら、SORA_BROWSER_UID=off で、この警告を消せる`,
+    );
+  }
+  const drop = wantsDrop && missing.length === 0 ? { uid: uid.uid, gid: uid.uid, launcher: options.launcher ?? DEFAULT_LAUNCHER } : null;
   const canUseSandbox = !isRoot || drop !== null;
 
   let sandbox: SandboxPolicy;
   if (mode === 'off') sandbox = 'none';
   else if (mode === 'on') {
     if (!canUseSandbox) {
-      throw new Error('SORA_BROWSER_SANDBOX=on だが、Chromium を root のまま起動する（起動用バイナリがない、または SORA_BROWSER_UID=off）ので、サンドボックスを有効にできない');
+      throw new Error('SORA_BROWSER_SANDBOX=on だが、Chromium を root のまま起動する（起動用バイナリがない、SORA_BROWSER_UID=off、または uid を落とす capability が足りない）ので、サンドボックスを有効にできない');
     }
     sandbox = 'require';
   } else sandbox = canUseSandbox ? 'try' : 'none';
@@ -111,8 +148,9 @@ const realProfileDirDeps: ProfileDirDeps = { mkdtemp: mkdtempSync, chown: chownS
 export function createProfileDir(owner: { uid: number; gid: number }, deps: ProfileDirDeps = realProfileDirDeps): string {
   const dir = deps.mkdtemp(join(tmpdir(), 'sora-chromium-'));
   try {
-    deps.chown(dir, owner.uid, owner.gid);
+    // 先に 0700 にする: chown のあとは所有者でなくなるので、chmod に CAP_FOWNER が要る（--cap-drop=ALL では無い）
     deps.chmod(dir, 0o700);
+    deps.chown(dir, owner.uid, owner.gid);
   } catch (error) {
     (deps.remove ?? removeProfileDir)(dir);
     throw error;

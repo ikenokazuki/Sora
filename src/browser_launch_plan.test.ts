@@ -3,6 +3,7 @@ import {
   DEFAULT_BROWSER_UID,
   DEFAULT_LAUNCHER,
   createProfileDir,
+  missingDropCapabilities,
   planBrowserLaunch,
   removeProfileDir,
   SandboxFallback,
@@ -73,6 +74,53 @@ describe('planBrowserLaunch（別 uid で起動するか・サンドボックス
     expect(planBrowserLaunch({ ...base, nodeEnv: 'test', currentUid: 1000 }).plan.sandbox).toBe('none');
     expect(planBrowserLaunch({ ...base, nodeEnv: 'test', currentUid: 1000, env: { SORA_BROWSER_SANDBOX: 'auto' } }).plan.sandbox).toBe('try');
   });
+
+  test('root でも、uid を落とすのに要る capability（CHOWN・DAC_OVERRIDE・SETGID・SETUID）が足りなければ（--cap-drop=ALL）、既定（auto）は、落とさず、警告して、従来どおり起動する', () => {
+    const { plan, warnings } = planBrowserLaunch({ ...base, missingCapabilities: ['CAP_CHOWN', 'CAP_SETUID'] });
+    expect(plan).toEqual({ drop: null, sandbox: 'none' });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('CAP_CHOWN, CAP_SETUID');
+    expect(warnings[0]).toContain('--cap-add=CHOWN --cap-add=SETUID');
+    expect(warnings[0]).toContain('SORA_BROWSER_UID=off');
+  });
+
+  test('capability が足りなくても、落とす気がない（SORA_BROWSER_UID=off・root でない・起動用バイナリがない）なら、警告しない', () => {
+    const missingCapabilities = ['CAP_SETUID'];
+    expect(planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: 'off' }, missingCapabilities }).warnings).toEqual([]);
+    expect(planBrowserLaunch({ ...base, currentUid: 1000, missingCapabilities })).toEqual({ plan: { drop: null, sandbox: 'try' }, warnings: [] });
+    expect(planBrowserLaunch({ ...base, launcherExists: false, missingCapabilities }).warnings).toEqual([]);
+  });
+
+  test('SORA_BROWSER_UID に数を明示したのに、capability が足りなければ、起動を失敗させる（明示した設定を、黙って捨てない）', () => {
+    expect(() => planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: '10001' }, missingCapabilities: ['CAP_CHOWN', 'CAP_SETGID'] })).toThrow('CAP_CHOWN, CAP_SETGID');
+  });
+
+  test('capability が足りず、root のまま起動するなら、SORA_BROWSER_SANDBOX=on は、有効にできないので、計画の時点で例外', () => {
+    expect(() => planBrowserLaunch({ ...base, env: { SORA_BROWSER_SANDBOX: 'on' }, missingCapabilities: ['CAP_SETUID'] })).toThrow('capability');
+  });
+});
+
+describe('missingDropCapabilities（/proc/self/status の CapEff から、uid を落とすのに足りない capability）', () => {
+  const status = (capEff: string) => `Name:\tbun\nCapInh:\t0000000000000000\nCapPrm:\t${capEff}\nCapEff:\t${capEff}\nCapBnd:\t${capEff}\n`;
+
+  test('Docker の既定の capability（a80425fb）には、4 つとも入っている', () => {
+    expect(missingDropCapabilities(status('00000000a80425fb'))).toEqual([]);
+    expect(missingDropCapabilities(status('000001ffffffffff'))).toEqual([]);
+    expect(missingDropCapabilities(status('00000000000000c3'))).toEqual([]);
+  });
+
+  test('--cap-drop=ALL（0）では 4 つとも足りない。1 つだけ足りないときは、その 1 つ', () => {
+    expect(missingDropCapabilities(status('0000000000000000'))).toEqual(['CAP_CHOWN', 'CAP_DAC_OVERRIDE', 'CAP_SETGID', 'CAP_SETUID']);
+    expect(missingDropCapabilities(status('00000000000000c2'))).toEqual(['CAP_CHOWN']);
+    expect(missingDropCapabilities(status('00000000000000c1'))).toEqual(['CAP_DAC_OVERRIDE']);
+    expect(missingDropCapabilities(status('0000000000000083'))).toEqual(['CAP_SETGID']);
+    expect(missingDropCapabilities(status('0000000000000043'))).toEqual(['CAP_SETUID']);
+  });
+
+  test('読めない・CapEff の行がなければ、足りているとみなす（試して、失敗すれば、起動のエラーになる）', () => {
+    expect(missingDropCapabilities(undefined)).toEqual([]);
+    expect(missingDropCapabilities('Name:\tbun\n')).toEqual([]);
+  });
 });
 
 describe('withoutNoSandbox', () => {
@@ -84,7 +132,7 @@ describe('withoutNoSandbox', () => {
 });
 
 describe('プロファイルのディレクトリ（別 uid の Chromium が書ける場所）', () => {
-  test('一時ディレクトリを作り、落とし先の uid・gid に chown して、0700 にする', () => {
+  test('一時ディレクトリを作り、自分の所有のうちに 0700 にしてから、落とし先の uid・gid に chown する（chown のあとの chmod は、所有者でなくなるので CAP_FOWNER が要る）', () => {
     const calls: string[] = [];
     const dir = createProfileDir(
       { uid: 65532, gid: 65532 },
@@ -98,7 +146,7 @@ describe('プロファイルのディレクトリ（別 uid の Chromium が書�
       },
     );
     expect(dir).toMatch(/sora-chromium-ABC123$/);
-    expect(calls).toEqual([expect.stringMatching(/^mkdtemp .*sora-chromium-$/), `chown ${dir} 65532:65532`, `chmod ${dir} 700`]);
+    expect(calls).toEqual([expect.stringMatching(/^mkdtemp .*sora-chromium-$/), `chmod ${dir} 700`, `chown ${dir} 65532:65532`]);
   });
 
   test('chown が失敗したら、作ったディレクトリを消して、例外を投げる', () => {
