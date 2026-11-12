@@ -99,6 +99,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **E11**（イメージの中。Bun 1.4.4・Chromium 156・root）: Sora の起動のまま、パイプで起動し（`--remote-debugging-pipe` があり、ポートの引数がない）、12MB の文字列と縦長のフルページ・スクリーンショットが完全に届く。強制終了は 50ms で検知し、次の `getBrowser()` が新しいブラウザを起動して描画できる。
 - **E12**（PR 1c。ビルドしたイメージの中。Bun 1.4.4・Chromium 156・root・rootless Podman の既定）: Sora の起動のまま、Chromium が **uid 65532・補助グループなし**で動き、サンドボックスは有効（`chrome://sandbox` が「You are adequately sandboxed.」）。root の Sora 本体からは読める `/proc/<Sora の pid>/environ` を、Chromium に `file://` で開かせても、読めない。運用者の DB（`src/db.ts` が 0600 で作る。Cookie・キャッシュを持つ）も、落とした uid からは `EACCES`（DB と `-wal`・`-shm`。ディレクトリは `/data` と同じ 0755）。プロファイルは `/tmp/sora-chromium-*`（所有者は Chromium の uid・0700）で、`closeSharedBrowser()` のあとに消える。ユーザー名前空間を拒否する seccomp（`unshare`・`setns`・`CLONE_NEWUSER` つきの `clone`・`clone3` を拒否。Docker の既定と同じ種類のもの）をかけると、最初の起動が失敗して警告を出し、`--no-sandbox` に戻して起動し、同じ検査を通る（サンドボックスは off、uid は 65532 のまま）。実際の Docker の既定の seccomp・AppArmor（GitHub Actions のランナー）でも、同じ確認が通った: 最初の起動が失敗して警告が出て、`--no-sandbox` に戻り、uid は 65532 のまま、サンドボックスは off。起動用バイナリは 376KB で、イメージの大きさはほとんど変わらない。落とした Chromium は dumpable でなくなるので、root でも `CAP_SYS_PTRACE` が無ければ `/proc/<pid>/environ` は読めない。この検査は `scripts/browser-isolation-check.ts` で、`scripts/verify-image.sh` が、CI のイメージのビルドで回す。`--cap-drop=ALL` では、落とすのに要る capability が無く、最初の実装は、プロファイルの `chown` が `EPERM` になって、ブラウザが起動しなかった。直した形: 足りなければ、警告して従来どおり（uid 0）で動く（`scripts/browser-capdrop-check.ts`）。`--cap-drop=ALL` に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` だけを足せば、uid 65532 に落ち、プロファイルも後始末される（`chown` のあとの `chmod` は `CAP_FOWNER` が要るので、順序を逆にした）。`KILL` が無いと、root の Sora は、別 uid の Chromium に信号を送れず（`kill(2)`: 送り手が特権を持つか、実 uid が対象の実・保存 uid と同じである必要がある）、puppeteer の後始末の `process.kill(pid, 0)` が `EPERM` になって、Bun が異常終了する（サンドボックスの起動に失敗したあとなど。2 回に 1 回ほど。GitHub の Docker の CI で見つけ、手元でも再現した。最初は 4 つで足りると考えていた）。この 2 つも、`verify-image.sh` が回す。なお、`--cap-drop=ALL` では、既定の seccomp が `chroot`（`CAP_SYS_CHROOT` の条件つき）を許さなくなり、サンドボックスの起動も失敗して、戻る。
 - **E13**（PR 1d。Docker でサンドボックスを使う条件）: GitHub Actions のランナー（Ubuntu 26.04・kernel 7.0・Docker 29.4.2・`kernel.apparmor_restrict_unprivileged_userns=1`）で、公開イメージの Chromium を、非 root（65532）で、`--no-sandbox` なしに直接起動した（`--headless=new --dump-dom about:blank`）。(A) 既定の seccomp・既定の AppArmor: 失敗（`Failed to move to new namespace: ... errno = Operation not permitted`）。(B) `deploy/seccomp-sora.json`（既定の AppArmor）: 成功。(C) B に `apparmor=unconfined`: 失敗。(D) `seccomp=unconfined`: 成功。(E) 両方 unconfined: 失敗。(F) B に `--cap-drop=ALL`: 成功。(G) B に `no-new-privileges`: 成功。C・E が失敗するのは、このホストの sysctl が、AppArmor の制限を受けない（unconfined な）プロセスのユーザー名前空間を禁じるため。docker-default に閉じ込められた状態のほうが、使える。足す syscall の最小の組み合わせ（rootless Podman。moby 29.9.3 の既定に足す）: 既定の capability では `clone`・`unshare`（`setns` は要らない）。`--cap-drop=ALL` では、`chroot`（既定では `CAP_SYS_CHROOT` の条件つき）も要る。Sora のイメージの中（`verify-image.sh` の 6・7）では、`SORA_BROWSER_SANDBOX=on` で、`--cap-drop=ALL` に 5 つの capability と `no-new-privileges` を重ねた構成でも、サンドボックスが有効になり、`chrome://sandbox` が有効と答える。
+- **E14**（PR 2a。手元の確認）: ゲートウェイを、既定の設定で起動し、Bun の `fetch`（`proxy` オプション）から、実際のサイトに届くかを確かめた。直接: `https://example.com/` は 200（CONNECT）、`http://example.com/` も 200（転送）。`https://127.0.0.1/`・`http://169.254.169.254/`・`https://example.com:8443/` は、いずれも 403（`private_ip`・`private_ip`・`port`）。上流（このホストの、運用者のプロキシ。CONNECT 専用）を指定すると、`https://example.com/` は 200。`http://example.com/` は、上流が 405 で断る（上流の制約。ゲートウェイの拒否ではない）。内部・メタデータ・許していないポートは、上流を指定しても、ゲートウェイが 403 で拒否する。単体テストは 100 件余りで、実装を 1 か所ずつ壊して、テストが落ちることを確かめた。
 
 ## 設計
 
@@ -123,6 +124,13 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - 動く場所: 既定は Sora のプロセスの中（`Bun.listen`、ループバックの 1 ポート）。別コンテナ構成（3）では、別のコンテナで動かす（同じコードを別の入口で起動）。
 - Chromium 自身の背景通信は、起動フラグで元から止める（`--disable-background-networking`・`--disable-component-update` など。止めても指紋に出ないことを確かめてから）。
 - 限界: 乗っ取られたブラウザは、フラグを無視して直接つなげる。これは 2（別 uid・サンドボックス）と 3（ネットワークで閉じる）が受け持つ。
+- **実装の状態（PR 2a。#97）**: 核は `src/net/egress_gateway.ts`、IP の判定は `src/net/ip_policy.ts`（`browser_engine.ts` から移した。`192.0.0.0/24` を足した）。まだ、どこにもつないでいない。実装で決めたこと:
+  - 待ち受けは、`Bun.listen` でなく `node:net`（E5 の試作が Chromium と動いた。背圧と半閉じを `pipe` に任せられる）。
+  - 名前の解決は 1 回。答えが 1 つでも非公開なら、全体を拒否する。IP リテラルと別の書き方（`0x7f.1`・`2130706433`・`[::ffff:7f00:1]`）・内部の名前（`localhost`・`*.internal`・メタデータ）は、解決の前に拒否する。解決できない・答えが空・時間切れは、閉じる（502・`dns`）。
+  - `http://` の転送は、**1 つの接続で 1 つの要求だけ**を通す: 宛先へは origin-form・`Connection: close`・`Host` は宛先から付け直す。要求本文は `Content-Length` の長さまで（`Transfer-Encoding` の要求本文・数でない値・食い違う値は 400）。頭部と同じ送信に枠を超えるバイトが混じっていたら、何も転送せずに 400。あとから届いたら、枠までを送り終えて切る。上流のプロキシへ連鎖するとき、続けて送られた別の要求（検査していない宛先への要求）が、上流に処理されるのを防ぐため。宛先側へ、クライアントの送信終了（FIN）は伝えない（要求の途中で閉じられたと見て、応答をやめるサーバーがある）。
+  - 上流のプロキシは、http のものだけ。資格情報は Basic。名前の解決は上流が行うので、ここでの検査は、名前・IP リテラル・ポートまで。
+  - 拒否のカウンターは `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`。`/metrics` は、名前だけのカウンターなので、理由ごとに別の名前）。応答には `X-Sora-Egress-Deny: <理由>` を付ける。接続の失敗（502）は、方針の拒否ではないので、数えない。
+  - 既定の上限: 同時のクライアント接続 512・無通信 5 分・頭部 16KB・解決と接続は 10 秒。`stop()` は、中継中の接続もすべて切る。
 
 ### 2. ブラウザのプロセス（I1・I5）
 
@@ -194,7 +202,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 マージは、その都度の承認。各 PR は、`standard` で今までの挙動を変えない。
 
 1. **ブラウザの起動**（2 の前半）: 別 uid・許可リストの環境変数・パイプ・サンドボックスの自動判定。子プロセスの環境変数の許可リストと、webhook URL のログ（穴 27・30）も、ここで。4 つの PR に分けた。1a = 子プロセスの環境変数の許可リストと webhook のログ（#92）、1b = CDP をパイプに（#93）、1c = 別 uid の起動と、サンドボックスの自動判定（#95）、1d = Docker でサンドボックスを使う seccomp プロファイルと、CI の確認（#96）。
-2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。
+2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。4 つの PR に分ける。2a = ゲートウェイの核と、IP 判定の共通化（#97。どこにもつなげない。既定の挙動は変わらない）、2b = ブラウザを通す（設定で有効化）、2c = 静的取得（wreq）を通す・検査の DNS の失敗を閉じる（`standard` の挙動が変わる）、2d = Bun の `fetch` と子プロセスを通す。
 3. **tenant**（4）: 複数の鍵・MCP の tenant の一本化・`X-Forwarded-For`（穴 15・29）。
 4. **状態の分離**（5）: ウォッチ・共有キャッシュの規則・intel・全体に効く操作・REST のモジュール・`/health`（穴 14・16〜20）。
 5. **資源の公平と増幅の上限**（6）: tenant ごとの上限・待ち行列の時間切れ・サイトマップ・ウォッチ・正規表現・`browser_action`・DB の上限（穴 21〜26）。
