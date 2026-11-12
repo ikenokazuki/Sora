@@ -262,7 +262,7 @@ export const SETTINGS = {
   SORA_EGRESS_GATEWAY: {
     area: 'egress', kind: 'bool', default: false,
     defaultDoc: '*(未設定 = off)*',
-    doc: 'ブラウザ（Chromium）と静的取得（wreq-js）の外向きの通信を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。書き方の誤りは、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。ゲートウェイの上流は 1 つなので、リクエストごとに替える `SORA_PROXY_LIST` とは一緒に使えません（エラー）。いまは、ブラウザと静的取得の通信が対象です（Bun の `fetch` を使う取得と、子プロセスは、まだ通りません）。',
+    doc: '外向きの通信（ブラウザ（Chromium）・静的取得（wreq-js）・Bun の `fetch`（固定の提供元・webhook など）・通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築））を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先や、取得先の応答が決める URL を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。Bun は、`NO_PROXY` が挙げた宛先には、指定したプロキシも使わず直接つなぐので、最初の通信のあとに、Sora のプロセスの環境から `NO_PROXY` を外します。子プロセスには、`HTTP_PROXY`・`HTTPS_PROXY` でゲートウェイを指し、`ALL_PROXY`・`NO_PROXY` は渡しません（環境変数に従わない子プロセスは、止められません）。ゲートウェイを有効にすると、内部の宛先・許していないポートへは、運用者が設定した宛先（`SORA_X_DETAIL_BASE_URL` に指定した自前のサーバーなど）も届かなくなります。書き方の誤りと、`SORA_PROXY_LIST`（リクエストごとに替えるプロキシの一覧。ゲートウェイの上流は 1 つなので、一緒には使えません）との併用、対応していない上流のプロキシの方式は、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。',
   },
   SORA_EGRESS_PORTS: {
     area: 'egress', kind: 'list', item: port,
@@ -585,6 +585,16 @@ export function envRaw(name: EnvName, env: Env = process.env): string | undefine
   if ((settingOf(name) as { secret?: boolean }).secret) throw new Error(`envRaw は秘密の設定を返しません: ${name}`);
   const raw = env[name];
   return isBlank(raw) ? undefined : (raw as string);
+}
+
+/**
+ * プロセスの環境から、NO_PROXY を外す（大文字・小文字の両方）。出口のゲートウェイを使うとき、Bun の fetch に、これを見せないためだけに使う:
+ * Bun は、NO_PROXY が挙げた宛先には、fetch に指定したプロキシ（ゲートウェイ）も使わず、直接つなぐ。
+ * 運用者の NO_PROXY は、ゲートウェイが、起動のときに読んで受け持つ（上流のプロキシを使わず、直接つなぐ宛先。検査は、同じに受ける）。
+ */
+export function envForgetNoProxy(env: Env = process.env): void {
+  delete env.NO_PROXY;
+  delete env.no_proxy;
 }
 
 

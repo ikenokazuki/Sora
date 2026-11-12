@@ -206,3 +206,37 @@ describe('the entry points run the start-up check', () => {
     expect(code).toBe(0);
   }, 30_000);
 });
+
+describe('出口のゲートウェイを使うとき（SORA_EGRESS_GATEWAY=on）、ほかの設定との食い違いは、起動のときに止める', () => {
+  // 食い違いは、ゲートウェイを作るとき（最初の通信）にも分かるが、そのときは、すべての外向きの通信（Bun の fetch・子プロセスを含む）が失敗する。起動で分かるようにする
+  test('SORA_PROXY_LIST（リクエストごとに替える一覧）とは、一緒に使えない', () => {
+    const { lines, exits } = run({ SORA_EGRESS_GATEWAY: 'on', SORA_PROXY_LIST: 'http://proxy-a.example:8080,http://proxy-b.example:8080' });
+    expect(exits).toEqual([1]);
+    expect(lines.filter((line) => line.startsWith(`${PREFIX} エラー: SORA_PROXY_LIST（`))).toHaveLength(1);
+    expect(lines.join('\n')).not.toContain('proxy-a.example'); // 値（運用者のプロキシ）は出さない
+  });
+
+  test('対応していない上流の方式（標準の HTTPS_PROXY の socks4）は、止める', () => {
+    const { lines, exits } = run({ SORA_EGRESS_GATEWAY: 'on', HTTPS_PROXY: 'socks4://user:secret-value@proxy.example:1080' });
+    expect(exits).toEqual([1]);
+    expect(lines.filter((line) => line.startsWith(`${PREFIX} エラー: `) && line.includes('socks4'))).toHaveLength(1);
+    expect(lines.join('\n')).not.toContain('secret-value');
+  });
+
+  test('使わないとき（未設定・off）は、同じ設定でも、止めない（これまでどおり）', () => {
+    for (const gateway of [{}, { SORA_EGRESS_GATEWAY: 'off' }]) {
+      const { exits } = run({ ...gateway, SORA_PROXY_LIST: 'http://proxy-a.example:8080,http://proxy-b.example:8080', HTTPS_PROXY: 'socks4://proxy.example:1080' });
+      expect(exits).toEqual([]);
+    }
+  });
+
+  test('正しい設定（上流が 1 つの http プロキシ）は、止めず、何も出さない', () => {
+    expect(run({ SORA_EGRESS_GATEWAY: 'on', SORA_PROXY_URL: 'http://proxy.example:8080', SORA_EGRESS_PORTS: '80,443,8443' })).toEqual({ lines: [], exits: [], asked: [] });
+  });
+
+  test('書き方の誤り（SORA_EGRESS_GATEWAY=onn）は、レジストリの検査の 1 件だけ（重ねて数えない）', () => {
+    const { lines, exits } = run({ SORA_EGRESS_GATEWAY: 'onn' });
+    expect(exits).toEqual([1]);
+    expect(lines.filter((line) => line.includes('SORA_EGRESS_GATEWAY'))).toHaveLength(1);
+  });
+});

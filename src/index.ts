@@ -12,6 +12,7 @@ import {
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
 import { envEnum, envList } from './config.js';
+import { installEgressFetch } from './net/egress_fetch.js';
 import { checkStartupEnv } from './startup_check.js';
 
 // ドメイン別サブルーター
@@ -194,6 +195,8 @@ installShutdownHandlers();
 if (import.meta.main) {
   // 環境変数の検査。誤りがあれば、待ち受ける前に exit(1)（テストが index.js を import しても走らない）
   checkStartupEnv();
+  // SORA_EGRESS_GATEWAY=on のとき、Bun の fetch（固定の提供元・webhook など）も、出口のゲートウェイに通す。使わないときは、何も変えない
+  installEgressFetch();
   const server = Bun.serve({
     port: PORT,
     idleTimeout: 255, // Bun の最大アイドルタイムアウト (255秒 = 4分15秒)。SSE ストリームや深層スクレイピング中の切断を防止

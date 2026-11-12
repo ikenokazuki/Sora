@@ -46,10 +46,12 @@ function expectStripped(dumped: string): void {
  * 秘密を起動時の環境に入れた Sora（bun）を子プロセスで走らせる。本番と同じく、秘密は起動の前から環境にある
  * （Bun.spawn は env を渡さないと、起動時の環境を渡す。実行中に process.env へ書いた値は渡らない）。
  */
-async function runSora(code: string, env: Record<string, string>): Promise<string> {
+async function runSora(code: string, env: Record<string, string>, unset: string[] = []): Promise<string> {
+  const composed: Record<string, string | undefined> = { ...process.env, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...SECRETS, ...NOT_ALLOWED, ...env };
+  for (const name of unset) delete composed[name];
   const proc = Bun.spawn([process.execPath, '--no-env-file', '-e', code], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...SECRETS, ...NOT_ALLOWED, ...env },
+    env: composed as Record<string, string>,
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -114,4 +116,66 @@ describe('子プロセスに秘密を渡さない', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+// 出口のゲートウェイを使うとき（SORA_EGRESS_GATEWAY=on）、通信する子プロセスは、HTTP(S)_PROXY でゲートウェイを指す。
+// 運用者の上流のプロキシ・ALL_PROXY・NO_PROXY は渡さない（NO_PROXY の宛先を、子が、ゲートウェイを通さず、直接つなぐのを防ぐ。上流と NO_PROXY は、ゲートウェイが受け持つ）。
+describe('出口のゲートウェイを使うとき、通信する子プロセスの通信も、ゲートウェイに通る', () => {
+  // 手元の（直接つなぐ）テスト用の環境には、プロキシ・NO_PROXY の事前設定がある（test_preload.ts）。ゲートウェイを使う設定では、静的取得の一覧（SORA_PROXY_LIST）は併用できない
+  const gatewayEnv = { SORA_EGRESS_GATEWAY: 'on', SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'false', NO_PROXY: 'localhost,.internal', no_proxy: 'localhost,.internal', ALL_PROXY: 'socks5://127.0.0.1:9', all_proxy: 'socks5://127.0.0.1:9' };
+  const unset = ['SORA_PROXY_LIST'];
+
+  /** 子プロセスが受けた環境から、プロキシの変数を取り出す（`export -p` の出力。sh の種類で、引用符が違う） */
+  function proxyVariables(dumped: string): Record<string, string> {
+    const found: Record<string, string> = {};
+    for (const match of dumped.matchAll(/\b((?:HTTPS?|ALL|NO)_PROXY|(?:https?|all|no)_proxy)=["']([^"'\n]*)["']/g)) found[match[1]] = match[2];
+    return found;
+  }
+
+  function expectViaGateway(dumped: string): void {
+    expectStripped(dumped);
+    const variables = proxyVariables(dumped);
+    const url = variables.HTTPS_PROXY ?? '';
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    expect(variables).toEqual({ HTTP_PROXY: url, HTTPS_PROXY: url, http_proxy: url, https_proxy: url });
+  }
+
+  test('yahoo-search-mcp', async () => {
+    const { dir, script } = scratch();
+    try {
+      const response = JSON.stringify({ jsonrpc: '2.0', id: 1, result: { content: [{ text: JSON.stringify({ items: [] }) }] } });
+      const bin = script(`cat > /dev/null\nprintf '%s\\n' '${response}'`);
+      const code = `import { callYahooMcp } from './src/services/yahoo.ts'; const r = await callYahooMcp('web_search', { query: 'q' }); console.log('RESULT', r.content.length);`;
+      expect(await runSora(code, { SORA_YAHOO_MCP_PATH: bin, ...gatewayEnv }, unset)).toBe('RESULT 1');
+      expectViaGateway(readFileSync(`${bin}.env`, 'utf8'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('住所データの構築', async () => {
+    const { dir, script } = scratch();
+    try {
+      const bin = script('exit 0');
+      const code = `import { ChildProcessBuilder } from './src/services/address_builder.ts'; await new ChildProcessBuilder({ dir: '/x', command: () => [${JSON.stringify(bin)}] }).run({ kind: 'postal' }); console.log('RESULT ok');`;
+      expect(await runSora(code, gatewayEnv, unset)).toBe('RESULT ok');
+      expectViaGateway(readFileSync(`${bin}.env`, 'utf8'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test('使わないとき（SORA_EGRESS_GATEWAY が未設定）は、これまでどおり、運用者のプロキシの変数が、そのまま渡る', async () => {
+    const { dir, script } = scratch();
+    try {
+      const bin = script('exit 0');
+      const code = `import { ChildProcessBuilder } from './src/services/address_builder.ts'; await new ChildProcessBuilder({ dir: '/x', command: () => [${JSON.stringify(bin)}] }).run({ kind: 'postal' }); console.log('RESULT ok');`;
+      expect(await runSora(code, { HTTPS_PROXY: 'http://upstream.example:3128', NO_PROXY: 'localhost,.internal', SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'false' }, [...unset, 'SORA_EGRESS_GATEWAY'])).toBe('RESULT ok');
+      const variables = proxyVariables(readFileSync(`${bin}.env`, 'utf8'));
+      expect(variables.HTTPS_PROXY).toBe('http://upstream.example:3128');
+      expect(variables.NO_PROXY).toBe('localhost,.internal');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });

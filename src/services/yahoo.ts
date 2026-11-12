@@ -8,6 +8,7 @@ import {
   defaultXDetailProvider,
   cleanRealtimeItem,
 } from './x_detail.js';
+import { egressChildProxyEnv } from '../net/egress.js';
 import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
@@ -185,14 +186,16 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
     try { incrementSecurityCounter('sora_throttled_total'); } catch {}
     throw err;
   }
+  // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る。
+  // 出口のゲートウェイを使うときは、その通信も、ゲートウェイに通す（HTTP(S)_PROXY がゲートウェイを指し、NO_PROXY・ALL_PROXY は渡らない）
+  const env = childEnv(await egressChildProxyEnv());
   return new Promise((resolve, reject) => {
     let timer: any = null;
     let isSettled = false;
 
-    // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る
     const child = spawn(YAHOO_MCP_EXECUTABLE_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: childEnv(), // 運用者の秘密を、通信するバイナリに渡さない
+      env, // 運用者の秘密を、通信するバイナリに渡さない
     });
 
     timer = setTimeout(() => {

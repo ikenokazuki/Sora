@@ -4,6 +4,8 @@
  */
 import { existsSync } from 'node:fs';
 import { checkEnv, envPath, LEGACY, type Env } from './config.js';
+import { errorMessage } from './errors.js';
+import { egressGatewayOptionsFromEnv, isEgressGatewayEnabled } from './net/egress.js';
 
 /** 同梱の実行ファイルのパスと、ファイルが無いときに起きること。 */
 const BUNDLED = {
@@ -41,6 +43,15 @@ export function checkStartupEnv({
 } = {}): void {
   const env = transport === 'stdio' ? Object.fromEntries(Object.entries(given).filter(([name]) => !NOT_USED_BY_STDIO.includes(name))) : given;
   const { errors, warnings } = checkEnv(env);
+  // 出口のゲートウェイを使うときの、ほかの設定との食い違い（SORA_PROXY_LIST との併用・対応していない上流のプロキシの方式）は、ゲートウェイを作るとき（最初の通信）にも分かるが、
+  // そのときは、すべての外向きの通信（Bun の fetch・子プロセスを含む）が失敗する。起動で止める。書き方の誤りは、checkEnv が数えているので、重ねない
+  if (errors.length === 0) {
+    try {
+      if (isEgressGatewayEnabled(env)) egressGatewayOptionsFromEnv(env);
+    } catch (error) {
+      errors.push(errorMessage(error) ?? String(error));
+    }
+  }
   for (const [name, effect] of Object.entries(BUNDLED) as [keyof typeof BUNDLED, string][]) {
     const path = envPath(name, env);
     if (path && !exists(path)) warnings.push(`${name} のファイル（${JSON.stringify(path)}）がありません。${effect}（パスを確かめてください）`);

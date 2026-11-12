@@ -2,7 +2,7 @@
  * 出口のゲートウェイ（egress_gateway.ts）を、Sora の実行で使うための設定と、プロセスで 1 つの本体。
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md の設計 1。
  *
- * - SORA_EGRESS_GATEWAY（既定 off）: on で、ブラウザの外向きの通信を、ゲートウェイに通す。使わないユーザーには、何も起動しない（使うときに、初めて起動する）
+ * - SORA_EGRESS_GATEWAY（既定 off）: on で、外向きの通信（ブラウザ・静的取得・Bun の fetch・子プロセス）を、ゲートウェイに通す。使わないユーザーには、何も起動しない（使うときに、初めて起動する）
  * - SORA_EGRESS_PORTS（既定 80,443）: 許す宛先ポート
  * - 運用者のプロキシ（SORA_PROXY_URL・HTTPS_PROXY など。net/proxy_config.ts）は、ゲートウェイの上流にする。NO_PROXY の宛先は、上流を使わず、
  *   ゲートウェイが直接つなぐ（検査は、同じに受ける）
@@ -101,6 +101,25 @@ export function getEgressGateway(options: EgressGatewayOptions = {}): Promise<Eg
     throw error;
   });
   return starting;
+}
+
+/** ゲートウェイを始めたか（始めている途中も含む）。使わないユーザーに、何も起動していないことの確認に使う */
+export function isEgressGatewayStarted(): boolean {
+  return starting !== undefined;
+}
+
+/**
+ * 子プロセス（Yahoo の検索バイナリ・住所データの構築）の環境変数に足す、出口のゲートウェイの指定（`childEnv` の extra に渡す）。
+ * 使わないときは空（子プロセスの環境は、これまでどおり）。使うときは、HTTP_PROXY・HTTPS_PROXY（大文字・小文字）をゲートウェイの URL にし、
+ * ALL_PROXY・NO_PROXY は消す: 運用者の上流のプロキシと NO_PROXY は、ゲートウェイが受け持つ。残すと、子が、ゲートウェイを通さず、直接つなぐ
+ * （Yahoo のバイナリは、NO_PROXY の宛先に、プロキシを使わず、直接つなぐ。2026-11-13 に実測）。
+ * 環境変数だけの指定なので、守らない子プロセスや、乗っ取られた子プロセスは、止められない（ネットワークの分離が受け持つ。設計 7）。
+ * ゲートウェイを始められないとき（設定の誤り）は失敗する（子プロセスに、直接の経路を、黙って渡さない）。
+ */
+export async function egressChildProxyEnv(): Promise<Record<string, string | undefined>> {
+  if (!isEgressGatewayEnabled()) return {};
+  const { url } = await getEgressGateway();
+  return { HTTP_PROXY: url, HTTPS_PROXY: url, http_proxy: url, https_proxy: url, ALL_PROXY: undefined, all_proxy: undefined, NO_PROXY: undefined, no_proxy: undefined };
 }
 
 /** ゲートウェイを止める（中継中の接続も切る）。次に getEgressGateway を呼ぶと、新しく始める */
