@@ -37,7 +37,7 @@ curl -s "${auth[@]}" -H 'Content-Type: application/json' \
   -d '{"zipcode":"100-0014"}' "$base/geo/postal-code"                    # 3. 呼ぶ
 ```
 
-- `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで約 7KB）。`name` は OpenAPI の `operationId` と同じ。`ENABLED_MODULES` で無効なモジュールの操作は出ない。
+- `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで約 7KB）。`name` は OpenAPI の `operationId` と同じ。`SORA_MODULES` で無効なモジュールの操作は出ない。
 - `GET /tools/<name>` は、本文のスキーマ（`request.schema`）、path・query の引数（`parameters`）、文書にあるエラー（`errors`）、別名や GET の形（`alternatives`）を返す。応答のスキーマは大きいことがある（中央値 約 1.9KB、最大 約 70KB）ので、`?response=true` のときだけ付く。
 - 失敗は HTTP の 4xx / 5xx と、`{ error, code, status, retryable, details? }` の JSON（認証の 401、日次上限の 429、Origin の検査の 403、本文が 10MB を超える 413 も同じ形）。`retryable` が true のときだけ再試行する。
 - OpenAPI（`GET /openapi.json`、約 600KB）の各操作には、`operationId`・`tags`（カテゴリ）・共通のエラー応答・認証（Bearer と `X-API-Key`、キー未設定のサーバーは認証なし）を宣言している。スキーマは各操作の中に直接あり（`$ref` なし）、1 つの操作の定義だけで完結する。

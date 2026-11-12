@@ -17,7 +17,7 @@
 
 引数は、`address`（必須、300 文字まで）、`level`（正規化する最大の段階。1 から 8、既定 8）、`zipcode`（突き合わせる郵便番号）、`lat` と `lon`（突き合わせる座標。組で指定）、`compareAddress`（名寄せの相手の住所）です。MCP の `lookup_address` では、`address` があればこの処理になり、`lat`・`lon` は突き合わせに使います（`address` なしの `lat`・`lon` は[逆引き](reverse-geocoding.md)）。`address` なしで `level`・`compareAddress` を指定すると、正しい使い方を示す入力の誤りです。
 
-住所のツールは、使われたときだけデータを取得します（`SORA_ADDRESS` が `lazy`、既定）。`SORA_ADDRESS=off` ではツールを登録せず、REST は 404 を返します。この処理は、郵便番号の逆引き（[postal-code.md](postal-code.md)）と座標の解決（[coordinate-resolution.md](coordinate-resolution.md)）の中でも使われます。
+住所のツールは、使われたときだけデータを取得します（`SORA_ADDRESS_MODE` が `lazy`、既定）。`SORA_ADDRESS_MODE=off` ではツールを登録せず、REST は 404 を返します。この処理は、郵便番号の逆引き（[postal-code.md](postal-code.md)）と座標の解決（[coordinate-resolution.md](coordinate-resolution.md)）の中でも使われます。
 
 ## 手元のデータと外への問い合わせ
 
@@ -66,7 +66,7 @@ Sora は、次のデータを自分のディスクに持ちます（保存先は
   - 400 `INVALID_INPUT`: 住所が空か長すぎる、`level` が 1 から 8 の整数でない、`zipcode` が 7 桁でない、`lat` と `lon` の片方だけ。
   - 502 `ADDRESS_DATA_PENDING`: 全国マスターが待ち時間に間に合いません。再試行できます。
   - 502 `ADDRESS_DATA_UNAVAILABLE`: データを取得できません。国外 IP の拒否では、再試行できないと返します。
-  - 404 `ADDRESS_DISABLED`: `SORA_ADDRESS=off` です。
+  - 404 `ADDRESS_DISABLED`: `SORA_ADDRESS_MODE=off` です。
 
 例です（テストの見本データでの結果の一部です）。
 

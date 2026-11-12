@@ -22,10 +22,10 @@ Scrape 対象の選択 (上限 limit に対し候補プールを広めに確保)
 ## Yahoo Web 検索
 
 - 単一 SERP はプロバイダ順を保持します。BM25 による全面並べ替えはしません
-  （`SORA_WEB_NATIVE_RANKING=false` で従来動作に戻せます。providerRank は記録継続）。
+  （providerRank は記録します）。
 - lexical スコアは順位決定に使わず、診断用にのみ付与します。
-- 複数クエリ統合は opt-in（`SORA_WEB_QUERY_UNION=true`）で、加重 RRF
-  （original 1.0、fallback/rescue 0.6）により統合します。同一 URL の
+- 候補のクエリは順に試し、最初に結果のあったものを使います。次の adaptive rescue で
+  2 つの結果を合わせるときは、加重 RRF（original 1.0、rescue 0.6）で統合します。同一 URL の
   クエリ別順位は `providerRanks` に残し、来歴を失いません。
 - Q0 取得後に件数・要件カバレッジ・ドメイン偏りを評価し、弱い場合だけ
   Q1 を実行します（adaptive rescue）。十分なら追加リクエストしません。
@@ -36,11 +36,11 @@ Scrape 対象の選択 (上限 limit に対し候補プールを広めに確保)
 Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントローラが状態を持ちます
 （X Realtime とは共有しません）。
 
-- 成功で間隔を少しずつ短縮（下限 150ms）、429 で倍増（上限 5000ms）します。
+- 間隔は 400ms から始め、成功で少しずつ短縮（下限 150ms）、429 で倍増（上限 5000ms）します。
 - 直近 30 秒の 429 が 3 件で回路開放し、15 秒冷却後に 1 件だけ試します。
 - `Retry-After` 応答は構造化エラーで保持し、冷却に反映します。
 - 長時間の待機はしません（最大 250ms）。圧力 high ではクエリ予算を 1 件に絞り、
-  フラグ設定よりプロバイダ健全性を優先します。
+  追加検索（adaptive rescue）をしません。
 - 429 検出時は追加負荷を止め、`throttled: true` と
   `stopReason: 'provider_rate_limited'` を返します。Q0 の成功分は保持します。
 
@@ -104,7 +104,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
     緩和します。最後に固有名詞も別名も含まない投稿を除きます。
   - 網羅判定（`missingTerms`）は NFKC で照合し、別名を含む投稿はその語を含むとみなします。
   - 判定材料は deep search では並行中の Web 検索と公式枠の取得を共有し、`search_realtime`
-    単体では必要な時だけ Web 検索を1回行います。`SORA_REALTIME_ANCHOR=off` で無効化できます。
+    単体では必要な時だけ Web 検索を1回行います。
   - 評価セットは `eval/realtime_anchor_cases.json`（設計に使った dev 28 クエリと、設計後に集めた
     held 24 クエリ。固有名詞の位置を先頭・末尾・中央に変えたもの）。判定精度は dev 24/28・held 24/24 で、
     `bun scripts/eval-realtime-anchor.ts` がオフラインで確認します（`--live` で実際の検索を比較）。
@@ -125,7 +125,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
 ## 本文の取り出し
 
 - ページの本文は、[rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura) と Readability で取り出します（`src/extractor/rs_trafilatura.ts`、`src/html_parser.ts`）。
-  - rs-trafilatura のコマンドは `RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。
+  - rs-trafilatura のコマンドは `SORA_RS_TRAFILATURA_PATH` で渡します（イメージでは `/usr/local/bin/rs-trafilatura`）。
   - コマンドには、取得した HTML を渡します。`removeSelectors`（REST だけの引数。MCP には出しません）を指定したときだけ、その要素を消してから渡します（隠し要素は消しません。消すと本文の取り出しの精度が下がるため。`docs/superpowers/specs/2026-11-04-v4-extraction-and-params-design.md`）。
   - 返るもの: 本文の HTML、ページの種類（article・listing・forum・product・collection・documentation・service）
   - `--markdown` を付けて呼びます。付けないと、本文の HTML からリンクが落ちます。
@@ -201,7 +201,7 @@ Yahoo 上流の 429 対策として、プロセス全体で 1 つのコントロ
   DOM 静止判定は、DOM の変化ではなく見えている本文（長さ・先頭/中央/末尾・
   画像数）の変化で行い、属性だけを書き換え続けるページで上限まで待ちません。
   `data-src` / `srcset` の遅延読み込み画像は HTML 解析側で実 URL に解決します。
-- 共有 Chromium は無操作 5 分（`BROWSER_IDLE_TTL_MS`）で閉じ、次の利用時に
+- 共有 Chromium は無操作 5 分（`SORA_BROWSER_IDLE_TTL_MS`）で閉じ、次の利用時に
   再起動します。開いているコンテキスト（ブラウザセッション等）がある間は
   閉じません。同時描画数は、未指定ならメモリから 1〜5 を自動算出します。
 
