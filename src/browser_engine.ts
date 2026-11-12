@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { errorMessage } from './errors.js';
+import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
@@ -182,6 +183,11 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
 /** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
 export const STEALTH_TIMEZONE = 'Asia/Tokyo';
 
+/** Chromium に渡す環境変数。運用者の秘密（API キーなど）は渡さない（security/child_env.ts）。TZ は、ブラウザが名乗るタイムゾーン。 */
+export function chromiumEnv(source: Record<string, string | undefined> = process.env): Record<string, string> {
+  return childEnv({ TZ: STEALTH_TIMEZONE }, source);
+}
+
 /**
  * 起動時に --user-agent へ渡す UA。ページごとの CDP の上書きは、Service Worker などには届かず
  * "HeadlessChrome" と本物の OS が見える（実測で CreepJS の headless 判定が 33% → 0%）。
@@ -282,7 +288,7 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
     ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
     // コンテナは UTC のため、ロケールが ja-JP でも時刻が UTC になる。日本の IP と ja-JP に合わせる（Worker にも届く）。
-    env: { ...process.env, TZ: STEALTH_TIMEZONE },
+    env: chromiumEnv(),
   });
 }
 

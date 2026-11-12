@@ -8,6 +8,7 @@ import {
   defaultXDetailProvider,
   cleanRealtimeItem,
 } from './x_detail.js';
+import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
 import { setYahooSearchCache, getYahooFreshCache, getYahooStaleCache } from '../retrieval/yahoo_cache.js';
@@ -201,6 +202,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
 
     const child = spawn(YAHOO_MCP_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
+      env: childEnv(), // 運用者の秘密を、通信するバイナリに渡さない
     });
 
     timer = setTimeout(() => {

@@ -24,6 +24,19 @@ describe('ChildProcessBuilder', () => {
     expect(builder.command(job)).toEqual([process.execPath, expect.stringMatching(/address_build_main\.ts$/), '--dir', '/data/address', '--job', '{"kind":"postal"}']);
   });
 
+  test('運用者の秘密を、構築プロセスの環境変数に渡さない（PATH などは渡す）', async () => {
+    const saved = process.env.SORA_API_KEY;
+    process.env.SORA_API_KEY = 'sk-test-secret';
+    try {
+      const builder = new ChildProcessBuilder({ dir: '/x', command: script('console.error(JSON.stringify({ secret: process.env.SORA_API_KEY ?? null, path: Boolean(process.env.PATH) })); process.exit(7)') });
+      const error = await builder.run(job).catch((e: unknown) => e as Error);
+      expect(JSON.parse((error as Error).message)).toEqual({ secret: null, path: true });
+    } finally {
+      if (saved === undefined) delete process.env.SORA_API_KEY;
+      else process.env.SORA_API_KEY = saved;
+    }
+  });
+
   test('終了コード 0 で解決する', async () => {
     await new ChildProcessBuilder({ dir: '/x', command: script('process.exit(0)') }).run(job);
   });

@@ -202,7 +202,9 @@ describe('webhookSent は送信の成否を表す', () => {
       await checkAllWatchTargets(matchScrape('version one text here') as never);
       const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
       expect(maxInFlight).toBe(3);
-      expect(warned()).toEqual([expect.stringContaining('/bad: HTTP 500')]);
+      // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）
+      expect(warned()).toEqual([expect.stringContaining(`${new URL(base).host}: HTTP 500`)]);
+      expect(warned().join('\n')).not.toContain('/bad');
       expect(storedBeforeSend).toEqual([true, true, true]);
       const sent = new Map(results.map((r) => [r.targetId, r.webhookSent]));
       expect(sent.get(a.target.id)).toBe(true);

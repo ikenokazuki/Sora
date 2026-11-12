@@ -2534,7 +2534,8 @@ describe('Sora REST & MCP Endpoints', () => {
     try {
       await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
       expect(warn.mock.calls.map((c) => c.map(String).join(' '))).toEqual([
-        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: http://127.0.0.1:59999/invalid-webhook',
+        // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）
+        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: 127.0.0.1:59999',
       ]);
     } finally {
       warn.mockRestore();
@@ -2802,7 +2803,8 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
       }
       expect(fetched).toEqual([]);
-      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${url}`));
+      // ログには、ホスト名（とポート）だけを出す。URL のパス・クエリは出さない
+      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${new URL(url).host}`));
     });
 
     it('fetches a public destination (control for the blocked cases)', async () => {
