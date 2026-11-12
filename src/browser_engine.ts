@@ -5,6 +5,15 @@ import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { envBool, envInt, envPath, envRaw, envStr, envUrl, type Env } from './config.js';
 import { errorMessage } from './errors.js';
+import {
+  createProfileDir,
+  DEFAULT_LAUNCHER,
+  missingDropCapabilities,
+  planBrowserLaunch,
+  removeProfileDir,
+  SandboxFallback,
+  withoutNoSandbox,
+} from './browser_launch_plan.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 
@@ -164,6 +173,29 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
 /** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
 export const STEALTH_TIMEZONE = 'Asia/Tokyo';
 
+/** Bun の版（`1.4.4` など。canary の接尾辞は無視）が、最小の版以上か。読めなければ false。 */
+export function bunAtLeast(min: readonly [number, number, number], version: string = Bun.version): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!match) return false;
+  const actual = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let i = 0; i < 3; i++) {
+    if (actual[i] !== min[i]) return actual[i] > min[i];
+  }
+  return true;
+}
+
+/**
+ * CDP（Chromium を操作する口）の繋ぎ方。パイプなら TCP のデバッグポートを開かない（127.0.0.1 で待ち受けず、DNS rebinding や、
+ * 同じコンテナのほかのプロセスから届かない）。既定は、Bun 1.4.4 以上ならパイプ。Bun 1.3.3 は、起動と終了を繰り返したあとに、
+ * パイプの接続が閉じる・応答が返らなくなることがある（2026-11-12 に確認。1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで通る）ので、
+ * それ未満はポートのまま。SORA_BROWSER_PIPE=false（0・off・no）で、版によらずポートに戻せる。true（1・on・yes）で、版によらずパイプにする。
+ */
+export function browserCdpMode(env?: Env, bunVersion: string = Bun.version): 'pipe' | 'port' {
+  const chosen = envBool('SORA_BROWSER_PIPE', env);
+  if (chosen !== undefined) return chosen ? 'pipe' : 'port';
+  return bunAtLeast([1, 4, 4], bunVersion) ? 'pipe' : 'port';
+}
+
 /** Chromium に渡す環境変数。運用者の秘密（API キーなど）は渡さない（security/child_env.ts）。TZ は、ブラウザが名乗るタイムゾーン。 */
 export function chromiumEnv(source: Record<string, string | undefined> = process.env): Record<string, string> {
   return childEnv({ TZ: STEALTH_TIMEZONE }, source);
@@ -228,6 +260,29 @@ export function isBrowserLowMemory(env?: Env): boolean {
   return envBool('SORA_BROWSER_LOW_MEMORY', env);
 }
 
+/** サンドボックスを試した結果を、プロセスで 1 回だけ決める（browser_launch_plan.ts の SandboxFallback）。 */
+const sandboxFallback = new SandboxFallback();
+
+/** 直近に起動した Chromium のサンドボックスの状態。起動する前は unknown。 */
+export function browserSandboxStatus(): 'on' | 'off' | 'unknown' {
+  return sandboxFallback.status();
+}
+
+const warnedLaunchMessages = new Set<string>();
+function warnLaunchOnce(message: string): void {
+  if (warnedLaunchMessages.has(message)) return;
+  warnedLaunchMessages.add(message);
+  console.warn(`[Sora] ${message}`);
+}
+
+function readSelfStatus(): string | undefined {
+  try {
+    return readFileSync('/proc/self/status', 'utf8');
+  } catch {
+    return undefined; // Linux 以外
+  }
+}
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
   const userAgent = await stealthUserAgent();
@@ -259,19 +314,62 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     if (bypass) args.push(`--proxy-bypass-list=${bypass}`);
   }
   if (isBrowserLowMemory()) args.push('--enable-low-end-device-mode');
-  return puppeteer.launch({
-    executablePath: CHROME_EXECUTABLE_PATH,
-    headless: true,
-    args,
-    // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
-    // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
-    // true にする一因（実測で確認済み）。--disable-popup-blocking/--disable-default-apps
-    // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
-    ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
-    // コンテナは UTC のため、ロケールが ja-JP でも時刻が UTC になる。日本の IP と ja-JP に合わせる（Worker にも届く）。
-    // 許可リストの環境変数だけを渡す（ページから乗っ取られたレンダラーが環境を読めるため。Sora の秘密は渡さない）。プロキシは --proxy-server の引数で渡す。
-    env: chromiumEnv(),
+
+  // root の Sora 本体から、別の uid に落として起動するか・Chromium のサンドボックスを使うか（browser_launch_plan.ts）。
+  // 落とすには、起動用バイナリに伝える、本物の Chromium の場所が要る
+  const chromePath = CHROME_EXECUTABLE_PATH;
+  const { plan, warnings } = planBrowserLaunch({
+    currentUid: typeof process.getuid === 'function' ? process.getuid() : undefined,
+    launcherExists: chromePath !== undefined && existsSync(DEFAULT_LAUNCHER),
+    nodeEnv: envStr('NODE_ENV'),
+    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
+    missingCapabilities: missingDropCapabilities(readSelfStatus()),
   });
+  for (const warning of warnings) warnLaunchOnce(warning);
+  const drop = plan.drop && chromePath ? { ...plan.drop, chromePath } : null;
+
+  const launchOnce = async (sandbox: boolean): Promise<Browser> => {
+    // puppeteer は、userDataDir を渡さないと、起動した側（root）の所有で作るので、落とした Chromium は書けない。自分で作る
+    const profile = drop ? createProfileDir(drop) : undefined;
+    try {
+      const browser = await puppeteer.launch({
+        executablePath: drop ? drop.launcher : chromePath,
+        headless: true,
+        // CDP の繋ぎ方（パイプか TCP のデバッグポートか）は browserCdpMode を参照。
+        pipe: browserCdpMode() === 'pipe',
+        args: sandbox ? withoutNoSandbox(args) : args,
+        // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
+        // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
+        // true にする一因（実測で確認済み）。--disable-popup-blocking/--disable-default-apps
+        // は通常のブラウザでは有効な設定で、無効化されていること自体が検出材料になりうる。
+        ignoreDefaultArgs: ['--enable-automation', '--disable-popup-blocking', '--disable-default-apps'],
+        ...(profile ? { userDataDir: profile } : {}),
+        // コンテナは UTC のため、ロケールが ja-JP でも時刻が UTC になる。日本の IP と ja-JP に合わせる（Worker にも届く）。
+        // 落とすときは、起動用バイナリに、本物の Chromium と落とし先を伝える（起動用バイナリが消してから Chromium を exec する）。HOME は、書ける場所にする
+        env:
+          drop && profile
+            ? {
+                ...chromiumEnv(),
+                HOME: profile,
+                SORA_LAUNCH_EXEC: drop.chromePath,
+                SORA_LAUNCH_UID: String(drop.uid),
+                SORA_LAUNCH_GID: String(drop.gid),
+              }
+            : chromiumEnv(),
+      });
+      // プロファイルは、Chromium が終わってから消す（終わる途中で書き込まれると、消し損なう）
+      if (profile) {
+        const child = browser.process();
+        if (!child || child.exitCode !== null || child.signalCode !== null) removeProfileDir(profile);
+        else child.once('exit', () => removeProfileDir(profile));
+      }
+      return browser;
+    } catch (error) {
+      if (profile) removeProfileDir(profile);
+      throw error;
+    }
+  };
+  return sandboxFallback.launch(plan.sandbox, launchOnce, warnLaunchOnce);
 }
 
 /** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */

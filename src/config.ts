@@ -105,7 +105,7 @@ const PARTY_FORM = 'JSON のオブジェクト（`name`・`street`・`city`・`s
 
 const MODULES_IN_ALL = MODULE_NAMES.filter((m) => !EXPLICIT_ONLY_MODULES.includes(m)).join(',');
 
-/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 3 個）。 */
+/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 6 個）。 */
 export const SETTINGS = {
   // --- 全体 ---
   SORA_API_KEY: {
@@ -200,6 +200,22 @@ export const SETTINGS = {
   SORA_BROWSER_LOW_MEMORY: {
     area: 'browser', kind: 'bool', default: false,
     doc: '`true` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`SORA_BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます',
+  },
+  SORA_BROWSER_PIPE: {
+    area: 'browser', kind: 'bool',
+    defaultDoc: '*(未設定 = Bun 1.4.4 以上ならパイプ、それ未満はポート)*',
+    doc: 'Chromium を操作する口（CDP）の繋ぎ方です。パイプなら、TCP のデバッグポートを開きません（127.0.0.1 で待ち受けず、同じコンテナのほかのプロセスから届きません）。`false`（`0`・`off`・`no` も可）でポートに戻し、`true`（`1`・`on`・`yes` も可）でパイプにします。大文字小文字・前後の空白は問いません。Bun 1.3.x は、起動と終了を繰り返したあとに、パイプの接続が閉じる・応答が返らなくなることがあるため、既定はポートです（1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで確かめました）。',
+  },
+  SORA_BROWSER_UID: {
+    area: 'browser', kind: 'str', default: 'auto', pattern: /^\s*(?:auto|off|0*[1-9]\d{0,9})\s*$/i,
+    form: '`auto`・`off`・1 以上の整数（uid・gid）',
+    defaultDoc: '*(未設定 = auto)*',
+    doc: 'root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。',
+  },
+  SORA_BROWSER_SANDBOX: {
+    area: 'browser', kind: 'enum', values: ['auto', 'on', 'off'],
+    defaultDoc: '*(未設定 = auto)*',
+    doc: 'Chromium 自身のサンドボックスです。`auto`（未設定）は、有効にして起動を試し、起動できなければ `--no-sandbox` に戻して警告します（Docker の既定の seccomp・AppArmor など、ユーザー名前空間を作れない環境。Docker の既定のままでは、こちらになります）。そのときも、uid の分離（`SORA_BROWSER_UID`）は効きます。結果は、プロセスで 1 回だけ決めます。`on` は、有効にできなければ起動を失敗させます。`off` は常に `--no-sandbox` です。root のまま（`SORA_BROWSER_UID=off` や、起動用バイナリがない）では、有効にできません。`NODE_ENV=test` の既定は `off` です。',
   },
 
   // --- 静的取得 ---
@@ -504,9 +520,9 @@ function read(name: string, env: Env): unknown {
   return Array.isArray(s.default) ? [...s.default] : s.default;
 }
 
-/** 真偽値（`true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`、大文字小文字は問わない）。 */
-export function envBool(name: NameOf<'bool'>, env: Env = process.env): boolean {
-  return (read(name, env) as boolean | undefined) ?? false;
+/** 真偽値（`true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`、大文字小文字は問わない）。既定の無い設定は、未設定・不正のとき undefined（「自動」を表す）。 */
+export function envBool<N extends NameOf<'bool'>>(name: N, env: Env = process.env): Read<N, boolean> {
+  return read(name, env) as Read<N, boolean>;
 }
 
 /** 整数（`^\d+$` と、変数ごとの最小・最大）。 */

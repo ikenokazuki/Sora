@@ -116,8 +116,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 3 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(56);
+  test('counts match the design (53 + 6 settings, 13 standard names, 40 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(59);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(40);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -156,10 +156,14 @@ describe('registry', () => {
     }
   });
 
-  test('boolean defaults: only the hand-listed ones are on', () => {
+  test('boolean defaults: only the hand-listed ones are on; the one with no default reads undefined (auto)', () => {
     const bools = Object.entries(all).filter(([, s]) => s.kind === 'bool');
     expect(bools.filter(([, s]) => s.default === true).map(([name]) => name).sort()).toEqual([...BOOLS_ON_BY_DEFAULT].sort());
-    for (const [name] of bools) expect(envBool(name as 'SORA_MCP_DEFER_TOOLS', {}), name).toBe(BOOLS_ON_BY_DEFAULT.includes(name));
+    expect(bools.filter(([, s]) => s.default === undefined).map(([name]) => name)).toEqual(['SORA_BROWSER_PIPE']);
+    for (const [name, s] of bools) {
+      const read = envBool(name as 'SORA_MCP_DEFER_TOOLS', {}) as boolean | undefined;
+      expect(read, name).toBe(s.default === undefined ? undefined : BOOLS_ON_BY_DEFAULT.includes(name));
+    }
   });
 
   test('every default reads back as itself when written as the value', () => {
@@ -181,10 +185,16 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the three settings added after the design are registered', () => {
+  test('the six settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
+    // ブラウザの隔離（CDP をパイプで繋ぐ・別 uid で起動する・Chromium のサンドボックス）。どれも、未設定の既定は、使う側が決める
+    expect(SETTINGS.SORA_BROWSER_PIPE).toMatchObject({ area: 'browser', kind: 'bool' });
+    expect(SETTINGS.SORA_BROWSER_PIPE).not.toHaveProperty('default');
+    expect(SETTINGS.SORA_BROWSER_UID).toMatchObject({ area: 'browser', kind: 'str', default: 'auto' });
+    expect(SETTINGS.SORA_BROWSER_SANDBOX).toMatchObject({ area: 'browser', kind: 'enum', values: ['auto', 'on', 'off'] });
+    expect(SETTINGS.SORA_BROWSER_SANDBOX).not.toHaveProperty('default');
   });
 
   test('names follow the naming rules and do not collide', () => {
@@ -275,6 +285,43 @@ describe('envBool', () => {
       if (before === undefined) delete process.env.SORA_BROWSER_LOW_MEMORY;
       else process.env.SORA_BROWSER_LOW_MEMORY = before;
     }
+  });
+});
+
+describe('the browser isolation settings (SORA_BROWSER_PIPE, SORA_BROWSER_UID, SORA_BROWSER_SANDBOX)', () => {
+  test('SORA_BROWSER_PIPE has no default: every spelling reads true or false, anything else reads undefined (the Bun version decides)', () => {
+    const name = 'SORA_BROWSER_PIPE';
+    for (const raw of ['true', '1', 'on', 'yes', ' TRUE ']) expect(envBool(name, { [name]: raw }), raw).toBe(true);
+    for (const raw of ['false', '0', 'off', 'no', ' No ']) expect(envBool(name, { [name]: raw }), raw).toBe(false);
+    for (const raw of [undefined, '', '   ', 'auto', 'maybe', '2']) expect(envBool(name, { [name]: raw }), String(raw)).toBeUndefined();
+    // 起動のときの検査は、読み取りが黙って捨てる値を止める
+    expect(envError(name, { [name]: 'auto' })).toContain('SORA_BROWSER_PIPE の値');
+    expect(envError(name, { [name]: 'off' })).toBeUndefined();
+  });
+
+  test('SORA_BROWSER_UID: auto, off (any case, trimmed) or a positive integer of up to ten digits; anything else is a startup error', () => {
+    const name = 'SORA_BROWSER_UID';
+    for (const raw of ['auto', ' AUTO ', 'off', 'Off', '1', '65532', ' 10001 ', '007', '4294967294']) {
+      expect(envError(name, { [name]: raw }), raw).toBeUndefined();
+    }
+    for (const raw of ['0', '00', '-1', '+1', '1.5', 'root', '65532x', '12345678901', 'auto off']) {
+      expect(envError(name, { [name]: raw }), raw).toContain('SORA_BROWSER_UID の値');
+    }
+    expect(checkEnv({ [name]: '0' }).errors).toEqual([`SORA_BROWSER_UID の値（"0"）は不正です。正しい形: \`auto\`・\`off\`・1 以上の整数（uid・gid）`]);
+    expect(envStr(name, {})).toBe('auto');
+  });
+
+  test('SORA_BROWSER_SANDBOX: auto, on or off (any case, trimmed); anything else is a startup error. Unset reads undefined (NODE_ENV=test is decided where it is used)', () => {
+    const name = 'SORA_BROWSER_SANDBOX';
+    for (const raw of ['auto', 'ON', ' off ']) expect(envError(name, { [name]: raw }), raw).toBeUndefined();
+    for (const raw of ['maybe', 'true', '1', 'no']) expect(envError(name, { [name]: raw }), raw).toContain('SORA_BROWSER_SANDBOX の値');
+    expect(envEnum(name, { [name]: ' ON ' })).toBe('on');
+    expect(envEnum(name, {})).toBeUndefined();
+    expect(envEnum(name, { [name]: 'maybe' })).toBeUndefined();
+  });
+
+  test('all three are known names, so checkEnv does not warn about them', () => {
+    expect(checkEnv({ SORA_BROWSER_PIPE: 'true', SORA_BROWSER_UID: 'off', SORA_BROWSER_SANDBOX: 'on' })).toEqual({ errors: [], warnings: [] });
   });
 });
 
