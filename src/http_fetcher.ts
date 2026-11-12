@@ -5,6 +5,7 @@ import type { PersistedCookie } from './db.js';
 import { dbSaveTenantCookies, dbGetTenantCookies } from './db.js';
 import { getChromiumMajorVersion, getProxyConfig, validateHostIpDns } from './browser_engine.js';
 import { getFallbackUserAgent } from './browser_stealth.js';
+import { envBool, envError, envInt, envList, envRaw } from './config.js';
 import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
@@ -70,27 +71,24 @@ export const MAX_RESPONSE_BODY_BYTES = 30 * 1024 * 1024; // 最大 30MB
 /** wreq-js が持つ Chrome プロファイルの最小の版（これより古いプロファイルは使わない）。 */
 const MIN_CHROME_PROFILE_VERSION = 136;
 
-/** npm で公開されている wreq-js（3.2.0）の native が持つ、最新の Chrome プロファイル。上限の既定。 */
-const DEFAULT_MAX_CHROME_PROFILE_VERSION = 149;
-
 /**
  * 静的取得が使う Chrome プロファイルの上限（SORA_FETCH_MAX_CHROME_PROFILE）。ブラウザも、これを超える版は名乗らない
- * （UA・TLS・ヘッダを、静的取得とブラウザで同じにするため）。未設定は 149（npm の wreq-js の native が持つ最新）。
+ * （UA・TLS・ヘッダを、静的取得とブラウザで同じにするため）。未設定は 149（npm の wreq-js の native が持つ最新。既定は登録簿）。
  * 公開イメージは、Containerfile で自前にビルドした native（上流の新しいプロファイルを持つ）に合わせて設定する。
  * 値を下げれば、UA・TLS・ヘッダがその版のものに戻る（挙動を戻す手段）。native が持たない版を指定しても、起動時に native が持つ最大まで下げる。
- * 136 未満・3 桁の 10 進数でない値は無視して、既定にする。
+ * 136 未満・3 桁の 10 進数でない値（0x9a・1e3 など。登録簿の pattern）は無視して、既定にし、警告を出す。
  */
 export function parseMaxChromeProfile(raw: string | undefined): number {
-  const value = raw?.trim();
-  if (!value) return DEFAULT_MAX_CHROME_PROFILE_VERSION;
-  // 3 桁の 10 進数だけ（Number() だと、0x9a や 1e3 も通ってしまう）
-  if (/^\d{3}$/.test(value) && Number(value) >= MIN_CHROME_PROFILE_VERSION) return Number(value);
-  console.warn(`[http_fetcher] SORA_FETCH_MAX_CHROME_PROFILE=${JSON.stringify(value)} is not a 3-digit Chrome major >= ${MIN_CHROME_PROFILE_VERSION}; using ${DEFAULT_MAX_CHROME_PROFILE_VERSION}`);
-  return DEFAULT_MAX_CHROME_PROFILE_VERSION;
+  const env = { SORA_FETCH_MAX_CHROME_PROFILE: raw };
+  const max = envInt('SORA_FETCH_MAX_CHROME_PROFILE', env);
+  if (envError('SORA_FETCH_MAX_CHROME_PROFILE', env)) {
+    console.warn(`[http_fetcher] SORA_FETCH_MAX_CHROME_PROFILE=${JSON.stringify(raw?.trim())} is not a 3-digit Chrome major >= ${MIN_CHROME_PROFILE_VERSION}; using ${max}`);
+  }
+  return max;
 }
 
-/** wreq-js が持つ最新の Chrome プロファイル（の設定）。実ブラウザがこれより新しい場合の上限。 */
-export const MAX_SUPPORTED_CHROME_PROFILE_VERSION = parseMaxChromeProfile(process.env.SORA_FETCH_MAX_CHROME_PROFILE);
+/** wreq-js が持つ最新の Chrome プロファイル（の設定）。実ブラウザがこれより新しい場合の上限。モジュールの読み込み時に読む。 */
+export const MAX_SUPPORTED_CHROME_PROFILE_VERSION = parseMaxChromeProfile(envRaw('SORA_FETCH_MAX_CHROME_PROFILE'));
 
 /** 実際に使う上限。設定が native の持つプロファイルより高いとき、native が持つ最大まで下がる（clampChromeProfileToNative）。 */
 let effectiveMaxChromeProfile = MAX_SUPPORTED_CHROME_PROFILE_VERSION;
@@ -142,13 +140,13 @@ const GOOGLE_REFERER = 'https://www.google.com/';
 
 /**
  * ページ取得の 1 回目に付ける、検索経由の閲覧のヘッダ（Referer と、それに合う Sec-Fetch-Site: cross-site）。
- * 付けないのは、SORA_DEFAULT_REFERER=off のとき、呼び出し側が Referer を指定したとき、資格情報を運ぶとき。
+ * 付けないのは、SORA_FETCH_DEFAULT_REFERER=off のとき、呼び出し側が Referer を指定したとき、資格情報を運ぶとき。
  * 有料記事の「Google 経由は無料」を装う形にもなり、アクセス解析には検索流入として数えられるので、切れる口を残す。
  * 汎用の fetchWithSafeRedirects は robots.txt・sitemap・画像・JSON API にも使われる（他サイトの Referer を弾くサイトがある）ので、
  * ここでは付けず、呼び出し側（scrapeUrl のページ取得）が使う。
  */
 export function defaultReferrerHeaders(headers?: Record<string, string>, cookies?: Array<unknown>): Record<string, string> {
-  if (process.env.SORA_DEFAULT_REFERER?.trim().toLowerCase() === 'off') return {};
+  if (!envBool('SORA_FETCH_DEFAULT_REFERER')) return {};
   if (hasSensitiveRequestCredentials({ headers, cookies })) return {};
   if (Object.keys(headers ?? {}).some((k) => k.toLowerCase() === 'referer')) return {};
   return { Referer: GOOGLE_REFERER, 'Sec-Fetch-Site': 'cross-site' };
@@ -173,16 +171,11 @@ export function profileMajorFor(actual: number | undefined, max: number = effect
 }
 
 /**
- * 静的fetch用プロキシURLをサーバー側の環境変数から選択する。
+ * 静的fetch用プロキシURLをサーバー側の環境変数から選択する（SORA_PROXY_LIST の正しい URL から無作為に。無ければ getProxyConfig）。
  */
 export function pickProxyUrl(): string | undefined {
-  const list = process.env.SORA_PROXY_LIST?.trim();
-  if (list) {
-    const candidates = list.split(',').map((s) => s.trim()).filter(Boolean);
-    if (candidates.length > 0) {
-      return candidates[Math.floor(Math.random() * candidates.length)];
-    }
-  }
+  const candidates = envList('SORA_PROXY_LIST');
+  if (candidates.length > 0) return candidates[Math.floor(Math.random() * candidates.length)];
   return getProxyConfig().proxyServer;
 }
 
@@ -384,7 +377,7 @@ export async function getOrCreateHttpSession(
   let session: UniversalHttpSession;
 
   if (mod) {
-    const trustStore = parseTrustStoreMode(process.env.SORA_FETCH_TRUST_STORE);
+    const trustStore = parseTrustStoreMode(envRaw('SORA_FETCH_TRUST_STORE'));
     session = await mod.createSession({
       browser: withinMaxProfile(browser),
       os: EMULATION_OS,

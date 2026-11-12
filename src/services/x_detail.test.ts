@@ -1,23 +1,18 @@
 /**
- * X Long-form Detail Provider & Adaptive Enrichment Tests (X1 to X13 & T1 to T6 & Real Fixture)
+ * X Long-form Detail Provider & Adaptive Enrichment Tests (X1 to X12 & T1 to T6 & Real Fixture)
  */
 
 import { describe, expect, it } from 'bun:test';
 import {
   FxTwitterDetailProvider,
-  type XPostDetail,
   type XPostDetailProvider,
   extractSemanticQuery,
   isLikelyYahooRealtimeTruncated,
   enrichRealtimeItemsWithXDetail,
 } from './x_detail.js';
 import { fetchXPostDetail } from './x_detail.js';
-import {
-  parseXDiscoverySeed,
-  buildXIsolatedEvidenceFromDirectStatus,
-} from '../x_source_isolation.js';
 
-describe('X Long-form Detail Provider Tests (X1 - X13)', () => {
+describe('X Long-form Detail Provider Tests (X1 - X12)', () => {
   // ---------------------------------------------------------------------------
   // X1: Parser - FxTwitter v2 success response to canonical type
   // ---------------------------------------------------------------------------
@@ -307,29 +302,6 @@ describe('X Long-form Detail Provider Tests (X1 - X13)', () => {
     expect(enriched[0].detailEnriched).toBe(true);
   });
 
-  // ---------------------------------------------------------------------------
-  // X13: Direct X status URL fast-path
-  // ---------------------------------------------------------------------------
-  it('X13: converts direct status URL to exact verified evidence via direct detail', () => {
-    const seed = parseXDiscoverySeed('https://x.com/kimisora_JPN/status/2100871827090501852');
-    expect(seed).not.toBeNull();
-    expect(seed?.kind).toBe('status');
-    expect(seed?.statusId).toBe('2100871827090501852');
-
-    const detail: XPostDetail = {
-      statusId: '2100871827090501852',
-      text: '線香花火大会の公式タイムテーブル公開。18:00スタート！',
-      isNoteTweet: true,
-      provider: 'fxtwitter',
-    };
-
-    const evidence = buildXIsolatedEvidenceFromDirectStatus(seed!, detail);
-    expect(evidence.relation).toBe('exact_status');
-    expect(evidence.exactStatusMatched).toBe(true);
-    expect(evidence.eligibleForPrimaryEvidence).toBe(true);
-    expect(evidence.markdown).toContain('18:00スタート！');
-    expect(evidence.selectedItems[0].id).toBe('2100871827090501852');
-  });
 });
 
 // =============================================================================

@@ -8,7 +8,7 @@ import { closeHttpSession, fetchWithSafeRedirects } from './http_fetcher.js';
 // 攻撃者が自分の DNS で、検査のときだけ失敗させ、接続のときに内部の IP を答えると、検査を抜けられる。
 // Sora の手元で名前を引いて接続するとき（プロキシもゲートウェイも通さないとき）は、解決できないなら、遮断する。
 // 名前を相手（運用者のプロキシ・ゲートウェイ）が解決するときは、手元の DNS が失敗するのは普通なので、これまでどおり通す。
-const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'ALLOW_LOCAL_FETCH', 'SORA_EGRESS_GATEWAY'];
+const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_EGRESS_GATEWAY'];
 let saved: Record<string, string | undefined> = {};
 let lookup: ReturnType<typeof spyOn>;
 
@@ -57,8 +57,8 @@ describe('validateHostIpDns: 名前を解決できないとき', () => {
     await expect(validateHostIpDns('rebind-closed.example', { failClosed: true })).rejects.toThrow('DNS Rebinding');
   });
 
-  test('内部への取得を許す設定（ALLOW_LOCAL_FETCH=true）のときは、検査しない', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+  test('内部への取得を許す設定（SORA_FETCH_ALLOW_PRIVATE_NETWORK=true）のときは、検査しない', async () => {
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     lookup.mockRejectedValue(notFound('local-ok.example'));
     expect(await validateHostIpDns('local-ok.example', { failClosed: true })).toEqual([]);
   });

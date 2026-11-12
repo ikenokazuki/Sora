@@ -28,26 +28,26 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
+import { envInt, envPath } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
-// Yahoo MCP バイナリのパス
-export const YAHOO_MCP_PATH =
-  process.env.YAHOO_MCP_PATH ||
+// Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む。そのファイルが無ければ、未設定と同じく既定の場所を探す）
+const configuredYahooMcpPath = envPath('SORA_YAHOO_MCP_PATH');
+export const YAHOO_MCP_EXECUTABLE_PATH =
+  (configuredYahooMcpPath && existsSync(configuredYahooMcpPath) ? configuredYahooMcpPath : undefined) ??
   (existsSync('/usr/local/bin/yahoo-search-mcp') ? '/usr/local/bin/yahoo-search-mcp' :
    existsSync(join(import.meta.dir, '../../bin/yahoo-search-mcp')) ? join(import.meta.dir, '../../bin/yahoo-search-mcp') :
    'yahoo-search-mcp');
 
 /** Upstream rate discipline for Yahoo MCP calls.
- * Sequential eval and multi-query union can burst against provider
- * limits (observed HTTP 429). A shared gate enforces a minimum
+ * Sequential candidate queries and the single rescue query can burst
+ * against provider limits (observed HTTP 429). A shared gate enforces a minimum
  * interval; rate-limit responses trip a breaker instead of fanning
  * out into fallback and rescue queries.
  */
 export function yahooMinIntervalMs(): number {
-  const v = parseInt(process.env.SORA_YAHOO_MIN_INTERVAL_MS || '', 10);
-  if (Number.isFinite(v) && v >= 0) return v;
-  return 500;
+  return envInt('SORA_YAHOO_MIN_INTERVAL_MS');
 }
 
 let yahooCallGate: Promise<void> = Promise.resolve();
@@ -57,7 +57,6 @@ export function resetYahooCallGate(): void {
 }
 
 async function gateYahooCall(): Promise<void> {
-  if (process.env.SORA_YAHOO_THROTTLE === 'off') return;
   const minInterval = yahooMinIntervalMs();
   if (!(minInterval > 0)) return;
   let release!: () => void;
@@ -92,16 +91,13 @@ export function yahooResultHasData(rawText: string): boolean {
 }
 
 export function yahooBreakerCooldownMs(): number {
-  const v = parseInt(process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS || '', 10);
-  if (Number.isFinite(v) && v >= 0) return v;
-  return 120000;
+  return envInt('SORA_YAHOO_BREAKER_COOLDOWN_MS');
 }
 
 let yahooBreakerTrippedAt: number | null = null;
 
 export function isYahooBreakerOpen(): boolean {
   if (yahooBreakerTrippedAt == null) return false;
-  if (process.env.SORA_YAHOO_THROTTLE === 'off') return false;
   return yahooBreakerCooldownMs() > (Date.now() - yahooBreakerTrippedAt);
 }
 
@@ -147,13 +143,8 @@ export function resetYahooWebPressure(): void {
   yahooWebPressure.reset();
 }
 
-function pressureBypassed(): boolean {
-  return process.env.SORA_YAHOO_THROTTLE === 'off';
-}
-
 /** Short bounded pacing between queries (spec section 5: never sleep long). */
 async function paceForYahooPressure(): Promise<void> {
-  if (pressureBypassed()) return;
   const waitMs = Math.min(yahooWebPressure.snapshot().spacingMs, 250);
   if (waitMs > 0) await new Promise((r) => setTimeout(r, waitMs));
 }
@@ -165,7 +156,6 @@ async function paceForYahooPressure(): Promise<void> {
  */
 export function recordYahooWebResult(err: unknown): boolean {
   try { incrementSecurityCounter('yahoo_request_total'); } catch {}
-  if (pressureBypassed()) return false;
   const limited =
     (err instanceof YahooProviderError && err.status === 429) ||
     isYahooRateLimitedError(err) ||
@@ -183,7 +173,6 @@ export function recordYahooWebResult(err: unknown): boolean {
 
 export function recordYahooWebSuccess(): void {
   try { incrementSecurityCounter('yahoo_request_total'); } catch {}
-  if (pressureBypassed()) return;
   yahooWebPressure.onSuccess();
 }
 
@@ -200,7 +189,8 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
     let timer: any = null;
     let isSettled = false;
 
-    const child = spawn(YAHOO_MCP_PATH, [], {
+    // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る
+    const child = spawn(YAHOO_MCP_EXECUTABLE_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv(), // 運用者の秘密を、通信するバイナリに渡さない
     });
@@ -230,7 +220,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
       if (!isSettled) {
         isSettled = true;
         clearTimeout(timer);
-        reject(new Error(`Failed to spawn Yahoo MCP (${YAHOO_MCP_PATH}): ${err.message}`));
+        reject(new Error(`Failed to spawn Yahoo MCP (${YAHOO_MCP_EXECUTABLE_PATH}): ${err.message}`));
       }
     });
 
@@ -368,12 +358,6 @@ export function mergeYahooWebQueryBatches(
     // 診断失敗時は無視
   }
 
-  if (!isRrfEnabled()) {
-    for (const item of merged) {
-      delete (item as any).__insertionOrder;
-    }
-    return merged;
-  }
   merged.sort((a: any, b: any) => {
     if (b.rrfScore !== a.rrfScore) return b.rrfScore - a.rrfScore;
     const aMin = Math.min(...a.providerRanks.map((p: any) => p.rank));
@@ -385,14 +369,6 @@ export function mergeYahooWebQueryBatches(
     delete (item as any).__insertionOrder;
   }
   return merged;
-}
-
-/** Rollback flags (RFC rollback strategy). Default true = Retrieval v2 behavior. */
-export function isWebNativeRankingEnabled(): boolean {
-  return process.env.SORA_WEB_NATIVE_RANKING !== 'false';
-}
-export function isRrfEnabled(): boolean {
-  return process.env.SORA_RRF_ENABLED !== 'false';
 }
 
 /** Retrieval confidence 判定 (追加検索が必要な弱い取得か) */
@@ -476,12 +452,10 @@ export interface YahooWebSearchDeps {
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
-/** Stable coalescing key for one Yahoo Web search (flags included). */
+/** Stable coalescing key for one Yahoo Web search. */
 export function yahooWebSearchFlightKey(options: YahooWebSearchOptions): string {
-  const union = process.env.SORA_WEB_QUERY_UNION === 'true' ? 'wqu-on' : 'wqu-off';
-  const native = process.env.SORA_WEB_NATIVE_RANKING !== 'false' ? 'native' : 'legacy';
   const v = options.verbose === true ? 'verbose' : 'compact';
-  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + union + ':' + native + ':' + v;
+  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + v;
 }
 
 /**
@@ -527,164 +501,12 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
     ? [options.query]
     : extractRealtimeFallbackQueries(options.query);
 
-  // Pressure-aware query budget (spec sections 15-17): provider health wins over flags.
-  const yahooPressureLevel = pressureBypassed() ? 'low' as const : yahooWebPressure.getLevel();
+  // Pressure-aware query budget (spec sections 15-17): the more loaded the provider, the fewer queries.
+  const yahooPressureLevel = yahooWebPressure.getLevel();
   const yahooQueryBudget = getYahooQueryBudget(yahooPressureLevel);
   const verboseDiag = options.verbose === true;
 
   let lastParsedData: any = { items: [], count: 0, source: 'web' };
-
-  const queryUnionEnabled =
-    process.env.SORA_WEB_QUERY_UNION === 'true' &&
-    options.disableFallback !== true;
-
-  if (queryUnionEnabled) {
-    const boundedQueries = candidateQueries.slice(0, Math.min(2, yahooQueryBudget));
-    const batches: YahooWebQueryBatch[] = [];
-    const retrievalQueries: string[] = [];
-    let webUnionThrottled = false;
-
-    for (let i = 0; i < boundedQueries.length; i++) {
-      const q = boundedQueries[i];
-      if (!q) continue;
-      if (isYahooBreakerOpen()) {
-        webUnionThrottled = true;
-        break;
-      }
-      if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
-        webUnionThrottled = true;
-        break;
-      }
-      if (i > 0) await paceForYahooPressure();
-      retrievalQueries.push(q);
-
-      let effectiveWebQuery = q;
-      let webSiteArg: string | undefined = undefined;
-
-      if (options.includeDomains && options.includeDomains.length > 0) {
-        if (options.includeDomains.length === 1) {
-          webSiteArg = options.includeDomains[0];
-        } else {
-          effectiveWebQuery += ` (${options.includeDomains
-            .map((d) => `site:${d}`)
-            .join(' OR ')})`;
-        }
-      }
-
-      if (options.excludeDomains && options.excludeDomains.length > 0) {
-        effectiveWebQuery += ` ${options.excludeDomains
-          .map((d) => `-site:${d}`)
-          .join(' ')}`;
-      }
-
-      try {
-        let batchJson: any = null;
-        try {
-          const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
-          if (directItems.length > 0) batchJson = { items: directItems.map(normDirectItem) };
-        } catch (err) {
-          providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
-          recordYahooWebResult(err);
-        }
-        if (!batchJson) {
-          const mcpRes = await callMcp('yahoo_web_search', {
-            query: effectiveWebQuery,
-            ...(webSiteArg ? { site: webSiteArg } : {}),
-            ...(options.updated && options.updated !== 'all'
-              ? { updated: options.updated }
-              : {}),
-          });
-
-          const content = mcpRes?.content?.[0]?.text || '[]';
-          if (mcpRes?.isError) {
-            providerErrors.push({ query: q, message: String(content).slice(0, 300) });
-            if (recordYahooWebResult(new Error(String(content).slice(0, 300)))) {
-              webUnionThrottled = true;
-              break;
-            }
-            if (i < boundedQueries.length - 1) await paceForYahooPressure();
-            continue;
-          }
-          batchJson = JSON.parse(content);
-        }
-
-        if (batchJson && Array.isArray(batchJson.items)) {
-          lastParsedData = batchJson;
-          if (batchJson.items.length > 0) {
-            recordYahooWebSuccess();
-            batches.push({
-              query: q,
-              queryIndex: i,
-              items: batchJson.items,
-            });
-          }
-        }
-      } catch (unionErr) {
-        const message = ((unionErr as Error)?.message ?? String(unionErr)).slice(0, 300);
-        providerErrors.push({ query: q, message });
-        const unionLimited = recordYahooWebResult(unionErr);
-        if (unionLimited || isYahooRateLimitedError(unionErr)) {
-          webUnionThrottled = true;
-          break;
-        }
-        // One failed rescue query must not discard sibling results.
-        if (i < boundedQueries.length - 1) await paceForYahooPressure();
-      }
-    }
-
-    const ranked = mergeYahooWebQueryBatches(
-      batches,
-      options.query,
-      options.includeDomains,
-      options.excludeDomains,
-    );
-
-    if (ranked.length > 0) {
-      const contributedFallback = ranked.some(
-        (item: any) => (item.retrievalQueryIndex ?? 0) > 0,
-      );
-
-      try { incrementSecurityCounter('sora_search_queries_total'); } catch {}
-      return {
-        items: ranked,
-        count: ranked.length,
-        source: 'web',
-        originalQuery: options.query,
-        bindingQuery: options.query,
-        retrievalQueries,
-        effectiveQuery: options.query,
-        isFallback: contributedFallback,
-        queryUnion: true,
-        ...(webUnionThrottled ? { throttled: true, partial: true, stopReason: 'provider_rate_limited' } : {}),
-        ...(providerErrors.length > 0 ? { providerErrors } : {}),
-        ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
-      };
-    }
-
-    if (webUnionThrottled || providerErrors.length > 0) {
-      const staleUnion = getYahooStaleCache<any>(flightKey);
-      if (staleUnion) {
-        try { incrementSecurityCounter('yahoo_stale_hit_total'); } catch {}
-        return { ...staleUnion, stale: true, throttled: webUnionThrottled ? true : undefined, stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined };
-      }
-    }
-    return {
-      ...lastParsedData,
-      items: [],
-      count: 0,
-      source: 'web',
-      originalQuery: options.query,
-      bindingQuery: options.query,
-      retrievalQueries,
-      effectiveQuery: options.query,
-      isFallback: false,
-      queryUnion: true,
-      throttled: webUnionThrottled ? true : undefined,
-      stopReason: webUnionThrottled ? 'provider_rate_limited' : undefined,
-      providerErrors,
-      ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
-    };
-  }
 
   let webSequentialThrottled = false;
   for (let i = 0; i < candidateQueries.length; i++) {
@@ -693,7 +515,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
       webSequentialThrottled = true;
       break;
     }
-    if (!pressureBypassed() && !yahooWebPressure.canRequest()) {
+    if (!yahooWebPressure.canRequest()) {
       webSequentialThrottled = true;
       break;
     }
@@ -767,19 +589,9 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
         } catch {
           // 診断失敗時は無視
         }
-        // Rollback: legacy mode restores BM25 global reorder (providerRank kept for shadow compare).
-        if (!isWebNativeRankingEnabled()) {
-          json.items = rerankSearchResults(filtered, options.query);
-          json.count = json.items.length;
-          json.source = 'web';
-          json.effectiveQuery = q;
-          json.isFallback = i > 0;
-          json.nativeRanking = false;
-          return json;
-        }
         // P1-2: 初回ヒットが弱い場合のみ1回だけ追加検索 (adaptive)
         // 0件時フォールバックとは別に、件数・カバレッジ・ドメイン偏りで判定する
-        if (i === 0 && candidateQueries.length > 1 && yahooQueryBudget >= 2 && (pressureBypassed() || yahooWebPressure.canRequest())) {
+        if (i === 0 && candidateQueries.length > 1 && yahooQueryBudget >= 2 && yahooWebPressure.canRequest()) {
           const conf = assessRetrievalConfidence(filtered, options.query);
           if (!conf.good) {
             try {
@@ -822,7 +634,6 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
                     retrievalQueries: [q, rescueQ],
                     effectiveQuery: options.query,
                     isFallback: true,
-                    queryUnion: false,
                     adaptiveUnion: true,
                     confidenceReasons: conf.reasons,
                     ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
@@ -1251,7 +1062,6 @@ export function buildRealtimeSearchCacheKey(options: YahooRealtimeOptions): stri
     options.verbose === true,
     options.focus ?? 'auto',
     options.anchor?.trim() || 'auto',
-    process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on',
   ]);
 }
 
@@ -2001,7 +1811,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions): Promis
   }
   let coverage = evaluateRealtimeRetrievalCoverage(mergeRealtimeQueryBatches(batches).items, requirements);
   const anchorHints = (options as YahooRealtimeOptions).anchorHints;
-  const anchorEnabled = anchorHints !== undefined && process.env.SORA_REALTIME_ANCHOR !== 'off';
+  const anchorEnabled = anchorHints !== undefined;
   // 1件だけ全語に一致しても、大半が全語を含まなければ網羅できたとはみなさない（判定材料がある時だけ）
   const weakCoverage = anchorEnabled && coverage.hasFullCoverage
     && coverage.itemCount >= WEAK_COVERAGE_MIN_ITEMS

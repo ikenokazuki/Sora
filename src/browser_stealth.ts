@@ -17,8 +17,9 @@ import {
 import { groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
 import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
 import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
+import { envInt } from './config.js';
 
-export const PORT = parseInt(process.env.PORT || '8000', 10);
+export const PORT = envInt('PORT');
 
 /** 実行中のChromiumのバージョンすら取得できなかった場合の最終フォールバック。 */
 export const USER_AGENT =

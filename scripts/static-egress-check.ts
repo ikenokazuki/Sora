@@ -104,7 +104,7 @@ await stopEgressGateway();
 // (3) 直接（ゲートウェイなし）の ClientHello と比べる: SNI（宛先の名前）だけが違う
 {
   process.env.SORA_EGRESS_GATEWAY = 'off';
-  process.env.ALLOW_LOCAL_FETCH = 'true'; // 内部（localhost）への、直接の取得を許す（比べる相手を取るため）
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true'; // 内部（localhost）への、直接の取得を許す（比べる相手を取るため）
   void fetchWithSafeRedirects(`https://localhost:${capture.port}/`, 15_000, 0).catch(() => {});
   const direct = await helloFor('localhost');
   const differences = diffHellos(direct, viaGateway as ClientHello).filter((difference) => difference.field !== 'serverName');

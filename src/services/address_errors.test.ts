@@ -11,7 +11,7 @@ describe('addressErrorMessage', () => {
   test('それ以外の例外は、メッセージをそのまま返す', () => {
     expect(addressErrorMessage(new AddressInputError('郵便番号は 7 桁'))).toBe('郵便番号は 7 桁');
     expect(addressErrorMessage(new AddressUnavailableError('HTTP 403', true, 'master'))).toBe('HTTP 403');
-    expect(addressErrorMessage(new AddressDisabledError())).toContain('SORA_ADDRESS=off');
+    expect(addressErrorMessage(new AddressDisabledError())).toContain('SORA_ADDRESS_MODE=off');
     expect(addressErrorMessage('boom')).toBe('boom');
   });
 });

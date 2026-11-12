@@ -18,8 +18,11 @@ import {
   pruneInvisibleElements,
   type BrowserActionStep,
 } from './scraper.js';
+import { envBool } from './config.js';
 import { errorMessage } from './errors.js';
 import { browserResolvesLocally } from './net/egress.js';
+
+const EVALUATE_FORBIDDEN = 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set SORA_BROWSER_ALLOW_EVALUATE=true to enable)';
 
 function hashToken(token?: string): string | undefined {
   if (!token) return undefined;
@@ -316,8 +319,8 @@ async function runActionsOnPage(
           break;
         }
         case 'evaluate': {
-          if (process.env.ALLOW_BROWSER_EVALUATE !== 'true') {
-            throw new Error('Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set ALLOW_BROWSER_EVALUATE=true to enable)');
+          if (!envBool('SORA_BROWSER_ALLOW_EVALUATE')) {
+            throw new Error(EVALUATE_FORBIDDEN);
           }
           if (!action.script) throw new Error('Evaluate action requires script');
           await page.evaluate(action.script);
@@ -334,7 +337,7 @@ async function runActionsOnPage(
           if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
             throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
           }
-          if (process.env.ALLOW_LOCAL_FETCH !== 'true') {
+          if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
             await validateHostIpDns(parsedUrl.hostname, { failClosed: browserResolvesLocally(parsedUrl.hostname) });
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
@@ -405,8 +408,8 @@ export async function handleBrowserSessionAction(
     };
   }
 
-  // 1.1 evaluate アクションの事前検証 (ALLOW_BROWSER_EVALUATE !== 'true' 時の早期防御)
-  if (process.env.ALLOW_BROWSER_EVALUATE !== 'true' && actions.some((a) => a.type === 'evaluate')) {
+  // 1.1 evaluate アクションの事前検証 (SORA_BROWSER_ALLOW_EVALUATE が真でないときの早期防御)
+  if (!envBool('SORA_BROWSER_ALLOW_EVALUATE') && actions.some((a) => a.type === 'evaluate')) {
     const actionLogs = actions.map((act, idx) => {
       if (act.type === 'evaluate') {
         return {
@@ -414,7 +417,7 @@ export async function handleBrowserSessionAction(
           type: act.type,
           target: act.script,
           success: false,
-          message: 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set ALLOW_BROWSER_EVALUATE=true to enable)',
+          message: EVALUATE_FORBIDDEN,
           elapsedMs: 0,
         };
       }
@@ -535,7 +538,7 @@ export async function handleBrowserSessionAction(
   try {
     // 初期 URL が指定されている場合、ページ遷移を実行
     if (options.url) {
-      if (process.env.ALLOW_LOCAL_FETCH !== 'true' && isBlockedHostname(new URL(options.url).hostname)) {
+      if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && isBlockedHostname(new URL(options.url).hostname)) {
         throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
       }
       const currentUrl = page.url();

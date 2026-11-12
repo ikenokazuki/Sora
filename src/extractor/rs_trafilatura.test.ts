@@ -28,16 +28,16 @@ describe('extractMainContentWithRs', () => {
     const path = join(dir, 'envdump');
     writeFileSync(path, `#!/bin/sh\ncat > /dev/null\nenv > "${dump}"\nprintf '%s' '{"content_html":"<p>x</p>"}'\n`);
     chmodSync(path, 0o755);
-    const saved = { sora: process.env.SORA_API_KEY, ups: process.env.UPS_CLIENT_SECRET };
+    const saved = { sora: process.env.SORA_API_KEY, ups: process.env.SORA_TRACKING_UPS_CLIENT_SECRET };
     process.env.SORA_API_KEY = 'sk-test-secret';
-    process.env.UPS_CLIENT_SECRET = 'ups-test-secret';
+    process.env.SORA_TRACKING_UPS_CLIENT_SECRET = 'ups-test-secret';
     try {
       await extractMainContentWithRs('<html></html>', 'https://example.com/', path);
     } finally {
       if (saved.sora === undefined) delete process.env.SORA_API_KEY;
       else process.env.SORA_API_KEY = saved.sora;
-      if (saved.ups === undefined) delete process.env.UPS_CLIENT_SECRET;
-      else process.env.UPS_CLIENT_SECRET = saved.ups;
+      if (saved.ups === undefined) delete process.env.SORA_TRACKING_UPS_CLIENT_SECRET;
+      else process.env.SORA_TRACKING_UPS_CLIENT_SECRET = saved.ups;
     }
     const dumped = readFileSync(dump, 'utf8');
     expect(dumped).not.toContain('sk-test-secret');

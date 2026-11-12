@@ -190,17 +190,17 @@ describe('MCP session activation isolation', () => {
   });
 
   test('stateless activation cannot enable a module disabled by configuration', async () => {
-    const previousModules = process.env.ENABLED_MODULES;
+    const previousModules = process.env.SORA_MODULES;
     const manager = new McpSessionManager();
     try {
-      process.env.ENABLED_MODULES = 'web';
+      process.env.SORA_MODULES = 'web';
       const stateless = connection(manager);
       const result = await stateless.call('default.track_package', { trackingNumber: '123' });
       expect(result.result.isError).toBe(true);
       expect(await stateless.names()).not.toContain('track_package');
     } finally {
-      if (previousModules === undefined) delete process.env.ENABLED_MODULES;
-      else process.env.ENABLED_MODULES = previousModules;
+      if (previousModules === undefined) delete process.env.SORA_MODULES;
+      else process.env.SORA_MODULES = previousModules;
       manager.clearAllSessions();
     }
   });

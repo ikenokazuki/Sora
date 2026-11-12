@@ -78,7 +78,7 @@ export const REST_TOOLS: readonly RestTool[] = [
   t('get_country_context', 'GET', '/intelligence/context/{contextId}', 'intel'),
   t('get_country_context_evidence', 'GET', '/intelligence/context/{contextId}/evidence', 'intel'),
   t('get_country_context_updates', 'GET', '/intelligence/context/{contextId}/updates', 'intel'),
-  // ENABLED_MODULES に名前を挙げたときだけ有効になるもの
+  // SORA_MODULES に名前を挙げたときだけ有効になるもの
   t('get_lyrics', 'POST', '/lyrics', 'lyrics'),
   t('recognize_song', 'POST', '/music/recognize', 'shazam'),
   // REST にだけある操作（MCP のツールは無い）

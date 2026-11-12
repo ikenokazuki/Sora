@@ -11,12 +11,12 @@ import { crawlSiteUrl, mapSiteUrl } from './scraper.js';
 
 let prevAllow: string | undefined;
 beforeAll(() => {
-  prevAllow = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
 });
 afterAll(() => {
-  if (prevAllow !== undefined) process.env.ALLOW_LOCAL_FETCH = prevAllow;
-  else delete process.env.ALLOW_LOCAL_FETCH;
+  if (prevAllow !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
+  else delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 });
 
 const page = (title: string, links: string[]) =>

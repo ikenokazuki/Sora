@@ -4,6 +4,7 @@
 import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { envPath } from '../config.js';
 import { getDatabasePath } from '../db.js';
 import { errorMessage } from '../errors.js';
 
@@ -177,7 +178,8 @@ async function fetchExport(): Promise<HtsExportRow[]> {
 
 /** 保存先のディレクトリ（判例の索引も同じ所に置く）。テスト（DB が :memory:）で SORA_HTS_DIR が無いときは undefined（メモリ上に置く）。 */
 export function htsDirectory(): string | undefined {
-  if (process.env.SORA_HTS_DIR) return process.env.SORA_HTS_DIR;
+  const dir = envPath('SORA_HTS_DIR');
+  if (dir) return dir;
   const dbPath = getDatabasePath();
   return dbPath === ':memory:' ? undefined : join(dirname(dbPath), 'hts');
 }

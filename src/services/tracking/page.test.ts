@@ -4,7 +4,7 @@ import { getCarrierAdapter } from './registry.js';
 import { isValidTrackingPage, renderTrackingPage, trackingPageUrl } from './page.js';
 import type { TrackingResult } from './types.js';
 
-const KEYS = ['SORA_TRACKING_PAGE_SECRET', 'SORA_PUBLIC_URL', 'WEB_FETCHER_API_KEY', 'API_KEY'] as const;
+const KEYS = ['SORA_TRACKING_PAGE_SECRET', 'SORA_PUBLIC_URL', 'SORA_API_KEY'] as const;
 const enable = () => {
   process.env.SORA_TRACKING_PAGE_SECRET = 'test-secret';
   process.env.SORA_PUBLIC_URL = 'https://sora.example/';
@@ -105,7 +105,7 @@ describe('tracking page', () => {
 
   test('opens from another site without an API key, and only with the signature Sora issued', async () => {
     enable();
-    process.env.WEB_FETCHER_API_KEY = 'secret-key';
+    process.env.SORA_API_KEY = 'secret-key';
     const num = '987654321098';
     const track = spyOn(getCarrierAdapter('sagawa')!, 'track').mockImplementation(async () => delivered(num));
     try {

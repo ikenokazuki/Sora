@@ -40,7 +40,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
    - 検査は Node 側の `dnsPromises.lookup` で、ブラウザが後で別に名前を解決する。DNS rebinding で、検査のあとに宛先を内部に替えられる（攻撃の再現はしていない）。
    - 検証結果は一定時間キャッシュされる。
    - `validateHostIpDns` は、DNS の失敗を通す（`catch` で空を返す）。攻撃者が自分の DNS で最初の問い合わせだけ失敗させれば、検査を抜けられる。（PR 2c-2 で、Sora の手元で名前を引いて接続するときは、閉じた。下の「実装の状態」）
-   - `ALLOW_LOCAL_FETCH=true` で全部通る。
+   - `SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（v4 までは `ALLOW_LOCAL_FETCH`）で全部通る。
 6. **静的取得も、検証した IP に接続を固定していない。** 検証は `validateHostIpDns`（`http_fetcher.ts`）、接続は wreq-js が別に解決する。
 7. **`/metrics` は認証なしの公開**（`PUBLIC_PATHS`）。中身に tenant の情報が無いかは未確認。
 
@@ -135,7 +135,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
   - 拒否のカウンターは `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`。`/metrics` は、名前だけのカウンターなので、理由ごとに別の名前）。応答には `X-Sora-Egress-Deny: <理由>` を付ける。接続の失敗（502）は、方針の拒否ではないので、数えない。
   - 既定の上限: 同時のクライアント接続 512・無通信 5 分・頭部 16KB・解決と接続は 10 秒。`stop()` は、中継中の接続もすべて切る。
 - **実装の状態（PR 2b-2。#99。ブラウザを通す）**: `SORA_EGRESS_GATEWAY`（既定 off）が on のとき、`launchStealthChromium` が、ゲートウェイ（`src/net/egress.ts` の `getEgressGateway()`。プロセスで 1 つ。使うときに、初めて起動する）を、Chromium の起動の引数（`browserProxyArgs`）で指す。使わないユーザーには、何も起動しない。実装で決めたこと:
-  - 設定は環境変数から: `SORA_EGRESS_GATEWAY`（`on`・`true`・`1`・`yes`。認識できない値は、警告して off）、`SORA_EGRESS_PORTS`（誤りは、起動のときに、その名前を書いたエラー）。`ALLOW_LOCAL_FETCH=true`（内部への取得を許す設定）のときは、警告して off にする（内部を許す設定と、内部を断る設定は、同時に成り立たない）。
+  - 設定は環境変数から: `SORA_EGRESS_GATEWAY`（`on`・`true`・`1`・`yes`。書き方の誤りは、起動のときにエラーにして止める。起動の検査を通らない経路でも、ゲートウェイを使うかの判定は、同じエラーにする。打ち間違いで、検査が黙って外れないため）、`SORA_EGRESS_PORTS`（誤りは、起動のときに、その名前を書いたエラー）。2 つとも、環境変数の登録簿（`src/config.ts`、領域 `egress`）に登録してあり、README の表はそこから作る（`bun run gen:env`）。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定。v4 までは `ALLOW_LOCAL_FETCH`）のときは、警告して off にする（内部を許す設定と、内部を断る設定は、同時に成り立たない）。
   - 運用者のプロキシ（`SORA_PROXY_URL`・`HTTPS_PROXY` など。優先順位はこれまでと同じ。読む処理は `src/net/proxy_config.ts` に移した）は、ゲートウェイの上流にする。`NO_PROXY` は、これまでの `--proxy-bypass-list` と同じ書き方（IP・CIDR・サブドメイン）で、ゲートウェイの `bypassUpstream` が受ける: 該当する宛先は、上流を通さず、ゲートウェイが直接つなぐ（宛先の検査は、同じに受ける）。ブラウザの `--proxy-bypass-list` は `<-loopback>` だけにして、`NO_PROXY` の宛先も、ゲートウェイを通す。
   - `getBrowser(overrideProxyUrl)`（ブラウザごとの別のプロキシ）は、ゲートウェイが有効なときは、エラーにする。黙って無視すると、ゲートウェイを迂回したと思わせるため（呼ぶ側は、いまのところ無い）。
   - ゲートウェイは、ブラウザを閉じても止めない（無操作で閉じたあとの再起動も、同じゲートウェイを使う）。起動に失敗しても、その失敗は覚えない（設定を直して、もう一度呼べる）。

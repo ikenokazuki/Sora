@@ -22,14 +22,14 @@ Sora の `lookup_hts` は、`htsCode` を省くと、英語の商品名・説明
 - 更新は 7 日ごとです。7 日を過ぎたあとの最初の利用では、古い表で答えながら、裏で取り直しを始めます。取り直しに失敗したら、1 時間は再試行しません。起動時の取得や定期の処理はありません。初回の取得に失敗したときは、その呼び出しがエラーになり、次の呼び出しで取り直します。
 - 推測が使う表は最新の 1 版だけで、取り直すと前の版は残りません。版ごとの全件を残したいときは、`hts-archive` モジュールを有効にします（README の「Module 15: HTS Release Archive」）。1 日 1 回、全件の中身を比べ、変わっていたら `SORA_HTS_DIR` の `releases/` に版ごとに保存します。推測はこの保存を使いません。
 
-CBP の分類判例は、手元の判例の索引から引きます（既定。`CROSS_SOURCE=local`）。
+CBP の分類判例は、手元の判例の索引から引きます（既定。`SORA_HTS_CROSS_SOURCE=local`）。
 
 - CBP の判例検索（rulings.cbp.gov の API）は、2026 年 11 月の時点でボット対策の後ろにあり、プログラムからの要求は 403 になります（本文は `Security parameters are missing from this request context.`）。Sora はこれを避けません。そこで、公開されている判例のデータから作った索引を、Sora の GitHub のリリースに置いて使います。
 - 索引は、推測が初めて呼ばれたときに取得します（gzip で約 6MB）。SHA-256 を確かめてから、SQLite の全文検索（FTS5）の表にして、HTS と同じ場所（`SORA_HTS_DIR`）に `cross.sqlite` として保存します。起動時の取得や常駐の処理はありません。用意ができるまでの呼び出しは、HTS の全文検索だけで答え、`evidence.crossNote` に「判例の索引を準備中」と残します。取得に失敗したら、1 時間は取り直しません。
 - 照会は CBP の検索と同じく AND 条件です（照会語の全ての語を、判例の品名か説明に含む判例）。品名を説明の 2 倍の重みにした BM25 で並べ、上位 10 件を見ます。
 - 判例を使ったときは、`evidence.attribution` に出典を表示します。判例番号のある判例は `evidence.rulings` に rulings.cbp.gov への URL つきで出します。判例番号の無い判例（下の ATLAS の分）は票だけに使い、`evidence.rulings` には出しません。
-- `CROSS_SOURCE=api` にすると、これまでどおり CBP の API に問い合わせます（1 回 5 秒で時間切れ、24 時間キャッシュ、失敗したら 60 秒は問い合わせない、分類の判例だけで取り消された判例は除く）。今は 403 で `unavailable` になります。
-- 自分で作った索引を使うときは、`SORA_CROSS_INDEX_URL`（`file://` も可）と `SORA_CROSS_INDEX_SHA256` を両方指定します。
+- `SORA_HTS_CROSS_SOURCE=api` にすると、これまでどおり CBP の API に問い合わせます（1 回 5 秒で時間切れ、24 時間キャッシュ、失敗したら 60 秒は問い合わせない、分類の判例だけで取り消された判例は除く）。今は 403 で `unavailable` になります。
+- 自分で作った索引を使うときは、`SORA_HTS_CROSS_INDEX_URL`（`file://` も可）と `SORA_HTS_CROSS_INDEX_SHA256` を両方指定します。
 
 ### 判例の索引の作り方
 

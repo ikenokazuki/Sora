@@ -14,6 +14,7 @@
     "test:intel:live": "bun run src/services/country_intel/live_smoke.ts",
     "typecheck": "tsc --noEmit && tsc -p packages/audio-signature --noEmit",
     "gen:client": "NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file scripts/gen-client/index.ts",
+    "gen:env": "bun --no-env-file scripts/gen-env-table.ts",
     "lint": "biome lint src scripts packages",
     "test:tools:live": "bun --no-env-file run scripts/tool-health/run.ts --live --image sora-tool-health:candidate --out ./tool-health-out",
     "schema:notation": "NODE_ENV=test SORA_DB_PATH=:memory: bun --no-env-file scripts/schema-notation/scan.ts"

@@ -6,7 +6,7 @@ import { SongRecognitionFormSchema, SongRecognitionRequestSchema, SongRecognitio
 import { formatError } from './utils.js';
 
 const moduleDisabled = (c: Context) =>
-  formatError(c, 'shazam module is not enabled. Add it to ENABLED_MODULES by name (e.g. ENABLED_MODULES=all,shazam); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
+  formatError(c, 'shazam module is not enabled. Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,shazam); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
 
 /** 認識の呼び出しを実行し、入力の誤りは 400、Shazam 側の拒否・障害は 502 にする。 */
 async function respond(c: Context, run: () => Promise<unknown>) {
@@ -21,7 +21,7 @@ async function respond(c: Context, run: () => Promise<unknown>) {
 /**
  * 音から曲を特定する (POST /music/recognize)。JSON の url か、multipart/form-data の file を受け取る。
  * 作り済みの指紋は POST /music/recognize/signature（キャッシュしない）。
- * モジュール 'shazam' を ENABLED_MODULES に名前で挙げたときだけ応答する。特定できない場合も 200 で found: false。
+ * モジュール 'shazam' を SORA_MODULES に名前で挙げたときだけ応答する。特定できない場合も 200 で found: false。
  */
 export function createSongRecognitionRoutes(
   run: (input: SongRecognitionOptions) => Promise<unknown> = recognizeSong,

@@ -27,7 +27,7 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 
 ## Retrieval DoD (§62)
 
-- [x] providerRank preserved; single SERP not BM25-reordered (flag-gated).
+- [x] providerRank preserved; single SERP not BM25-reordered (flag-gated at the time; v5.0.0 removed the flag and fixed this behavior).
 - [x] X generic reranker removed (deprecated alias only).
 - [x] Multi-query RRF with canonical module + formula-consistency test.
 - [x] Scrape refill on usable-content basis.
@@ -118,7 +118,7 @@ Legend: DONE (code + test), PARTIAL (code, gap noted), OPEN (needs decision/labo
 ## Ranking (spec sections 22-28, pre-existing implementation)
 
 - [x] Provider rank preservation
-  - implementation: `src/services/yahoo.ts` (native ranking default, `SORA_WEB_NATIVE_RANKING` rollback)
+  - implementation: `src/services/yahoo.ts` (native ranking; v5.0.0 removed the rollback flag and fixed this behavior)
   - tests: union/providerRank cases in `src/services/yahoo_query_union.test.ts`
 - [x] RRF only for multi-query
   - implementation: `src/retrieval/rrf.ts`, weighted original 1.0 / fallback 0.6

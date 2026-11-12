@@ -1,6 +1,6 @@
-# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた
+# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめ、環境変数の名前を整理した
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,227・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,232・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。あわせて、環境変数の名前を整理しました（旧名は読みません。「先に気づく変更（運用者）」と「環境変数の整理」）。
 
 ## 先に気づく変更（呼び出し側）
 
@@ -16,7 +16,19 @@
 - **`check_regulations` の判定に CPSC を含むとき（既定）は、`targetAge` が必要です。** 旧 `check_fda_regulated` のように `htsCode` だけで呼ぶと入力の誤りで、`targetAge` を足すか `agencies: ["fda"]` にするよう案内します（不明なら `targetAge: "unknown"`）。
 - **`lookup_hts` で HTS コードを照合するときは、商品の説明を `description` で渡します**（旧 `verify_hts_code` の `productDescription`）。REST の `/trade/hts-verify` は `productDescription` のままです。
 - **使い方に合わない引数は、入力の誤りになります。** まとめたツールで、選んだ使い方に無い引数を既定と違う値で渡すと（例: `scrape` の `urls` と `fullPage: false`、`search_media` の `type: "news"` と `page: 2`）、`isError` の「入力の誤り: …」に正しい使い方を添えて返します。旧ツールでは、宣言の無い引数は黙って捨てていました。既定と同じ値（LLM がスキーマの既定値をそのまま入れた場合）は通ります。
-- **X の個別投稿の取得が、モジュール `web` に移りました。** 旧 `fetch_x_post`（モジュール `yahoo`）は、`fetch_social_post`（`web`）の X の URL・`statusId` になりました。`ENABLED_MODULES` で `web` を外すと使えず、`yahoo` を外しても使えます。
+- **X の個別投稿の取得が、モジュール `web` に移りました。** 旧 `fetch_x_post`（モジュール `yahoo`）は、`fetch_social_post`（`web`）の X の URL・`statusId` になりました。`SORA_MODULES` で `web` を外すと使えず、`yahoo` を外しても使えます。
+
+## 先に気づく変更（運用者）
+
+- **環境変数の名前を整理しました。旧名は別名として読みません。** 旧名 40 個のうち、25 個は名前を変え、8 個は 4 つの名前にまとめ、7 個は廃止しました。よく設定される 2 つは、`ENABLED_MODULES` が `SORA_MODULES`、`SORA_DEFER_TOOLS` が `SORA_MCP_DEFER_TOOLS` です。新しい名前が無く旧名だけがあるとき、10 個（認証キーの `WEB_FETCHER_API_KEY`・`API_KEY`、`ENABLED_MODULES`・`SORA_DEFER_TOOLS` など、無視すると認証が外れる・絞った設定が開く・外への通信やツールの一覧が変わるもの）は起動を拒否し、残りの 30 個は警告して起動を続けます（その設定は効いていません）。対応は「環境変数の整理」の表のとおりです。
+  - 切り替えは 1 回で、旧名を新しい名前に書き換えてください。旧名と新しい名前を併記しないでください（v5 は旧名を読まず、消すよう警告し続けます）。
+  - v4 に戻すときは、環境変数の設定も、v4 のときのものに丸ごと戻してください。v4 は新しい名前を読まないので、新しい名前のままでは、絞ったモジュールが開き、名前で挙げた `lyrics` などが無効になるなど、動いても設定が違う状態になります。
+- **公開イメージの DB の既定の場所が、`/app/data/sora.db` から `/data/sora.db` になりました**（イメージが `SORA_DB_PATH=/data/sora.db` を設定します。住所データと HTS の索引も、その隣の `/data/address`・`/data/hts` です）。`/app/data` に volume を付けていた場合、DB（キャッシュ・サイトごとの Cookie / localStorage・監視対象・API の使用量）は空で始まります。volume を `/data` に付けるか、`SORA_DB_PATH=/app/data/sora.db` で前の場所を指してください。`SORA_DB_PATH` を設定していた場合は影響しません。
+  - `/data` は、コンテナの実行ユーザー（イメージは root）が書ける必要があります。書けないと、キャッシュは保存されず（失敗のたびに警告をログに出します。DB を開けないときは `GET /health?detailed=true` が `degraded` です）、監視対象の作成は失敗します。
+  - volume を付けずに起動すると、匿名の volume ができます（イメージの `VOLUME ["/data"]`）。
+- **起動時に環境変数を検査し、誤りがあれば起動しません。** 不正な値（例: `PORT=abc`・`SORA_BROWSER_IDLE_TTL_MS=5m`・`SORA_MODULES=web,weeb`）、拒否する旧名だけの設定、判例の索引の URL と SHA-256 の片方だけは、全部を標準エラーに出してから、終了コード 1 で止まります。知らない `SORA_*` の名前・効かない旧名・廃止した名前などは、警告して続けます。値の読み方も厳しくなりました（「環境変数の整理」）。
+- **名前の変わらない `SORA_ALLOW_ANONYMOUS` も、読み方が変わりました。** v4 は `true` だけを真と読みましたが、v5 は `1`・`yes`・`on`・`TRUE` も真です。キーを設定していて `SORA_ALLOW_ANONYMOUS` に `true` 以外の真の綴り（v4 では無効だったもの）を書いていた場合、v5 ではキー無しの要求も、誤ったキーの要求も、匿名として通ります（警告は出ません）。`false` にするか、消してください。
+- **空白だけの `SORA_API_KEY` は、未設定として扱います。** v4 では、空白だけの値も認証の鍵として扱われ（実質すべての要求が `401`）、v5 では認証が無効（Fail-Open）で起動し、警告だけを出します。キーを使うなら、値を確かめてください。
 
 ## ツールの統合
 
@@ -34,7 +46,7 @@
 - **監視: `watch` は `action`（`register`・`check`・`list`・`delete`）で選びます**（旧 `watch_register`・`watch_check`・`watch_list`・`watch_delete`）。応答とエラーの文は旧ツールと同じです。
 - **貿易: `lookup_hts` は、`htsCode` があれば照合（`description` が必須）、省けば推測（`productName` が必須）です**（旧 `verify_hts_code`・`predict_hts_code`）。`check_regulations` は `agencies`（`cpsc`・`fda`、既定は両方）で判定する機関を選びます（旧 `check_cpsc_certificate`・`check_fda_regulated`）。
 - **国・地域: `get_country_context` は `part` で、保存したレポート（`report`、既定）・根拠（`evidence`）・差分（`updates`）を選びます**（旧 `get_country_context_evidence`・`get_country_context_updates`）。
-  - SDK が和集合の `outputSchema` を受けないので、`get_country_context` の `outputSchema` は `{ contextId, … }` だけの緩いものになりました（`SORA_TOOL_OUTPUT_SCHEMA=true` のときだけ見えます）。`structuredContent` の中身は同じです。
+  - SDK が和集合の `outputSchema` を受けないので、`get_country_context` の `outputSchema` は `{ contextId, … }` だけの緩いものになりました（`SORA_MCP_OUTPUT_SCHEMA=true` のときだけ見えます）。`structuredContent` の中身は同じです。
   - 保存した中身が part ごとの形に合わないときは、プロトコルの `Output validation error` でなく、`isError` の `Country intelligence error: invalid <part> payload: …` を返します。
 - **YouTube: `get_youtube` は `url` の形で選びます**（旧 `get_youtube_transcript`・`get_youtube_channel`）。動画（watch・youtu.be・shorts・live・embed の URL か 11 文字の動画 ID）なら字幕と説明文、チャンネル（URL・`@ハンドル`・`UC…` の ID）なら最新の動画です。どちらでもない `url` は、`YouTube error` でなく、受ける形を挙げた入力の誤りです。
 
@@ -44,6 +56,84 @@
 - **`include: []`・`agencies: []` は、省いたのと同じ既定になります**（`get_disaster_info`・`get_place_info` の `include`、`check_regulations` の `agencies`）。使えない値は、`include に使えない値があります: ""` のように引用して示します。
 - **URL として読めない `url`・`webhookUrl` の誤りの文を変えました。** `scrape`・`watch`・`browser_action`・`check_product_compliance` で、zod の `Invalid URL` でなく「入力の誤り: url は URL として読めません（いま: "example.com/a"）。…」です。
 - **`search_poi` で検索語も場所も無い呼び出しは、検索せずに入力の誤りです**（「入力の誤り: query・center・bbox・lat と lon のどれかを指定してください。」）。今までは、サービスの検査の誤りの JSON（`POI search error: [ … ]`）でした。
+
+## 環境変数の整理
+
+環境変数の名前を `SORA_<領域>_<名前>`（`SORA_AUTH_`・`SORA_BROWSER_`・`SORA_FETCH_`・`SORA_TRACKING_` など）にそろえ、値の読み方を 1 つにして、誤った設定を起動時に止めるようにしました。全機能にまたがる 7 つ（`SORA_API_KEY`・`SORA_ALLOW_ANONYMOUS`・`SORA_MODULES`・`SORA_DB_PATH`・`SORA_PUBLIC_URL`・`SORA_ALLOWED_HOSTS`・`SORA_ALLOWED_ORIGINS`）には領域を付けません。標準の名前（`PORT`・`NODE_ENV`・`HTTP_PROXY`・`HTTPS_PROXY`・`ALL_PROXY`・`NO_PROXY`・`CHROME_PATH` など）は変えていません。README §4.3 の表は、コードの登録簿から作るようになり、Sora の設定がすべて載ります（v4.2.0 の表には、載っていない設定がありました）。
+
+- **旧名と新しい名前。** 「旧名だけのとき」は、新しい名前が無く、旧名だけが設定されているときの扱いです。**拒否** は起動しません。警告は起動を続けますが、その設定は効いていません。廃止は、設定しても何も変わりません（警告して続けます）。新しい名前もあるときは、新しい名前を使い、旧名を消すよう警告します。
+
+| 旧名 | 新名 | 旧名だけのとき | 備考 |
+|---|---|---|---|
+| `ENABLED_MODULES` | `SORA_MODULES` | **拒否** | 旧名を無視すると、絞ったモジュールが開き、名前で挙げた `lyrics` などが消えます。知らないモジュール名は起動時のエラーです（以前は黙って無視） |
+| `SORA_DEFER_TOOLS` | `SORA_MCP_DEFER_TOOLS` | **拒否** | 旧名を無視すると、ツールの一覧が変わります。`0`・`off`・`no` でも無効になります（以前は `false` だけ） |
+| `WEB_FETCHER_API_KEY` | `SORA_API_KEY` | **拒否** | 旧名を無視すると認証が外れます。stdio は検査しません |
+| `API_KEY` | `SORA_API_KEY` | **拒否** | 同上。ほかのプログラムのための値なら、Sora の環境からは外してください |
+| `ALLOW_LOCAL_NO_AUTH` | `SORA_AUTH_LOOPBACK_NO_KEY` | 警告 | 旧名を無視すると閉じる側（`401`）です |
+| `TRUST_PROXY` | `SORA_AUTH_TRUST_PROXY` | 警告 | 旧名を無視すると閉じる側です |
+| `DAILY_REQUEST_LIMIT` | `SORA_AUTH_DAILY_LIMIT` | **拒否** | 旧名を無視すると上限が外れます。stdio は検査しません |
+| `LOG_FORMAT` | `SORA_LOG_FORMAT` | 警告 |  |
+| `ADMIN_ALERT_WEBHOOK_URL` | `SORA_ALERT_WEBHOOK_URL` | 警告 | 末尾の `/` を保ちます |
+| `SORA_TOOL_OUTPUT_SCHEMA` | `SORA_MCP_OUTPUT_SCHEMA` | 警告 |  |
+| `MAX_CONCURRENT_BROWSERS` | `SORA_BROWSER_MAX_CONCURRENCY` | 警告 |  |
+| `BROWSER_IDLE_TTL_MS` | `SORA_BROWSER_IDLE_TTL_MS` | 警告 | 不正な値は既定の `300000` に読みます（以前は `0` などに読まれた） |
+| `ALLOW_BROWSER_EVALUATE` | `SORA_BROWSER_ALLOW_EVALUATE` | 警告 | 旧名を無視すると閉じる側（`evaluate` は遮断）です |
+| `ALLOW_LOCAL_FETCH` | `SORA_FETCH_ALLOW_PRIVATE_NETWORK` | 警告 | テスト用途のみ |
+| `SORA_DEFAULT_REFERER` | `SORA_FETCH_DEFAULT_REFERER` | **拒否** | 旧名を無視すると、止めた `Referer` が戻ります。`0`・`no`・`false` でも無効になります |
+| `RS_TRAFILATURA_PATH` | `SORA_RS_TRAFILATURA_PATH` | 警告 | 公開イメージの `ENV` も新しい名前です |
+| `SORA_SCRAPE_DEADLINE_MS` | `SORA_SEARCH_SCRAPE_DEADLINE_MS` | 警告 |  |
+| `YAHOO_MCP_PATH` | `SORA_YAHOO_MCP_PATH` | 警告 | 公開イメージの `ENV` も新しい名前です |
+| `FXTWITTER_API_BASE` | `SORA_X_DETAIL_BASE_URL` | **拒否** | 旧名を無視すると、自前の FxEmbed でなく公開の FxTwitter に送ります |
+| `FXTWITTER_TIMEOUT_MS` | `SORA_X_DETAIL_TIMEOUT_MS` | 警告 |  |
+| `SORA_ADDRESS` | `SORA_ADDRESS_MODE` | **拒否** | 旧名を無視すると `lazy` に戻り、`off` にしていても、使われたときに住所データを取得します |
+| `CROSS_SOURCE` | `SORA_HTS_CROSS_SOURCE` | 警告 |  |
+| `SORA_CROSS_INDEX_URL` | `SORA_HTS_CROSS_INDEX_URL` | **拒否** | 旧名を無視すると、自分の索引でなくリリースの索引を取ります。SHA-256 と組で設定します |
+| `SORA_CROSS_INDEX_SHA256` | `SORA_HTS_CROSS_INDEX_SHA256` | **拒否** | 同上 |
+| `UPS_CLIENT_ID` | `SORA_TRACKING_UPS_CLIENT_ID` | 警告 | ID と秘密は組で設定します（無ければブラウザで照会） |
+| `UPS_CLIENT_SECRET` | `SORA_TRACKING_UPS_CLIENT_SECRET` | 警告 | 同上 |
+| `FEDEX_API_KEY` | `SORA_TRACKING_FEDEX_CLIENT_ID` | 警告 | 2 つの旧名を 1 つにしました。ID と秘密は組で読みます（以前は別の組の ID と秘密が混ざりえた） |
+| `FEDEX_CLIENT_ID` | `SORA_TRACKING_FEDEX_CLIENT_ID` | 警告 | 同上 |
+| `FEDEX_API_SECRET` | `SORA_TRACKING_FEDEX_CLIENT_SECRET` | 警告 | 同上 |
+| `FEDEX_CLIENT_SECRET` | `SORA_TRACKING_FEDEX_CLIENT_SECRET` | 警告 | 同上 |
+| `DHL_EXPRESS_API_KEY` | `SORA_TRACKING_DHL_API_KEY` | 警告 | 2 つの旧名を 1 つにしました |
+| `DHL_API_KEY` | `SORA_TRACKING_DHL_API_KEY` | 警告 | 同上 |
+| `SORA_BLUESKY_DIDS` | `SORA_INTEL_BLUESKY_DIDS` | 警告 |  |
+| `SORA_YAHOO_THROTTLE` | （廃止） | 廃止（警告） | Yahoo の負荷の制御は常に有効です |
+| `SORA_WEB_RETRY_WAIT_MS` | （廃止） | 廃止（警告） | 負荷の制御の初期の間隔は 400 ミリ秒に固定しました（下の「Yahoo の Web 検索の負荷の制御」） |
+| `SORA_WEB_NATIVE_RANKING` | （廃止） | 廃止（警告） | 検索元の順位のまま返します（BM25 の全体の並べ替えは消しました） |
+| `SORA_RRF_ENABLED` | （廃止） | 廃止（警告） | 2 つの検索の結果は常に加重 RRF でまとめます |
+| `SORA_WEB_QUERY_UNION` | （廃止） | 廃止（警告） | 試験的な機能（既定は無効）をコードごと消しました |
+| `SORA_X_SOURCE_ISOLATION` | （廃止） | 廃止（警告） | 試験的な機能（既定は無効）をコードごと消しました |
+| `SORA_REALTIME_ANCHOR` | （廃止） | 廃止（警告） | X 検索の固有名詞の判定は常に有効です |
+
+- **起動時の検査。**
+  - 出力は標準エラーで、行の先頭は `[Sora/Config] エラー:`・`[Sora/Config] 警告:` です。stdio でも、標準出力（MCP の通信）には何も出しません。
+  - エラーは、全部を出したあと、件数の行（`環境変数の誤りが N 件あるので、起動しません`）を出して、終了コード 1 で止まります。不正な値は、変数の名前と正しい形を示します（例: `SORA_BROWSER_IDLE_TTL_MS の値（"5m"）は不正です。正しい形: 0 以上の整数`）。
+  - 警告（知らない `SORA_*` の名前、効かない旧名・廃止した名前、運送会社の ID と秘密の片方だけ、空白だけの `SORA_API_KEY`、同梱の実行ファイルのパスにファイルが無い）は、出して起動を続けます。
+  - 秘密の値（API キー・Webhook の URL・プロキシの URL・運送会社の鍵など）は表示せず、「設定済み、長さ N」とだけ出します。秘密でない URL も、資格情報・問い合わせ・断片を伏せて出します。
+  - `SORA_API_KEY` も `SORA_ALLOW_ANONYMOUS` も無いのは、エラーにしません。今までどおり Fail-Open で、認証なしで起動し、最初の要求でキー無しの警告を 1 回出します。
+  - stdio は待ち受けも認証もしないので、`PORT` と、認証キー・1 日の上限の旧名（`WEB_FETCHER_API_KEY`・`API_KEY`・`DAILY_REQUEST_LIMIT`）を検査しません（ほかのプログラムの設定かもしれない汎用の名前のため）。ほかの検査は stdio でも効きます。HTTP で起動するときは、旧名の鍵だけなら拒否します。
+- **値の読み方が変わるもの。** 読むときは、不正な値を既定に戻し（カンマ区切りの列は正しい要素だけを残し）、起動時の検査がエラーにします。
+  - 真偽値は `true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`（大文字小文字は問わない）です。以前は変数ごとに読み方が違い、`1`・`yes` を真としない変数がありました。たとえば `SORA_ALLOW_ANONYMOUS=TRUE` は真です。`SORA_MCP_DEFER_TOOLS` は `0`・`off`・`no` でも無効、`SORA_FETCH_DEFAULT_REFERER` は `off` のほか `0`・`no`・`false` でも無効、`SORA_X_DETAIL_PROVIDER` は小文字の `off` のほか、`OFF`・前後に空白のある `off`・`false`・`0`・`no` でも無効、`SORA_INTEL_SCRAPE`・`SORA_INTEL_WEB_SEARCH` も `off` のほか `OFF`・`false`・`0`・`no` で止まります。
+  - 選択肢の設定（`SORA_HTS_CROSS_SOURCE`・`SORA_ADDRESS_MODE`・`SORA_LOG_FORMAT` など）は、大文字小文字と前後の空白を問いません（以前、`SORA_HTS_CROSS_SOURCE` は小文字の `api` だけを読みました）。パスの設定（`SORA_DB_PATH`・`SORA_HTS_DIR`・`CHROME_PATH` など）は前後の空白を除き、空白だけは未設定です。
+  - 整数は、前後の空白を除いた数字だけ（と変数ごとの範囲）です。以前は数に読まれた次の値は、起動時はエラーで、読むときは既定に戻ります: `SORA_X_DETAIL_TIMEOUT_MS` の `-5`・`1e3`・`+5`・`100abc`、`SORA_YAHOO_MIN_INTERVAL_MS`・`SORA_YAHOO_BREAKER_COOLDOWN_MS` の `1e3`・`0x10`・`+5`・`100abc`、`SORA_SEARCH_SCRAPE_DEADLINE_MS` の `1e3`・`+5`・桁の大きい値、`SORA_ADDRESS_MAX_MB`・`SORA_ADDRESS_WAIT_MS`・`SORA_ADDRESS_BUILD_CONCURRENCY` の `5e3`・`5000.0`・`0x1388`。`SORA_BROWSER_IDLE_TTL_MS` の不正な値は、以前は `0`（閉じない）や `1000` などに読まれましたが、起動時はエラーで、読むときは既定の `300000` です。`SORA_AUTH_DAILY_LIMIT` の `2abc`・`1e1` なども、起動時はエラーで、読むときは無制限です（以前は `parseInt` で上限が掛かりました）。`PORT=abc` は、以前は Bun が任意のポートで待ち受けましたが、起動時のエラーになりました。
+  - `SORA_MODULES` の `*`・`all` は、値のどこにあっても全部の意味です（例: `web,all`）。知らないモジュール名は起動時のエラーです（以前は黙って無視し、綴りを誤るとツールが消えました）。
+  - `SORA_ADDRESS_PRELOAD` の `all` も、列のどこにあっても全国の意味です。以前は値の全体が `all` のときだけで、`13,all` は東京都だけでした。いまは `13,all` で全国を取りに行き、起動時の警告も出ません。全国の事前取得は数 GB のデータになるので、`SORA_ADDRESS_MAX_MB` も増やしてください（`docs/operations/address-data.md` の §4）。範囲外の都道府県コード（`0`・`48`・`99` など）は、起動時はエラーで、読むときは除きます（以前は残しても該当が無く、何もしませんでした）。
+  - `SORA_AUTH_DAILY_LIMIT=0` は、起動時のエラーです（以前は上限なしと同じでした。上限なしにするには、消してください）。`SORA_PUBLIC_URL` は `http`・`https` の URL だけを受けます（以前は、どんな値も受けました）。`SORA_INTEL_DISABLED` は、取得先の ID を英小文字・数字・`_`・`-` で書いた列だけを受けます（`BlueSky` のような大文字は、起動時のエラーです）。
+  - `SORA_INTEL_BLUESKY_DIDS` に正しい DID が 1 つも無いときは、起動時はエラーで、読むときは全員に開かず、誰の投稿も残しません（読むときの結果は以前と同じ）。
+  - `SORA_PROXY_URL` は scheme（`http`・`https`・`socks5`）が必須になりました（`host:3128` のような値は、起動時はエラーで、読むときは標準の `HTTPS_PROXY` などに譲ります）。`SORA_PROXY_LIST` も、その形の要素だけから選びます（以前は要素を検査しませんでした）。標準の `HTTPS_PROXY` などは、標準の名前なので検査しません。
+  - `SORA_X_DETAIL_BASE_URL`・`SORA_OPENPOI_BASE_URL` は、前後の空白と末尾の `/` をすべて除き、URL でない値は既定の宛先に戻ります（以前は値をそのまま使い、取得が失敗しました）。`SORA_ALERT_WEBHOOK_URL` は、そのまま呼ぶ宛先なので、末尾の `/` を保ちます。
+- **Yahoo の Web 検索の負荷の制御で、初期の間隔が 0 から 400 ミリ秒になりました**（以前は、未設定の変数が `Number('')` で `0` に読まれていた不具合）。
+  - 2 つ目以降の候補の検索の前の待ちは `min(間隔, 250)` ミリ秒です。起動直後は、成功が 3 回続くまで 250 ミリ秒、4 回目のあとは 200 ミリ秒、5 回目のあとから 150 ミリ秒です（以前は、最初の成功のあとから 150 ミリ秒）。429 以外の失敗のあとも同じ待ちを通ります（起動直後は最大 250 + 250 ミリ秒。以前は 0）。
+  - 429 では、間隔が 400 → 800（medium）→ 1600（high）と広がります（以前は 0 のまま）。high の間は、追加検索（adaptive rescue）をしません。
+- **廃止した旗と実験。** 戻すための旗 5 個は、設定しても効かず（起動時に警告します）、動きを既定のものに固定しました（検索元の順位のまま返す・2 つの検索の結果は加重 RRF でまとめる・X 検索の固有名詞の判定・Yahoo の負荷の制御と、その初期の間隔の 400 ミリ秒）。既定で無効だった実験 2 個（複数クエリの統合・X の URL ごとの取得）は、コードごと消しました（比べる道具 `scripts/eval-live-ab.ts` も）。診断の `sourceIsolation` の欄も消えました（既定では出ていませんでした）。
+- **キャッシュのキーが変わりました。** Web 検索・X 検索・`search_deep` のキャッシュのキーから、旗の値の欄を外しました。更新後の最初の検索はキャッシュに当たりません。古い行は読まれずに消えるので、手で消す必要はありません。
+- **組で設定する変数。** `SORA_HTS_CROSS_INDEX_URL` だけ、`SORA_HTS_CROSS_INDEX_SHA256` だけは、起動を拒否します（以前は、URL だけなら初めて使うときのエラー、SHA-256 だけなら黙って無視でした）。`SORA_HTS_CROSS_INDEX_URL` は `https://` か `file://` の URL だけで、`http://…` などは起動時のエラーです（以前はそのまま取得していました）。読むときは、リリースの索引に黙って戻さず、初めて使うときに判例の照会が失敗します（推測は判例なしで答えます）。運送会社（UPS・FedEx）の ID だけ・秘密だけは警告します（API を使わず、ブラウザで照会します）。FedEx の ID と秘密は組で読みます（以前は 2 組の名前が `||` で読まれ、別の組の ID と秘密が混ざりえました）。
+- **同梱の実行ファイルのパス。** `SORA_YAHOO_MCP_PATH` のファイルが無いときは、警告して既定の場所（`/usr/local/bin`・リポジトリの `bin`・`PATH`）を探します（以前は、そのパスを使って Yahoo の検索が失敗しました）。`SORA_RS_TRAFILATURA_PATH` のファイルが無いときは、警告して Readability で本文を取り出します。
+- **公開イメージの環境変数。** イメージの `ENV` は `SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH` になり、`SORA_DB_PATH=/data/sora.db` を足しました（「先に気づく変更（運用者）」）。これらを上書きしていた派生のイメージは、新しい名前にしてください。
+- **文の変更。** 認証の `401` の文の `Bearer <API_KEY>` を `Bearer <key>` にしました（変数の名前と紛れるため）。Webhook の送信に失敗したときのログには、宛先のホスト名（とポート。#92）と、例外の種類（`code` か `name`。例: `UnexpectedRedirect`・`TimeoutError`）だけを出し、例外の文は出しません（Bun の例外の文は、宛先の URL を丸ごと含むため）。プライベートなネットワークの宛先として止めたときの警告にも、URL を出しません。REST の文に入っている変数名も新しい名前です: 住所機能を止めたときの 404 `ADDRESS_DISABLED` の `error` は `住所機能は SORA_ADDRESS_MODE=off で無効化されています`（以前は `SORA_ADDRESS=off`）、`/lyrics`・`/music/recognize`・`/trade/hts/releases` の 404 `MODULE_DISABLED` は `Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,lyrics)` の形（以前は `ENABLED_MODULES`）です。文で判定している呼び出し側は直してください。
+- **README の `SORA_ALLOW_ANONYMOUS` の説明を、動きに合わせて直しました**（動きは変えていません）。キーを設定していて `SORA_ALLOW_ANONYMOUS=true` のときは、キー無しの要求も、誤ったキーの要求も、匿名として通ります。`401` で断るのは `false` のときだけです。
+- **内部の export。** ライブラリとして import していた場合だけ関係します。`resolveMaxMcpSessions`・`DEFAULT_MAX_MCP_SESSIONS` を消し、定数 `YAHOO_MCP_PATH` を `YAHOO_MCP_EXECUTABLE_PATH` にしました。
 
 ## REST の応答の文（欄は変えていない）
 
@@ -64,7 +154,7 @@
 
 ## v4.2.0 以降に main に入った、そのほかの変更
 
-- **HTS の版の保存（モジュール `hts-archive`、#68）。** 米国 USITC の HTS の全件の JSON を、版ごとに保存します。`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ動き（`all` には入らない）、挙げなければ起動時の処理・タイマー・取得はありません。MCP のツールは無く、REST だけです。
+- **HTS の版の保存（モジュール `hts-archive`、#68）。** 米国 USITC の HTS の全件の JSON を、版ごとに保存します。`SORA_MODULES=all,hts-archive` のように名前を挙げたときだけ動き（`all` には入らない）、挙げなければ起動時の処理・タイマー・取得はありません。MCP のツールは無く、REST だけです。
   - 起動から 1 分後に 1 回、そのあと 24 時間ごとに `exportList` を取り、`records` の中身（キーを並べ替えた JSON の SHA-256）が最後に保存した版と違うときだけ、`releaseList` で `current` の版の名前を付けて保存します。同じ名前のまま中身が変わったときは、取得の時刻を付けた別の版にします。
   - 保存先は `SORA_HTS_DIR` の `releases/` です（版ごとの gzip と `index.json`）。`GET /trade/hts/releases` で一覧、`GET /trade/hts/releases/:id` で 1 つの版を返します。無効のときは 404 `MODULE_DISABLED` です。
 - **住所の座標化で、番地まである住所は国土地理院を先に引きます**（`get_place_info`・`search_poi` の中心地名、#69）。該当が無いときや国土地理院が使えないときは Nominatim に進みます。地名・駅名・施設名は今までどおり Nominatim が先で、国土地理院は Nominatim が「該当なし」のときだけです（Nominatim が HTTP エラーのときは、国土地理院に落とさずエラーです）。Nominatim の間隔（1 秒に 1 回）は Nominatim への問い合わせにだけかけます。
@@ -75,7 +165,7 @@
 - **REST の操作の一覧と定義を返す `GET /tools`・`GET /tools/<name>` を足しました（#76）。** `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで 52 件）で、`q`・`category` で絞れます。`GET /tools/<name>` は入力のスキーマ・path と query の引数・文書にあるエラー・別名や GET の形（`alternatives`）を返し、`?response=true` で応答のスキーマも付けます。
   - OpenAPI のすべての操作（この PR の時点で 84、`GET /client` を廃止した v5.0.0 では 82）に `operationId`・`tags`・認証の宣言・共通のエラー応答（`default`）を付け、パスの変数の宣言が無かった操作に `parameters` を足しました。
   - エラー応答の形を `{ error, code, status, retryable, details? }` にそろえました（検索の 12 経路・追跡の 3 経路、認証の 401（`UNAUTHORIZED`、`message` は残す）、本文が 10MB を超える 413（`PAYLOAD_TOO_LARGE`））。`error` の文と HTTP ステータスは変えていません。
-  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。このとき `GET /client`・`GET /client/<path>` を `deprecated` にしました（v5.0.0 で廃止。「先に気づく変更」）。
+  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。このとき `GET /client`・`GET /client/<path>` を `deprecated` にしました（v5.0.0 で廃止。「先に気づく変更（呼び出し側）」）。
 
 - **静的取得が信頼する root から、鍵が漏れた `emSign ECC Root CA - G3` を外しました（#81）。** 2026-10-20 に eMudhra の中間 CA の秘密鍵の漏えいが確認され、Mozilla がこの root を外しましたが、wreq-js 3.2.0 に同梱の root には残っていました（経路上の攻撃者が、どのサーバーにもなりすませる状態でした）。公開イメージは、イメージのビルドで作った一覧（Debian の root 148 件と、Bun の最新の root 118 件を合わせ、信頼を外した root を除いた 158 件）だけを信頼します（`SORA_FETCH_TRUST_STORE=defaultPaths`）。消えるのは `emSign ECC Root CA - G3` だけです（同じ 75 ホストで、前後の接続の結果は同じ）。ブラウザ（Chromium）の root は対象外です。新しい環境変数 `SORA_FETCH_TRUST_STORE`（`combined`・`mozilla`・`defaultPaths`）の未設定は、従来どおり wreq-js の既定です。
 - **静的取得の TLS・HTTP の実装（wreq-js の native）を、イメージのビルドでソースからビルドするようにしました（#82・#83）。** npm のビルド済みの native は、wreq-js が新しい版を公開しないかぎり古いまま残ります（3.2.0 は 2026-08-23 が最後）。#82 は、依存を npm 版と同じにしたビルドで、挙動は変わりません（133 プロファイルの ClientHello が同じ）。#83 は、依存を上流の wreq-util（main）に向け、Chrome 150〜154 のプロファイルを使います（固定の rev と `Cargo.lock` は `vendor/wreq-js/`、作り直しは `bun scripts/wreq-native/update.ts`）。Containerfile などを変える PR だけ、イメージを実際にビルドして確認する CI も足しました。
@@ -87,7 +177,7 @@
 - **Docker でも、Chromium のサンドボックスを使えるようにしました（#96）。** Docker の既定の seccomp は、ユーザー名前空間を作る syscall を止めるので、これまでは、`--no-sandbox` に戻っていました。Docker の既定のプロファイルに、`clone`・`unshare`・`chroot` の許可だけを足した `deploy/seccomp-sora.json` を同梱しました。`--security-opt seccomp=` で渡し、`SORA_BROWSER_SANDBOX=on` にすると、サンドボックスが有効になります（README 4.5）。GitHub Actions の Docker（Ubuntu 26.04 のランナー）で、`--cap-drop=ALL` に必要な 5 つの capability と `no-new-privileges` を重ねた構成でも、サンドボックスが有効になることを、CI で確かめています。AppArmor は、既定のままにしてください（`apparmor=unconfined` にすると、Ubuntu 23.10 以降のホストでは、かえって使えなくなります）。ユーザー名前空間を許すと、カーネルの攻撃面が増えるので、判断が要ります。既定のままの Docker では、これまでどおり、警告を出して `--no-sandbox` に戻ります。Kubernetes では未確認です。
 - **出口のゲートウェイの部品を足しました（#97）。まだ、どこにもつないでいないので、挙動は変わりません。** Sora のプロセスの中の、ループバックだけで待ち受ける HTTP プロキシ（`src/net/egress_gateway.ts`）で、名前の解決を 1 回だけ行い、答えの IP がすべて公開であることを確かめ、検査した IP に接続を固定します（DNS rebinding で、検査のあとに宛先を内部へ替えられません）。解決できない名前・許していないポート（既定は 80・443 だけ）・内部の宛先は、拒否します。CONNECT と `http://` の転送に対応し、運用者の上流プロキシにも連鎖できます。次の PR で、ブラウザ・静的取得をこれに通せるようにします。あわせて、IP の判定を `src/net/ip_policy.ts` に移し、`192.0.0.0/24`（IETF の予約）を、公開でない宛先に足しました（これまでの SSRF の検査にも効きます）。
 - **出口のゲートウェイが、運用者の上流プロキシの `socks5://`・`https://` にも連鎖できるようにしました（#98）。まだ、どこにもつないでいないので、挙動は変わりません。** Sora は `SORA_PROXY_URL` などに `http://`・`https://`・`socks5://` を受け付けると書いているので、ゲートウェイをブラウザ・静的取得に通したときに、どれも使えるようにするためです。`socks5` は、依存の木にすでにあった `socks`（MIT）を直接の依存にして使います。上流に接続できない・認証に失敗した・証明書を検証できない・`CONNECT` を断られた、といった失敗は、同じ理由につき 1 回だけ、警告に出します（資格情報は出しません）。
-- **ブラウザの通信を、出口のゲートウェイに通せるようにしました（#99。`SORA_EGRESS_GATEWAY=on`。既定は off で、挙動は変わりません）。** 有効にすると、Chromium の通信がすべて、Sora の中のゲートウェイを通ります（起動の引数は `--proxy-server`・`--proxy-bypass-list=<-loopback>`・`--host-resolver-rules`・`--disable-quic`）。ページの遷移先が内部の宛先（ループバック・プライベート・メタデータの IP。DNS rebinding を含む）になると、ゲートウェイが断ります（http は 403 と `X-Sora-Egress-Deny`、https はトンネルの失敗）。`SORA_PROXY_URL` などのプロキシは、ゲートウェイの上流になり、`NO_PROXY` の宛先は、上流を通さず、検査を受けて直接つながります。通す宛先のポートは `SORA_EGRESS_PORTS`（既定 80・443）です。HTTP/3 は使えなくなります。ブラウザの ClientHello は、ゲートウェイ越しでも直接のときと変わらないことを、イメージの中で確かめています（`scripts/browser-egress-check.ts`。既定の運用と、サンドボックス有効・`--cap-drop=ALL` の運用の両方で、CI が回します）。`ALLOW_LOCAL_FETCH=true` のときは、on でも使いません。静的取得などは、まだ通りません。
+- **ブラウザの通信を、出口のゲートウェイに通せるようにしました（#99。`SORA_EGRESS_GATEWAY=on`。既定は off で、挙動は変わりません）。** 有効にすると、Chromium の通信がすべて、Sora の中のゲートウェイを通ります（起動の引数は `--proxy-server`・`--proxy-bypass-list=<-loopback>`・`--host-resolver-rules`・`--disable-quic`）。ページの遷移先が内部の宛先（ループバック・プライベート・メタデータの IP。DNS rebinding を含む）になると、ゲートウェイが断ります（http は 403 と `X-Sora-Egress-Deny`、https はトンネルの失敗）。`SORA_PROXY_URL` などのプロキシは、ゲートウェイの上流になり、`NO_PROXY` の宛先は、上流を通さず、検査を受けて直接つながります。通す宛先のポートは `SORA_EGRESS_PORTS`（既定 80・443）です。HTTP/3 は使えなくなります。ブラウザの ClientHello は、ゲートウェイ越しでも直接のときと変わらないことを、イメージの中で確かめています（`scripts/browser-egress-check.ts`。既定の運用と、サンドボックス有効・`--cap-drop=ALL` の運用の両方で、CI が回します）。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true` のときは、on でも使いません。静的取得などは、まだ通りません。
 - **静的取得（wreq-js）の通信も、出口のゲートウェイに通せるようにしました（#100。`SORA_EGRESS_GATEWAY=on`。既定は off で、挙動は変わりません）。** 有効にすると、静的取得は、名前をゲートウェイが解決し、答えに内部の IP が 1 つでもあれば断り、検査した IP にだけつなぎます。取得の検査は、これまで、取得の前に名前を引き直して調べるだけで、実際の接続は wreq-js が別に解決していたので、検査と接続の間に答えを替えられる DNS rebinding を防げませんでした。ゲートウェイを通すと、この隙間が無くなります（http は 403 と `X-Sora-Egress-Deny`、https は接続の失敗）。TLS は端から端のままで、ClientHello は変わりません（イメージの中で、直接のときと比べて確かめています。`scripts/static-egress-check.ts`）。平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます。wreq-js が読み込めないときの代わりの取得（Bun の `fetch`）も、ゲートウェイを通ります。`SORA_PROXY_LIST`（リクエストごとに替えるプロキシの一覧）は、ゲートウェイの上流が 1 つなので、一緒には使えません（エラーにします）。Bun の `fetch` を使う取得と、子プロセスは、まだ通りません。
 - **名前を解決できない宛先への、直接の取得を、取得を始めずに遮断するようにしました（#101。既定の挙動が変わります）。** 取得の前の検査（`validateHostIpDns`・ブラウザの副要求の検査）は、名前を解決できないとき（失敗か、答えが空）、これまで、検査を通して、接続のときの解決に任せていました。攻撃者が、自分の DNS で、検査のときだけ失敗させ、接続のときに内部の IP を答えると、検査を抜けられます。Sora の手元で名前を引いて接続するとき（プロキシも出口のゲートウェイも通さない取得、`NO_PROXY` の宛先、プロキシを使わないブラウザの副要求）は、名前を解決できないなら、取得・要求を止めます（取得は「名前を解決できないため、宛先の IP を確かめられず、遮断されました」、ブラウザの副要求は `net::ERR_NAME_NOT_RESOLVED`）。名前を相手が解決する取得（運用者のプロキシ越し・`SORA_EGRESS_GATEWAY=on` のゲートウェイ越し）は、手元の DNS が失敗するのが普通なので、これまでどおり通します。DNS が使えない環境で、運用者のプロキシ（`SORA_PROXY_URL`・`HTTPS_PROXY` など）が名前を解決している運用は、影響を受けません。検査のあとに、接続のときの解決で答えを替える DNS rebinding は、この変更では防げません（`SORA_EGRESS_GATEWAY=on` で防ぎます）。
 - **運用の確認を足しました。** 週 1 回、リリースのイメージの Chromium・Bun・distroless の土台と CI の Bun を新しい版と比べ、遅れていれば issue で知らせます（#79）。CI の Bun を 1.4.2 から 1.4.4 に上げました（brotli の範囲外書き込みなど、2026-10 の勧告 3 件の修正を含む版、#80）。また、週 1 回、上流の wreq-util に、いまの上限より新しい Chrome のプロファイルが入ったかを見て、入っていれば、その rev で試しにイメージをビルドし、ブラウザと静的取得の ClientHello を比べて、通れば更新の PR を作ります（マージは人が決めます。手順は `docs/browser-alignment.md`、#87）。

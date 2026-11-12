@@ -7,6 +7,7 @@ import type {
   TrackingContext,
   TrackingEvent,
 } from '../types.js';
+import { type Env, envStr } from '../../../config.js';
 import { cleanTrackingNumber } from '../normalization.js';
 import { evaluateTrackingVerification } from '../verification.js';
 
@@ -73,6 +74,16 @@ async function getFedExAccessToken(clientId: string, clientSecret: string, signa
   return tokenFlightPromise;
 }
 
+/**
+ * FedEx の追跡 API（OAuth）の鍵。ID と秘密を組で読み、両方があるときだけ返す。片方だけは、どちらも無いのと同じ
+ * （API を使わずにブラウザで照会し、それもできなければ「API の鍵が未設定」の案内を返す。組の検査は起動時の検査）。
+ */
+export function fedexApiCredentials(env: Env = process.env): { clientId: string; clientSecret: string } | undefined {
+  const clientId = envStr('SORA_TRACKING_FEDEX_CLIENT_ID', env);
+  const clientSecret = envStr('SORA_TRACKING_FEDEX_CLIENT_SECRET', env);
+  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
+}
+
 export const fedexAdapter: TrackingCarrierAdapter = {
   code: 'fedex',
   name: 'FedEx',
@@ -129,10 +140,10 @@ export const fedexAdapter: TrackingCarrierAdapter = {
     const carrier = 'fedex';
     const trackingUrl = fedexAdapter.trackingUrl(num);
 
-    const clientId = process.env.FEDEX_API_KEY || process.env.FEDEX_CLIENT_ID;
-    const clientSecret = process.env.FEDEX_API_SECRET || process.env.FEDEX_CLIENT_SECRET;
+    const credentials = fedexApiCredentials();
 
-    if (clientId && clientSecret) {
+    if (credentials) {
+      const { clientId, clientSecret } = credentials;
       try {
         const signal = context?.signal || AbortSignal.timeout(10000);
         const accessToken = await getFedExAccessToken(clientId, clientSecret, signal);

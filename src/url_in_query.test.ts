@@ -39,11 +39,11 @@ function stubYoutube(title: string) {
 }
 
 function allowLocalFetch() {
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   cleanups.push(() => {
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
   });
 }
 

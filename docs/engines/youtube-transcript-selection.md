@@ -4,7 +4,7 @@
 
 ## 使うツール
 
-選ぶ処理を使うのは、次の 3 つです。どれも、`youtube` モジュールが有効なときだけ使えます。`ENABLED_MODULES` が未設定か `all` なら有効です。
+選ぶ処理を使うのは、次の 3 つです。どれも、`youtube` モジュールが有効なときだけ使えます。`SORA_MODULES` が未設定か `all` なら有効です。
 
 - `scrape`（`urls` の一括取得・`search_web` の `formats`・`search_deep` の本文取得も同じ）に YouTube の動画 URL を渡したとき。字幕が `maxChars` に収まらなければ、`query` に関係する段落を選びます。
 - `search_media`（`type: "video"`）の `transcripts`（上位の YouTube 動画の何本に字幕を付けるか。0〜5、既定 0）と `transcriptChars`（1 本あたりの最大字数。500〜10,000、既定 2,000）。REST は `POST /search/video` です。

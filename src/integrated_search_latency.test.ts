@@ -13,8 +13,8 @@ test('starts web page acquisition before the independent realtime search complet
   }});
   const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items: [{ title: 'Concert schedule', url: `http://127.0.0.1:${server.port}/concert` }], count: 1 } as any);
   const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockImplementation(() => realtime);
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   const search = integratedSearch({ query: 'Concert schedule', limit: 1, includeRealtime: true, noCache: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -33,8 +33,8 @@ test('starts web page acquisition before the independent realtime search complet
     await search.catch(() => {});
     webSpy.mockRestore();
     realtimeSpy.mockRestore();
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
     server.stop(true);
   }
 });

@@ -11,6 +11,8 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
+import { envEnum, envList } from './config.js';
+import { checkStartupEnv } from './startup_check.js';
 
 // ドメイン別サブルーター
 import { formatError } from './routes/utils.js';
@@ -117,7 +119,7 @@ app.use('*', async (c, next) => {
       ip: c.req.header('x-forwarded-for') || c.req.header('x-real-ip') || 'direct',
       userAgent: c.req.header('user-agent') || '',
     };
-    if (process.env.LOG_FORMAT === 'json') {
+    if (envEnum('SORA_LOG_FORMAT') === 'json') {
       console.log(JSON.stringify(logPayload));
     }
   }
@@ -190,6 +192,8 @@ installShutdownHandlers();
 // 5. サーバー起動 (Bun.serve)
 // ==========================================
 if (import.meta.main) {
+  // 環境変数の検査。誤りがあれば、待ち受ける前に exit(1)（テストが index.js を import しても走らない）
+  checkStartupEnv();
   const server = Bun.serve({
     port: PORT,
     idleTimeout: 255, // Bun の最大アイドルタイムアウト (255秒 = 4分15秒)。SSE ストリームや深層スクレイピング中の切断を防止
@@ -206,14 +210,14 @@ if (import.meta.main) {
 
   installShutdownHandlers(() => server.stop(true));
 
-  // 住所データの事前取得は、SORA_ADDRESS_PRELOAD を指定した運用者だけ。指定が無ければ何も読み込まず、何も始めない。
-  if (process.env.SORA_ADDRESS_PRELOAD?.trim()) {
+  // 住所データの事前取得は、SORA_ADDRESS_PRELOAD を指定した運用者だけ。指定が無ければ（正しい要素が無いときも）何も読み込まず、何も始めない。
+  if (envList('SORA_ADDRESS_PRELOAD').length > 0) {
     void import('./services/address_preload.js')
       .then(({ startAddressPreload }) => startAddressPreload())
       .catch((error) => console.warn(`[Sora/Address] preload failed to start: ${error instanceof Error ? error.message : String(error)}`));
   }
 
-  // HTS の版の保存は、ENABLED_MODULES に hts-archive を挙げた運用者だけ。挙げなければ何も読み込まず、何も始めない。
+  // HTS の版の保存は、SORA_MODULES に hts-archive を挙げた運用者だけ。挙げなければ何も読み込まず、何も始めない。
   if (isModuleActive('hts-archive')) {
     void import('./services/hts_archive.js')
       .then(({ startHtsArchive }) => startHtsArchive())

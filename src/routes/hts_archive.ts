@@ -4,9 +4,9 @@ import { ARCHIVE_ID_PATTERN, readArchivedRelease, readArchiveIndex } from '../se
 import { formatError } from './utils.js';
 
 const moduleDisabled = (c: Context) =>
-  formatError(c, 'hts-archive module is not enabled. Add it to ENABLED_MODULES by name (e.g. ENABLED_MODULES=all,hts-archive); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
+  formatError(c, 'hts-archive module is not enabled. Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,hts-archive); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
 
-/** HTS の版の保存（GET /trade/hts/releases, GET /trade/hts/releases/:id）。モジュール 'hts-archive' を ENABLED_MODULES に名前で挙げたときだけ応答する。 */
+/** HTS の版の保存（GET /trade/hts/releases, GET /trade/hts/releases/:id）。モジュール 'hts-archive' を SORA_MODULES に名前で挙げたときだけ応答する。 */
 export const htsArchiveRoutes = new Hono();
 
 htsArchiveRoutes.get('/trade/hts/releases', (c) => (isModuleActive('hts-archive') ? c.json(readArchiveIndex()) : moduleDisabled(c)));

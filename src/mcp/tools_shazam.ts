@@ -5,7 +5,7 @@ import { registerTool, toolJson } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
-/** 🎧 Category 14: Song Recognition (モジュール: 'shazam'。ENABLED_MODULES に名前を挙げたときだけ有効。Shazam の iPhone アプリと同じ窓口を使う) */
+/** 🎧 Category 14: Song Recognition (モジュール: 'shazam'。SORA_MODULES に名前を挙げたときだけ有効。Shazam の iPhone アプリと同じ窓口を使う) */
 export function registerShazamTools(context: ToolRegistrationContext): void {
   const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
   // recognize_song (音から曲を特定し、iTunes の曲とつなぐ) - DEFERRED

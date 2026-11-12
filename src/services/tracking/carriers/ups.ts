@@ -7,6 +7,7 @@ import type {
   TrackingContext,
   TrackingEvent,
 } from '../types.js';
+import { type Env, envStr } from '../../../config.js';
 import { cleanTrackingNumber } from '../normalization.js';
 import { evaluateTrackingVerification } from '../verification.js';
 
@@ -19,6 +20,13 @@ function determineStatus(text: string): TrackingResult['status'] {
   if (lower.includes('exception') || lower.includes('delay') || lower.includes('held') || text.includes('保留')) return 'in_transit';
   if (lower.includes('return') || text.includes('返送')) return 'returned';
   return 'in_transit';
+}
+
+/** UPS の追跡 API（OAuth）の鍵。ID と秘密の両方があるときだけ返す（片方だけは、どちらも無いのと同じで、ブラウザで照会する）。 */
+export function upsApiCredentials(env: Env = process.env): { clientId: string; clientSecret: string } | undefined {
+  const clientId = envStr('SORA_TRACKING_UPS_CLIENT_ID', env);
+  const clientSecret = envStr('SORA_TRACKING_UPS_CLIENT_SECRET', env);
+  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
 }
 
 export const upsAdapter: TrackingCarrierAdapter = {
@@ -68,10 +76,10 @@ export const upsAdapter: TrackingCarrierAdapter = {
     const carrier = 'ups';
     const trackingUrl = upsAdapter.trackingUrl(num);
 
-    const clientId = process.env.UPS_CLIENT_ID;
-    const clientSecret = process.env.UPS_CLIENT_SECRET;
+    const credentials = upsApiCredentials();
 
-    if (clientId && clientSecret) {
+    if (credentials) {
+      const { clientId, clientSecret } = credentials;
       try {
         const signal = context?.signal || AbortSignal.timeout(10000);
         // 1. OAuth トークン取得

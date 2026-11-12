@@ -119,15 +119,15 @@ describe('キャッシュが意図した時間のあいだ効く', () => {
     const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
     beforeAll(() => {
-      prevAllowLocal = process.env.ALLOW_LOCAL_FETCH;
-      process.env.ALLOW_LOCAL_FETCH = 'true';
+      prevAllowLocal = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
       server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => { hits++; return new Response(png, { headers: { 'content-type': 'image/png' } }); } });
     });
 
     afterAll(() => {
       server.stop(true);
-      if (prevAllowLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = prevAllowLocal;
+      if (prevAllowLocal === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllowLocal;
     });
 
     test('画像は 1 時間保持する（30 分後はキャッシュ、61 分後は期限切れ）', async () => {

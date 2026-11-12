@@ -2,13 +2,14 @@
  * rs-trafilatura（https://github.com/Murrough-Foley/rs-trafilatura、MIT OR Apache-2.0）のコマンドで、
  * ページの本文の HTML とページの種類（article・listing・forum など）を得る。
  * --markdown を付けないと、本文の HTML からリンクの href が落ちる（include_links が既定で無効のため）。
- * コマンドは RS_TRAFILATURA_PATH（イメージでは /usr/local/bin/rs-trafilatura）。未設定・失敗・時間切れのときは
+ * コマンドは SORA_RS_TRAFILATURA_PATH（イメージでは /usr/local/bin/rs-trafilatura）。未設定・失敗・時間切れのときは
  * undefined を返し、呼び出し側は Readability の経路に戻る。評価は docs/evaluations/main-content/results.md。
  * rs-trafilatura の本文の HTML には img が入らないので、記事以外のページで画像があるときは、画像の後ろに目印を置いた HTML で
  * もう一度取り出し、本文が 1 回目と同じときだけ目印を画像に戻す（rs_images.ts）。
  */
 import { existsSync } from 'node:fs';
 import * as cheerio from 'cheerio';
+import { envPath } from '../config.js';
 import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { markImagesForRs, restoreRsImages } from './rs_images.js';
@@ -46,7 +47,7 @@ async function runRs(bin: string, html: string, url: string, pageType?: string):
 export async function extractMainContentWithRs(
   html: string,
   url: string,
-  bin: string | undefined = process.env.RS_TRAFILATURA_PATH,
+  bin: string | undefined = envPath('SORA_RS_TRAFILATURA_PATH'),
   options: RsExtractOptions = {},
 ): Promise<RsMainContent | undefined> {
   if (!bin || !html || !existsSync(bin)) return undefined;

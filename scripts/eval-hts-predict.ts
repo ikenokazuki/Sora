@@ -21,7 +21,7 @@ const noCross = args.includes('--no-cross');
 const limit = parseInt(arg('--limit') ?? '', 10) || Infinity;
 
 if (noCross) {
-  process.env.CROSS_SOURCE = 'api'; // 手元の索引も使わない（API への通信は下で止める）
+  process.env.SORA_HTS_CROSS_SOURCE = 'api'; // 手元の索引も使わない（API への通信は下で止める）
   const original = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   ProviderPressureController,
+  defaultYahooPressureOptions,
   getYahooQueryBudget,
   type ProviderPressureOptions,
 } from './provider_pressure.js';
@@ -98,5 +99,13 @@ describe('provider pressure controller', () => {
     expect(c.getLevel(0)).toBe('medium');
     c.onRateLimit(undefined, 10);
     expect(c.getLevel(10)).toBe('high');
+  });
+
+  // 以前は環境変数が未設定だと Number('') が 0 になり、初期の間隔が 0（429 で 2 倍にしても 0 のまま）だった
+  test('Yahoo defaults start at 400 ms and a 429 doubles the spacing', () => {
+    expect(defaultYahooPressureOptions().initialSpacingMs).toBe(400);
+    const c = new ProviderPressureController(defaultYahooPressureOptions());
+    c.onRateLimit(undefined, 0);
+    expect(c.snapshot(0).spacingMs).toBe(800);
   });
 });

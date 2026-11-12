@@ -14,8 +14,8 @@ let prevAllowLocal: string | undefined;
 let webSpy: ReturnType<typeof spyOn> | undefined;
 
 beforeAll(() => {
-  prevAllowLocal = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  prevAllowLocal = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -35,8 +35,8 @@ afterEach(() => {
 
 afterAll(() => {
   server.stop(true);
-  if (prevAllowLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-  else process.env.ALLOW_LOCAL_FETCH = prevAllowLocal;
+  if (prevAllowLocal === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllowLocal;
 });
 
 function stubWebSearch(path: string) {

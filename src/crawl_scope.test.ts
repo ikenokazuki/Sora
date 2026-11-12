@@ -9,13 +9,13 @@ import { app } from './index.js';
 let prevAllow: string | undefined;
 
 beforeAll(() => {
-  prevAllow = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
 });
 
 afterAll(() => {
-  if (prevAllow !== undefined) process.env.ALLOW_LOCAL_FETCH = prevAllow;
-  else delete process.env.ALLOW_LOCAL_FETCH;
+  if (prevAllow !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
+  else delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 });
 
 const body = (title: string, links: string[]) =>
@@ -175,12 +175,12 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
   });
 
   test('起点そのものが取得できなければ、0 件の成功ではなくエラーを伝える', async () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'false';
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
     try {
       await expect(crawlSiteUrl({ url: 'http://127.0.0.1:9/', maxPages: 3, noCache: true })).rejects.toThrow(/遮断/);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prev;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 
@@ -220,8 +220,8 @@ describe('REST: /map・/crawl・/crawl/stream の入力エラーと遮断の応�
   }
 
   test('/map: 内部アドレスは 403 SSRF_BLOCKED', async () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'false';
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
     try {
       const res = await post('/map', { url: 'http://127.0.0.1/', noCache: true });
       expect(res.status).toBe(403);
@@ -229,25 +229,25 @@ describe('REST: /map・/crawl・/crawl/stream の入力エラーと遮断の応�
       expect(json.code).toBe('SSRF_BLOCKED');
       expect(json.retryable).toBe(false);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prev;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 
   test('/crawl: 内部アドレスは 200 の空結果ではなく 403 SSRF_BLOCKED', async () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'false';
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
     try {
       const res = await post('/crawl', { url: 'http://127.0.0.1/', noCache: true });
       expect(res.status).toBe(403);
       expect(((await res.json()) as any).code).toBe('SSRF_BLOCKED');
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prev;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 
   test('/crawl/stream: 失敗は黙って閉じず error イベントで知らせる', async () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'false';
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
     try {
       const res = await post('/crawl/stream', { url: 'http://127.0.0.1/', noCache: true });
       expect(res.status).toBe(200);
@@ -258,7 +258,7 @@ describe('REST: /map・/crawl・/crawl/stream の入力エラーと遮断の応�
       expect(text).toContain('SSRF_BLOCKED');
       expect(text).not.toContain('event: done');
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prev;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 

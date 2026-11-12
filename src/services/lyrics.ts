@@ -5,7 +5,7 @@ import { findAwaLyrics, type AwaDeps, type AwaOutcome } from './lyrics_awa.js';
 import { findLinkcoreLyrics, matchesArtist, normalizeName, type LinkcoreDeps, type LinkcoreOutcome } from './lyrics_linkcore.js';
 
 /**
- * 歌詞全文の取得（モジュール 'lyrics'。ENABLED_MODULES に名前を挙げたときだけ使える、自己責任の機能）。
+ * 歌詞全文の取得（モジュール 'lyrics'。SORA_MODULES に名前を挙げたときだけ使える、自己責任の機能）。
  * 歌手名と曲名から、LRCLIB（利用者投稿の歌詞データベース。API キー不要）を引き、無ければ AWA、それでも無ければ TuneCore Japan の LinkCore を引く。
  * 順番は効率で決めた。LRCLIB は Web 検索を使わず速い。AWA は検索 1 回とページ 1〜2 枚で済み、収録も広い（君と見るそらは 18/18。TuneCore は 10/18）。
  * TuneCore は複数のリリースページをたどるので遅い。AWA で見つかれば TuneCore の検索自体をしない。

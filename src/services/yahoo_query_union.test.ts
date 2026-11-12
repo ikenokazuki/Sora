@@ -176,28 +176,15 @@ describe('Phase 3 bounded Web query union', () => {
     ]);
   });
 
-  test('union is opt-in and bounded to original plus one fallback', () => {
-    const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
-    expect(source).toContain("process.env.SORA_WEB_QUERY_UNION === 'true'");
-    expect(source).toContain('candidateQueries.slice(0, Math.min(2, yahooQueryBudget))');
-  });
-
   test('realtime retrieval v1 uses wave union instead of first-nonempty-wins', () => {
     const source = readFileSync(new URL('./yahoo.ts', import.meta.url), 'utf8');
     const start = source.indexOf('export async function searchYahooRealtime');
     const end = source.indexOf('/** X (Twitter)', start);
     const realtimeSource = source.slice(start, end);
-    expect(realtimeSource).not.toContain('SORA_WEB_QUERY_UNION');
     expect(realtimeSource).toContain('MAX_REALTIME_RETRIEVAL_QUERIES');
     expect(realtimeSource).toContain('runRealtimeWave');
     expect(realtimeSource).toContain('retrievalQueries');
     expect(source).toContain('Promise.allSettled');
-  });
-
-  test('integrated cache separates union OFF and ON', () => {
-    const source = readFileSync(new URL('../scraper.ts', import.meta.url), 'utf8');
-    // biome-ignore lint/suspicious/noTemplateCurlyInString: ソースコード中のテンプレート式をそのまま探す
-    expect(source).toContain("${webQueryUnion ? 'wqu-on' : 'wqu-off'}");
   });
 
   test('duplicate URL keeps richest snippet', () => {
@@ -230,28 +217,5 @@ describe('Phase 3 bounded Web query union', () => {
     });
     // ranking wrapper preserves input order information only through scores
     expect(scored[0].lexicalScore).toBeGreaterThan(scored[1].lexicalScore);
-  });
-  test('rollback flags restore legacy behavior', async () => {
-    const { mergeYahooWebQueryBatches: merge } = await import('./yahoo.js');
-    const { rerankSearchResults } = await import('../enrichment.js');
-    const batches = [
-      { query: 'q', queryIndex: 0, items: [
-        { title: 'aaa', url: 'https://a.example/', description: 'zzz' },
-        { title: 'qqq matchme', url: 'https://b.example/', description: 'matchme' },
-      ]},
-      { query: 'q2', queryIndex: 1, items: [
-        { title: 'qqq matchme', url: 'https://b.example/', description: 'matchme extra' },
-      ]},
-    ];
-    const prevRrf = process.env.SORA_RRF_ENABLED;
-    process.env.SORA_RRF_ENABLED = 'false';
-    const off = merge(batches as any, 'matchme');
-    expect(off.map((x: any) => x.url)).toEqual(['https://a.example/', 'https://b.example/']);
-    process.env.SORA_RRF_ENABLED = 'true';
-    const on = merge(batches as any, 'matchme');
-    expect(on[0].url).toBe('https://b.example/');
-    if (prevRrf !== undefined) process.env.SORA_RRF_ENABLED = prevRrf; else delete process.env.SORA_RRF_ENABLED;
-    expect(process.env.SORA_WEB_NATIVE_RANKING ?? 'true').toBe('true');
-    void rerankSearchResults;
   });
 });

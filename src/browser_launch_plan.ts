@@ -12,6 +12,7 @@
 import { chmodSync, chownSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { envRaw, type Env } from './config.js';
 
 /** 落とし先の既定の uid・gid。distroless の `nonroot` */
 export const DEFAULT_BROWSER_UID = 65532;
@@ -83,7 +84,8 @@ function parseSandbox(raw: string | undefined, nodeEnv: string | undefined, warn
  * - SORA_BROWSER_SANDBOX: auto（既定）・on・off。root のまま（落とせない）の Chromium は、サンドボックスを使えない
  */
 export function planBrowserLaunch(options: {
-  env: Record<string, string | undefined>;
+  /** 読む環境（テスト用。省略すると、プロセスの環境） */
+  env?: Env;
   /** Sora 本体の uid。分からなければ undefined */
   currentUid: number | undefined;
   launcherExists: boolean;
@@ -93,8 +95,8 @@ export function planBrowserLaunch(options: {
   missingCapabilities?: readonly string[];
 }): { plan: LaunchPlan; warnings: string[] } {
   const warnings: string[] = [];
-  const uid = parseUid(options.env.SORA_BROWSER_UID, warnings);
-  const mode = parseSandbox(options.env.SORA_BROWSER_SANDBOX, options.nodeEnv, warnings);
+  const uid = parseUid(envRaw('SORA_BROWSER_UID', options.env), warnings);
+  const mode = parseSandbox(envRaw('SORA_BROWSER_SANDBOX', options.env), options.nodeEnv, warnings);
   const isRoot = options.currentUid === 0;
   const wantsDrop = isRoot && uid !== 'off' && options.launcherExists;
   const missing = wantsDrop ? (options.missingCapabilities ?? []) : [];

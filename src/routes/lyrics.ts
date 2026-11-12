@@ -5,12 +5,12 @@ import { getLyrics } from '../services/lyrics.js';
 import { LyricsRequestSchema } from '../types.js';
 import { formatError } from './utils.js';
 
-/** 歌詞全文の取得 (POST /lyrics)。モジュール 'lyrics' を ENABLED_MODULES に名前で挙げたときだけ応答する。 */
+/** 歌詞全文の取得 (POST /lyrics)。モジュール 'lyrics' を SORA_MODULES に名前で挙げたときだけ応答する。 */
 export function createLyricsRoutes(run: typeof getLyrics = getLyrics) {
   const routes = new Hono();
   routes.post('/lyrics', async (c) => {
     if (!isModuleActive('lyrics')) {
-      return formatError(c, 'lyrics module is not enabled. Add it to ENABLED_MODULES by name (e.g. ENABLED_MODULES=all,lyrics); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
+      return formatError(c, 'lyrics module is not enabled. Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,lyrics); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
     }
     let rawBody: unknown;
     try {

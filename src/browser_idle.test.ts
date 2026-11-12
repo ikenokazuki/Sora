@@ -3,10 +3,12 @@ import {
   closeSharedBrowser,
   defaultBrowserConcurrency,
   resolveBrowserConcurrency,
+  browserIdleTtlMs,
   getBrowser,
   isSharedBrowserConnected,
   resolveChromiumPath,
 } from './browser_engine.js';
+import { withEnv } from './test_fixtures/env.js';
 
 afterAll(closeSharedBrowser);
 
@@ -23,22 +25,26 @@ describe('defaultBrowserConcurrency', () => {
   test('unknown memory falls back to the previous default of 5', () => {
     expect(defaultBrowserConcurrency(undefined)).toBe(5);
   });
-  test('MAX_CONCURRENT_BROWSERS: a positive integer wins, anything else falls back to the memory-based default', () => {
+  test('SORA_BROWSER_MAX_CONCURRENCY: a positive integer wins, anything else falls back to the memory-based default', () => {
     expect(resolveBrowserConcurrency('3', 1 * GB)).toBe(3);
     expect(resolveBrowserConcurrency('80', 1 * GB)).toBe(50);
     for (const bad of [undefined, '', 'abc', '0', '-2', '2.5x']) expect(resolveBrowserConcurrency(bad, 2 * GB)).toBe(4);
   });
 });
 
+describe('browserIdleTtlMs (SORA_BROWSER_IDLE_TTL_MS, read on every call)', () => {
+  test('an integer >= 0 wins (0 disables); unset and invalid values give the default 300000 instead of disabling', async () => {
+    await withEnv({ SORA_BROWSER_IDLE_TTL_MS: ' 400 ' }, () => expect(browserIdleTtlMs()).toBe(400));
+    await withEnv({ SORA_BROWSER_IDLE_TTL_MS: '0' }, () => expect(browserIdleTtlMs()).toBe(0));
+    for (const raw of [undefined, '', 'abc', '-1', '1.5', '5m']) {
+      await withEnv({ SORA_BROWSER_IDLE_TTL_MS: raw }, () => expect(browserIdleTtlMs(), String(raw)).toBe(300_000));
+    }
+  });
+});
+
 describe.skipIf(!resolveChromiumPath())('shared browser idle shutdown', () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const withTtl = async (ttl: string, fn: () => Promise<void>) => {
-    const prev = process.env.BROWSER_IDLE_TTL_MS;
-    process.env.BROWSER_IDLE_TTL_MS = ttl;
-    try { await fn(); } finally {
-      if (prev === undefined) delete process.env.BROWSER_IDLE_TTL_MS; else process.env.BROWSER_IDLE_TTL_MS = prev;
-    }
-  };
+  const withTtl = (ttl: string, fn: () => Promise<void>) => withEnv({ SORA_BROWSER_IDLE_TTL_MS: ttl }, fn);
 
   test('closes the shared browser after the idle TTL and relaunches on demand', async () => {
     await withTtl('400', async () => {
@@ -79,7 +85,7 @@ describe.skipIf(!resolveChromiumPath())('shared browser idle shutdown', () => {
     });
   }, 30000);
 
-  test('BROWSER_IDLE_TTL_MS=0 disables idle shutdown', async () => {
+  test('SORA_BROWSER_IDLE_TTL_MS=0 disables idle shutdown', async () => {
     await withTtl('0', async () => {
       await closeSharedBrowser();
       await getBrowser();

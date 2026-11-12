@@ -2,6 +2,7 @@ import { Database } from 'bun:sqlite';
 import { existsSync, mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 import { randomUUID } from 'crypto';
+import { envPath, envStr } from './config.js';
 import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
 import { SECURITY_MIGRATIONS } from './security/migrations.js';
 
@@ -44,10 +45,11 @@ function applyCountryIntelMigrations(db: Database): void {
 }
 
 export function getDatabasePath(): string {
-  if (process.env.NODE_ENV === 'test' && !process.env.SORA_DB_PATH) {
+  const path = envPath('SORA_DB_PATH');
+  if (envStr('NODE_ENV') === 'test' && !path) {
     return ':memory:';
   }
-  return process.env.SORA_DB_PATH || './data/sora.db';
+  return path ?? './data/sora.db';
 }
 
 export function initDatabase(dbPath?: string): Database {

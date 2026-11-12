@@ -1,5 +1,6 @@
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import type { EvidenceDetail } from '../detail.js';
+import { envError, envList } from '../../../config.js';
 import { normalizeEvidence } from '../evidence.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import { fetchProviderResponse } from '../provider_http.js';
@@ -60,8 +61,13 @@ export interface BlueskySearchFixture {
   posts?: BlueskySearchPost[];
 }
 
-function configuredDids(): string[] {
-  return (process.env.SORA_BLUESKY_DIDS ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+/**
+ * 投稿を残す DID（正しいものだけ。空は全員）。値があるのに正しい DID が 1 つも無いときは null:
+ * 絞るつもりの設定を全員に開かず、誰の投稿も残さない（止めるのは起動時の検査）。
+ */
+function configuredDids(): string[] | null {
+  const dids = envList('SORA_INTEL_BLUESKY_DIDS');
+  return dids.length === 0 && envError('SORA_INTEL_BLUESKY_DIDS') ? null : dids;
 }
 
 export function parseBlueskySearchResponse(
@@ -130,7 +136,8 @@ export function createBlueskyProvider(fetchFn?: GdeltFetch): CountryIntelProvide
       }
       const data = (await res.json()) as BlueskySearchFixture;
       if (!Array.isArray(data.posts)) throw new ProviderHttpError(502, undefined, 'Bluesky envelope missing posts');
-      return { items: parseBlueskySearchResponse(data, input, configuredDids(), new Date()), coverage: ['social_observations'] };
+      const dids = configuredDids();
+      return { items: dids ? parseBlueskySearchResponse(data, input, dids, new Date()) : [], coverage: ['social_observations'] };
     },
   };
 }

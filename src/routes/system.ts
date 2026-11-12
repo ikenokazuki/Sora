@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { existsSync } from 'fs';
 import {
   CHROME_EXECUTABLE_PATH,
-  YAHOO_MCP_PATH,
+  YAHOO_MCP_EXECUTABLE_PATH,
   getCacheSize,
   getCacheMetrics,
   getBotDetectionMetrics,
@@ -103,7 +103,7 @@ systemRoutes.get('/health', async (c) => {
     version: SORA_VERSION,
     cachedEntries: getCacheSize(),
     chromiumAvailable: !!CHROME_EXECUTABLE_PATH,
-    yahooMcpAvailable: existsSync(YAHOO_MCP_PATH),
+    yahooMcpAvailable: existsSync(YAHOO_MCP_EXECUTABLE_PATH),
     mcpConnected: true,
     activeMcpSessions: mcpSessionManager.getActiveSessionCount(),
     timestamp: new Date().toISOString(),

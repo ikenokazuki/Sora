@@ -27,9 +27,9 @@ export function parseArgs(argv: string[]): Args {
 }
 
 const PASS_THROUGH_ENV = [
-  'UPS_CLIENT_ID', 'UPS_CLIENT_SECRET',
-  'FEDEX_API_KEY', 'FEDEX_CLIENT_ID', 'FEDEX_API_SECRET', 'FEDEX_CLIENT_SECRET',
-  'DHL_EXPRESS_API_KEY', 'DHL_API_KEY',
+  'SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET',
+  'SORA_TRACKING_FEDEX_CLIENT_ID', 'SORA_TRACKING_FEDEX_CLIENT_SECRET',
+  'SORA_TRACKING_DHL_API_KEY',
 ];
 
 function sh(cmd: string, args: string[], input?: string): { code: number; out: string } {
@@ -130,7 +130,7 @@ export async function main(): Promise<number> {
     '-p', `127.0.0.1:${hostPort}:8000`,
     '-e', 'SORA_DB_PATH=/tmp/tool-health.db',
     // 名前を挙げたときだけのモジュール（楽曲認識）も検査する。歌詞は入れない
-    '-e', 'ENABLED_MODULES=all,shazam',
+    '-e', 'SORA_MODULES=all,shazam',
     '-e', `SORA_ALLOWED_HOSTS=${hostName},localhost:${hostPort}`,
     '-e', `SORA_ALLOWED_ORIGINS=http://${hostName},http://localhost:${hostPort}`,
     ...PASS_THROUGH_ENV.filter((k) => process.env[k]).flatMap((k) => ['-e', `${k}=${process.env[k]}`]),

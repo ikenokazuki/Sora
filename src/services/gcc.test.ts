@@ -920,8 +920,8 @@ describe('product page suggestions (I3, I5, M11)', () => {
     ],
   };
   beforeAll(() => {
-    prevAllow = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     server = Bun.serve({
       hostname: '127.0.0.1', port: 0,
       fetch() {
@@ -932,8 +932,8 @@ describe('product page suggestions (I3, I5, M11)', () => {
   });
   afterAll(() => {
     server.stop();
-    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+    if (prevAllow === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
   });
   const page = (path: string) => `http://127.0.0.1:${server.port}${path}`;
   const options = (items: GccItemInput[]) => ({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items });
@@ -1025,8 +1025,8 @@ describe('product page read failures and which items read a page (fix round 1)',
   const ld = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: 'Gone Helmet', sku: 'GONE-1' });
   const body = `<main><h1>Helmet</h1><p>${'Lightweight road cycling helmet for adults with an impact-absorbing liner. '.repeat(12)}</p></main>`;
   beforeAll(() => {
-    prevAllow = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     server = Bun.serve({
       hostname: '127.0.0.1', port: 0,
       fetch(req) {
@@ -1037,8 +1037,8 @@ describe('product page read failures and which items read a page (fix round 1)',
   });
   afterAll(() => {
     server.stop();
-    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+    if (prevAllow === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
   });
   const options = (items: GccItemInput[]) => ({ certifier: CERTIFIER, recordCustodian: CUSTODIAN, allowDraft: true, items });
   const stub = (result: unknown) => spyOn(scraper, 'scrapeUrl').mockResolvedValue(result as Awaited<ReturnType<typeof scraper.scrapeUrl>>);
@@ -1132,14 +1132,14 @@ describe('product page read failures and which items read a page (fix round 1)',
   });
 
   it('blocks a private address through the real fetch guard without any request (m5)', async () => {
-    delete process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     try {
       const res = await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'http://127.0.0.1:1/p' }]));
       expect(res.items[0].suggestions).toBeUndefined();
       expect(res.items[0].warnings?.[0]).toContain('商品ページを読めませんでした');
       expect(res.items[0].warnings?.[0]).toContain('遮断');
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = 'true';
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     }
   }, 15_000);
 });

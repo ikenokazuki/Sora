@@ -41,11 +41,11 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
   let other: ReturnType<typeof Bun.serve>;
   const seen: Array<{ path: string; headers: Headers }> = [];
   const otherSeen: Array<{ path: string; headers: Headers }> = [];
-  const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+  const prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   const html = (body: string) => new Response(`<!doctype html><html><head><title>${mail} の案内</title></head><body><main><h1>案内</h1><p>${body}</p></main></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
   beforeAll(() => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     other = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -99,8 +99,8 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
   afterAll(() => {
     server.stop(true);
     other.stop(true);
-    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+    if (prevAllow === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
   });
 
   const base = () => `http://127.0.0.1:${server.port}`;

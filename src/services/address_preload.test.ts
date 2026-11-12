@@ -172,7 +172,7 @@ describe('startAddressPreload', () => {
   test('指定が無い、または off なら何も予約しない', () => {
     expect(startAddressPreload({})).toBeNull();
     expect(startAddressPreload({ SORA_ADDRESS_PRELOAD: '  ' })).toBeNull();
-    expect(startAddressPreload({ SORA_ADDRESS: 'off', SORA_ADDRESS_PRELOAD: '13' })).toBeNull();
+    expect(startAddressPreload({ SORA_ADDRESS_MODE: 'off', SORA_ADDRESS_PRELOAD: '13' })).toBeNull();
   });
 
   test('指定があれば、少し待ってから裏で始める予約をする', () => {

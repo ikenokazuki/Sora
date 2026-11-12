@@ -10,7 +10,7 @@ import { type CrossIndexLine, ensureCrossIndex, resetCrossIndexForTest, searchCr
 import { resetHtsDataForTest } from './hts_data.js';
 import { predictHtsCode } from './trade.js';
 
-// 手元の判例の索引（CROSS_SOURCE=local、既定）。索引のファイルはテストの中で作り、file:// で読ませる。
+// 手元の判例の索引（SORA_HTS_CROSS_SOURCE=local、既定）。索引のファイルはテストの中で作り、file:// で読ませる。
 const LINES: CrossIndexLine[] = [
   { n: 'NY N000001', d: '2020-01-02', t: 'Stoneware Coffee Mug', x: 'A stoneware mug with a handle for drinking coffee.', c: ['6912004400'] },
   { n: 'NY N000002', d: '2021-03-04', t: 'Porcelain Coffee Cup', x: 'A porcelain cup for coffee, sold with a saucer.', c: ['6911101000'] },
@@ -37,8 +37,8 @@ function writeIndex(lines: CrossIndexLine[], name = 'index.jsonl.gz'): { url: st
 
 function useIndex(lines: CrossIndexLine[]): void {
   const { url, sha256 } = writeIndex(lines);
-  setEnv('SORA_CROSS_INDEX_URL', url);
-  setEnv('SORA_CROSS_INDEX_SHA256', sha256);
+  setEnv('SORA_HTS_CROSS_INDEX_URL', url);
+  setEnv('SORA_HTS_CROSS_INDEX_SHA256', sha256);
 }
 
 describe('local CROSS ruling index', () => {
@@ -50,7 +50,7 @@ describe('local CROSS ruling index', () => {
     clearCache();
     resetCrossBreakerForTest();
     resetCrossIndexForTest();
-    setEnv('CROSS_SOURCE', undefined);
+    setEnv('SORA_HTS_CROSS_SOURCE', undefined);
   });
   afterEach(() => {
     for (const [k, v] of Object.entries(env)) {
@@ -96,8 +96,8 @@ describe('local CROSS ruling index', () => {
 
   it('refuses an index file whose SHA-256 differs, and says why', async () => {
     const { url } = writeIndex(LINES, 'other.jsonl.gz');
-    setEnv('SORA_CROSS_INDEX_URL', url);
-    setEnv('SORA_CROSS_INDEX_SHA256', 'f'.repeat(64));
+    setEnv('SORA_HTS_CROSS_INDEX_URL', url);
+    setEnv('SORA_HTS_CROSS_INDEX_SHA256', 'f'.repeat(64));
     await expect(ensureCrossIndex()).rejects.toThrow('SHA-256');
     const res = await lookupCrossRulings(['coffee mug']);
     expect(res.status).toBe('unavailable');
@@ -118,7 +118,7 @@ describe('local CROSS ruling index', () => {
     const restore = installExternalApiFixtures(); // HTS の全件データの写し（判例の照会先は API になるので、あとで local に戻す）
     try {
       resetHtsDataForTest();
-      setEnv('CROSS_SOURCE', undefined);
+      setEnv('SORA_HTS_CROSS_SOURCE', undefined);
       useIndex(LINES);
       await ensureCrossIndex();
       const res = await predictHtsCode({ productName: 'Stoneware Coffee Mug', description: 'Coffee mug for kitchen use', material: 'stoneware' });

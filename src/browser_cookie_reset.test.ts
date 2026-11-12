@@ -13,13 +13,13 @@ afterEach(() => {
 });
 
 function serve(handler: (req: Request) => Response): string {
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   const server = Bun.serve({ port: 0, fetch: handler });
   cleanups.push(() => {
     server.stop(true);
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
   });
   return `http://127.0.0.1:${server.port}`;
 }

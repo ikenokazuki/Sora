@@ -8,10 +8,10 @@ export class AddressInputError extends Error {
   }
 }
 
-/** SORA_ADDRESS=off で無効化されている（REST では ADDRESS_DISABLED / 404）。 */
+/** SORA_ADDRESS_MODE=off で無効化されている（REST では ADDRESS_DISABLED / 404）。 */
 export class AddressDisabledError extends Error {
   constructor() {
-    super('住所機能は SORA_ADDRESS=off で無効化されています');
+    super('住所機能は SORA_ADDRESS_MODE=off で無効化されています');
     this.name = 'AddressDisabledError';
   }
 }

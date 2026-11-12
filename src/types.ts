@@ -388,7 +388,7 @@ export const BrowserActionTypeSchema = z.enum(['click', 'fill', 'type', 'press',
 
 /** 実装 (browser_session.ts runActionsOnPage) が解釈するアクション項目のみ。 */
 export const BrowserActionStepSchema = z.object({
-  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 ALLOW_BROWSER_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
+  type: BrowserActionTypeSchema.describe('アクション種別。evaluate は環境変数 SORA_BROWSER_ALLOW_EVALUATE=true のときだけ動く。screenshot は単独では画像を返さない (画像は extract.screenshot で取る)'),
   selector: z.string().optional().describe('操作対象の CSS セレクタ'),
   text: z.string().optional().describe('入力テキスト、またはクリック対象の表示テキスト'),
   value: z.string().optional().describe('select タグで選択する値'),
@@ -3191,7 +3191,7 @@ export function generateOpenApiDocument() {
           ],
           responses: {
             '200': {
-              description: '操作の一覧。ENABLED_MODULES で無効なモジュールの操作は出ない',
+              description: '操作の一覧。SORA_MODULES で無効なモジュールの操作は出ない',
               content: {
                 'application/json': {
                   schema: {
@@ -4006,7 +4006,7 @@ export function generateOpenApiDocument() {
   paths['/search/deep'] = paths['/search'];
   paths['/search/integrated'] = paths['/search'];
   paths['/deep-search'] = paths['/search'];
-  // 歌詞は ENABLED_MODULES に名前を挙げたときだけ公開する（自己責任の機能。既定では仕様書にも出さない）
+  // 歌詞は SORA_MODULES に名前を挙げたときだけ公開する（自己責任の機能。既定では仕様書にも出さない）
   if (isModuleActive('lyrics')) {
     paths['/lyrics'] = {
       post: {
@@ -4021,11 +4021,11 @@ export function generateOpenApiDocument() {
       },
     };
   }
-  // 楽曲認識は ENABLED_MODULES に名前を挙げたときだけ公開する（Shazam の iPhone アプリと同じ窓口を使うため）
+  // 楽曲認識は SORA_MODULES に名前を挙げたときだけ公開する（Shazam の iPhone アプリと同じ窓口を使うため）
   if (isModuleActive('shazam')) {
     paths['/music/recognize'] = {
       post: {
-        summary: '音声・動画ファイルの音から曲を特定し、iTunes の曲とつなぐ (Shazam。ENABLED_MODULES に shazam を挙げたときだけ)',
+        summary: '音声・動画ファイルの音から曲を特定し、iTunes の曲とつなぐ (Shazam。SORA_MODULES に shazam を挙げたときだけ)',
         requestBody: {
           content: {
             'application/json': { schema: zodToOpenApiSchema(SongRecognitionRequestSchema) },
@@ -4053,7 +4053,7 @@ export function generateOpenApiDocument() {
     };
     paths['/music/recognize/signature'] = {
       post: {
-        summary: '作り済みの音の指紋（16 kHz・モノラルの音から作った SigX）で曲を特定し、iTunes の曲とつなぐ (Shazam。ENABLED_MODULES に shazam を挙げたときだけ。REST だけ・キャッシュしない)',
+        summary: '作り済みの音の指紋（16 kHz・モノラルの音から作った SigX）で曲を特定し、iTunes の曲とつなぐ (Shazam。SORA_MODULES に shazam を挙げたときだけ。REST だけ・キャッシュしない)',
         requestBody: {
           content: { 'application/json': { schema: zodToOpenApiSchema(SongRecognitionSignatureRequestSchema) } },
         },
@@ -4066,7 +4066,7 @@ export function generateOpenApiDocument() {
       },
     };
   }
-  // HTS の版の保存は ENABLED_MODULES に名前を挙げたときだけ公開する（1 日 1 回 USITC から全件を取る常駐の処理を伴うため）
+  // HTS の版の保存は SORA_MODULES に名前を挙げたときだけ公開する（1 日 1 回 USITC から全件を取る常駐の処理を伴うため）
   if (isModuleActive('hts-archive')) {
     const release = {
       type: 'object',
@@ -4084,7 +4084,7 @@ export function generateOpenApiDocument() {
     };
     paths['/trade/hts/releases'] = {
       get: {
-        summary: '保存した HTS の版の一覧 (新しい順。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        summary: '保存した HTS の版の一覧 (新しい順。SORA_MODULES に hts-archive を挙げたときだけ)',
         responses: {
           '200': {
             description: '保存した版と、最後に確かめた時刻・最後の失敗',
@@ -4106,7 +4106,7 @@ export function generateOpenApiDocument() {
     };
     paths['/trade/hts/releases/{id}'] = {
       get: {
-        summary: '保存した HTS の版の全件 ({id, release, title, description, date, fetchedAt, records}。records は USITC の exportList の応答のまま。Accept-Encoding に gzip があれば gzip のまま返す。ENABLED_MODULES に hts-archive を挙げたときだけ)',
+        summary: '保存した HTS の版の全件 ({id, release, title, description, date, fetchedAt, records}。records は USITC の exportList の応答のまま。Accept-Encoding に gzip があれば gzip のまま返す。SORA_MODULES に hts-archive を挙げたときだけ)',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', pattern: '^[0-9A-Za-z_-]{1,80}$' }, description: '一覧の id' }],
         responses: {
           '200': { description: '版の全件の JSON' },
