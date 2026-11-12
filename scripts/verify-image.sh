@@ -10,6 +10,7 @@
 #   7. 6 に、--cap-drop=ALL と、uid を落とすのに要る 5 つの capability、no-new-privileges を足した運用でも、サンドボックスが有効になる
 #   8. ブラウザの通信を、出口のゲートウェイ（SORA_EGRESS_GATEWAY=on）に通すと、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/browser-egress-check.ts）
 #   9. 8 を、7 と同じ硬化した運用（サンドボックス有効）でも確かめる
+#  10. 静的取得（wreq-js。イメージの自前の native）の通信を、出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/static-egress-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -71,3 +72,10 @@ docker run --rm --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --securit
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_BROWSER_SANDBOX=on \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/browser-egress-check.ts
+
+# 10. 静的取得（wreq-js。イメージの自前の native）の通信を、出口のゲートウェイ（SORA_EGRESS_GATEWAY=on。確認のスクリプトが設定する）に通す。DNS rebinding（検査のときは解決できない名前が、
+#     ゲートウェイの解決では内部の IP になる）は断られ、名前はゲートウェイが解決し、TLS の ClientHello は、ゲートウェイ越しでも直接のときと変わらない（scripts/static-egress-check.ts。設計 1）
+docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/static-egress-check.ts

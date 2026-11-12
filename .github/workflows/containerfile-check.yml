@@ -15,6 +15,7 @@ on:
       - scripts/browser-isolation-check.ts
       - scripts/browser-capdrop-check.ts
       - scripts/browser-egress-check.ts
+      - scripts/static-egress-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
@@ -45,6 +46,7 @@ jobs:
       # (6)(7) Docker の既定の seccomp を、deploy/seccomp-sora.json に替えると、Chromium のサンドボックスが有効になること（ランナーの Docker で）を確かめる。
       # (8)(9) ブラウザの通信を出口のゲートウェイに通すと（SORA_EGRESS_GATEWAY=on）、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらないこと
       # （既定の運用と、サンドボックス有効の硬化した運用の両方で）を確かめる。
+      # (10) 静的取得（イメージの wreq-js の native）を出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらないことを確かめる。
       # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check

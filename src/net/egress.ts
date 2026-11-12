@@ -53,6 +53,8 @@ export function parseAllowedPorts(raw: string | undefined): number[] | undefined
  * NO_PROXY の宛先は、上流を使わない。
  */
 export function egressGatewayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): EgressGatewayOptions {
+  // SORA_PROXY_LIST は、静的取得が、リクエストごとに替える一覧。ゲートウェイの上流は 1 つなので、黙って無視すると、替えているつもりで 1 つに偏る
+  if (env.SORA_PROXY_LIST?.trim()) throw new Error('SORA_PROXY_LIST（リクエストごとに替えるプロキシの一覧）は、SORA_EGRESS_GATEWAY=on のときは使えない（ゲートウェイの上流は、SORA_PROXY_URL などの 1 つ）');
   const options: EgressGatewayOptions = {};
   const allowedPorts = parseAllowedPorts(env.SORA_EGRESS_PORTS);
   if (allowedPorts) options.allowedPorts = allowedPorts;

@@ -94,6 +94,11 @@ describe('egressGatewayOptionsFromEnv: 環境変数から、ゲートウェイ�
     expect(bypass?.('10.1.2.4')).toBe(false);
   });
 
+  test('SORA_PROXY_LIST（静的取得の、リクエストごとに替えるプロキシの一覧）は、ゲートウェイの上流（1 つ）にできない。黙って無視せず、理由を添えたエラー', () => {
+    expect(() => egressGatewayOptionsFromEnv({ SORA_PROXY_LIST: 'http://a.example:3128,http://b.example:3128' })).toThrow('SORA_PROXY_LIST');
+    expect(() => egressGatewayOptionsFromEnv({ SORA_PROXY_LIST: '   ' })).not.toThrow(); // 空白だけは、未設定と同じ
+  });
+
   test('対応していない上流（socks4 など）は、理由を添えたエラー。黙って、上流なしにはしない', () => {
     expect(() => egressGatewayOptionsFromEnv({ SORA_PROXY_URL: 'socks4://proxy.example:1080' })).toThrow('socks4');
   });
