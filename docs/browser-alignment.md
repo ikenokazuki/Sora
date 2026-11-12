@@ -4,10 +4,10 @@
 
 Sora の取得は、静的取得（wreq-js のプロファイル）とブラウザ（同梱の Chromium）の 2 経路で、Cookie を共有する。同じセッションなので、2 つが同じ Chrome の姿（UA・ヘッダ・TLS）を送らないと、別のブラウザに見える。
 
-- **名乗る版**: 実際の Chromium の版と、上限 `SORA_FETCH_MAX_CHROME_PROFILE` の小さい方（`src/http_fetcher.ts` の `profileMajorFor`）。静的取得はその版の wreq-js のプロファイル（`chrome_<版>`）を使い、ブラウザも同じ版を名乗る（`getAlignedChromeMajorVersion`）。上限の既定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、自前でビルドした native（下の「wreq-js の native」）に合わせて 154 にしている。
+- **名乗る版**: 実際の Chromium の版と、上限 `SORA_FETCH_MAX_CHROME_PROFILE` の小さい方（`src/http_fetcher.ts` の `profileMajorFor`）。静的取得はその版の wreq-js のプロファイル（`chrome_<版>`）を使い、ブラウザも同じ版を名乗る（`getAlignedChromeMajorVersion`）。上限の既定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、自前でビルドした native（下の「wreq-js の native」）が持つ最新の版（Containerfile の `WREQ_MAX_CHROME_PROFILE`）にしている。
 - **TLS**: ブラウザの起動引数 `--disable-features=…` で、wreq のプロファイルに無い項目を止める。止める項目は、名乗る版で決まる（`browser_engine.ts` の `WREQ_ALIGN_FEATURES` と `wreqAlignDisabledFeatures`）。プロファイルが送る項目は、止めずに、ブラウザが自然に送るままにする。
   - 拡張 51764（Trust Anchor IDs）と署名アルゴリズムの GREASE: プロファイルが 152 未満なら止める。152 以上は、プロファイルも送る。
-  - Accept の `image/jxl`（Chromium 156 以降）: 154 までのプロファイルには無いので、止める。
+  - Accept の `image/jxl`（Chromium 156 以降）: wreq のプロファイル（154 まで確かめた）には無いので、止める。新しいプロファイルが送るようになったら、`emulatedFrom` にその版を入れて、止めないようにする。
   - 署名アルゴリズムの ML-DSA（Chromium 150 以降）: 止める機能名が無い。プロファイルが 150 以上なら同じになり、150 未満（上限が 149 のとき）は既知の差として残る。
 - **ヘッダ**: `sec-ch-ua` のブランドは、Chromium の規則で作り直す（Debian の Chromium は "Google Chrome" のブランドを持たない）。規則は、wreq-js の chrome_136〜154 が送るものと一致する（`stealth_native.test.ts`）。
 
@@ -59,15 +59,30 @@ ML-DSA は、npm の wreq-js の native（wreq-util 0.2.1）が持つ BoringSSL 
 静的取得の TLS・HTTP の実装（wreq-js の native）は、npm のビルド済みのものではなく、Containerfile の Stage 1b で、wreq-js のソースからビルドしたものを使う。
 
 - 材料: wreq-js のタグ（`WREQ_JS_VERSION`・`WREQ_JS_REV`。package.json の wreq-js と同じ版）と、`vendor/wreq-js/` の固定（`Cargo.toml.patch`・`Cargo.lock`・`pins.json`）。依存は、上流の wreq-util の main（新しい Chrome プロファイル）と、wreq-util が自分の `[patch.crates-io]` で使っている wreq・btls の rev に向ける。公開された wreq-util 0.2.1 は Chrome 149 まで。
-- 作り直し: `bun scripts/wreq-native/update.ts`（`--wreq-util <rev か ブランチ>` で、wreq-util の rev を選ぶ。既定は main）。podman か docker が要る。出力の差分を見て、`bun test src/containerfile_pins.test.ts scripts/wreq-native` を通す。
+- 作り直し: `bun scripts/wreq-native/update.ts`（`--wreq-util <rev か ブランチ>` で、wreq-util の rev を選ぶ。既定は main。`--max-chrome-profile <版>` で、`WREQ_MAX_CHROME_PROFILE` も書き換える）。podman か docker が要る（`CONTAINER_RUNTIME` で選べる）。出力の差分を見て、`bun test src/containerfile_pins.test.ts scripts/wreq-native` を通す。
 - 上限: `ARG WREQ_MAX_CHROME_PROFILE`（Containerfile の先頭）が、native が持つ最新の Chrome の版。ビルドの時点で、native がこのプロファイルを持つことを確かめ、`SORA_FETCH_MAX_CHROME_PROFILE` として渡す。
 - **挙動を戻す**: 実行時に `SORA_FETCH_MAX_CHROME_PROFILE=149` を渡せば、UA・TLS・ヘッダが `chrome_149` のものに戻る（ブラウザの起動引数も、149 用に戻る）。イメージの作り直しは要らない。
 - 版を上げるとき: wreq-js を上げたら、`WREQ_JS_VERSION`・`WREQ_JS_REV`（そのタグのコミット）をそろえて、`update.ts` を回す。そろっていなければ `src/containerfile_pins.test.ts` が落ちる。
 
 上流が止まったとき: プロファイルはデータなので、最小のパッチ（例えば、新しい Chrome の版を、一つ前のプロファイルの設定で足す）を `vendor/wreq-js/Cargo.toml.patch` の隣に持てる。合っているかは、`run.ts` が測る。
 
+## 上流の新しい rev の自動確認
+
+週 1 回（火曜 21:41 UTC）、`.github/workflows/wreq-native-update.yml` が、上流の wreq-util（main）に、いまの上限（`WREQ_MAX_CHROME_PROFILE`）より新しい Chrome のプロファイルがあるかを見る。
+
+1. 判定（`update.ts --check`）: 上流の `src/emulate.rs` の Chrome の最大の版を読み、上限と比べる。新しくなければ、ここで終わる（ビルドしない）。
+2. 試しビルド（`scripts/wreq-native/trial.sh`）: その rev で固定を作り直し、上限を上げて、固定のテストを通し、イメージをビルドし、`scripts/verify-image.sh`（native の置き換えと、イメージの Chromium との ClientHello の比較）を通す。どれかが落ちれば、実行が失敗になる（PR は作らない）。
+3. PR（`scripts/wreq-native/open-pr.sh`）: 通れば、`vendor/wreq-js` と上限を更新する PR を作る。文面に、変わる rev（比較のリンク）・確認の出力・自動では確かめていないこと・戻し方を書く。**マージは人が決める**（名乗る版が変わるため）。すでに開いている PR は更新しない。閉じても、上流に新しいプロファイルがある限り、次の週にまた作る（止めるなら、ワークフローを無効にする）。
+
+- 上流のコードをビルド・実行する 2 の側（`trial` ジョブ）には、書き込みの権限を渡さない。PR を作る 3 の側（`pr` ジョブ）は、patch（`vendor/wreq-js` と Containerfile だけを触るものに限る）と文面だけを扱う。
+- PR を作るには、リポジトリの Settings → Actions → General の「Allow GitHub Actions to create and approve pull requests」を有効にする（既定は無効。無効だと、`pr` ジョブが PR を作れずに失敗する。枝は push 済みなので、そこから手で PR にできる）。
+- Actions が作った PR の CI（Test・Containerfile）は、承認待ち（`action_required`）で止まる。走らせたいときは、PR の画面の「Approve and run workflows」を押す（`gh api -X POST repos/<owner>/<repo>/actions/runs/<run_id>/approve` でも承認できる）。試しビルドが、同じ確認（イメージのビルドと `verify-image.sh`）を済ませているので、走らせなくてもよい。マージすると、main への push で、通常どおり Test と公開のパイプラインが動く。
+- 手動: Actions の「wreq-native update」を実行する。`wreq_util` で rev を選べる。`force` を付けると、新しいプロファイルが無くても最後まで回し、固定に差があれば PR も作る（上流の rev だけを更新したいとき）。
+- 手元: `bun install` のあと `bash scripts/wreq-native/trial.sh`（作業ツリーの `vendor/wreq-js` と Containerfile を書き換えるので、捨てられる場所で）。
+- 自動では確かめないこと: Accept の `image/jxl`（`WREQ_ALIGN_FEATURES`）と、HTTP/2 の SETTINGS・接続の窓・疑似ヘッダの並び。PR の本文に、マージの前に見る項目として書く。
+
 ## 上流を調べるとき
 
 - 上流の wreq-util の main は、公開（crates.io）より先に進む（2026-11-12 時点で、Chrome 154 まで）。Chrome の安定版（157）には、まだ追いついていない。
 - wreq-js 自身は、master で更新が続いている（依存の更新など）が、npm への公開は 2026-08-23 の 3.2.0 が最後。
-- 週 1 回の確認（`.github/workflows/runtime-update-check.yml`）は、イメージの Chromium・Bun・土台の更新を見る。上流の新しい rev を試す自動化は、これからの課題。
+- 上流の新しい rev の確認は、上の「上流の新しい rev の自動確認」。週 1 回の確認（`.github/workflows/runtime-update-check.yml`）は、イメージの Chromium・Bun・土台の更新を見る。
