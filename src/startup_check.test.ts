@@ -3,12 +3,13 @@ import { checkEnv, type Env } from './config.js';
 import { checkStartupEnv } from './startup_check.js';
 
 /** 起動時の検査を、出力・終了・ファイルの有無を差し替えて走らせる。 */
-function run(env: Env, existing: readonly string[] = []) {
+function run(env: Env, existing: readonly string[] = [], transport?: 'http' | 'stdio') {
   const lines: string[] = [];
   const exits: number[] = [];
   const asked: string[] = [];
   checkStartupEnv({
     env,
+    transport,
     stderr: (line) => lines.push(line),
     exit: (code) => void exits.push(code),
     exists: (path) => {
@@ -73,6 +74,26 @@ describe('checkStartupEnv', () => {
     expect(exits).toEqual([1]);
     expect(lines[0]).toStartWith(`${PREFIX} 警告: SORA_RS_TRAFILATURA_PATH`);
     expect(lines.at(-1)).toBe(`${PREFIX} 環境変数の誤りが 1 件あるので、起動しません`);
+  });
+
+  test('stdio does not check the generic names it cannot use (it listens on nothing and has no auth); HTTP still does', () => {
+    const generic = { PORT: 'abc', API_KEY: 'x', WEB_FETCHER_API_KEY: 'x', DAILY_REQUEST_LIMIT: '5' };
+    const copy = { ...generic };
+    expect(run(generic, [], 'stdio')).toEqual({ lines: [], exits: [], asked: [] });
+    expect(generic).toEqual(copy);
+    const http = run(generic);
+    expect(http.exits).toEqual([1]);
+    expect(http.lines.filter((l) => l.startsWith(`${PREFIX} エラー: `))).toHaveLength(4);
+    expect(run(generic, [], 'http')).toEqual(http);
+  });
+
+  test('stdio still checks everything else (SORA_* values, the other old names, pairs, paths)', () => {
+    for (const env of [{ SORA_MODULES: 'weeb' }, { ENABLED_MODULES: 'web' }, { SORA_HTS_CROSS_INDEX_URL: 'https://index.example.test/cross.jsonl.gz' }, { PORT: 'abc', SORA_PROXY_URL: 'proxy.example.test:3128' }]) {
+      const { lines, exits } = run(env, [], 'stdio');
+      expect(exits, JSON.stringify(env)).toEqual([1]);
+      expect(lines).toEqual(run(Object.fromEntries(Object.entries(env).filter(([k]) => k !== 'PORT'))).lines);
+    }
+    expect(run({ LOG_FORMAT: 'json', SORA_RS_TRAFILATURA_PATH: '/opt/missing/rs' }, [], 'stdio').lines).toHaveLength(2);
   });
 
   test('secret values never appear in the output (only "設定済み、長さ N")', () => {
@@ -169,9 +190,10 @@ describe('the entry points run the start-up check', () => {
     expect(stdout).not.toContain('Starting Sora service');
   }, 30_000);
 
-  test('the stdio server refuses PORT=abc with exit 1, and writes nothing to stdout (the JSON-RPC stream)', async () => {
-    const { code, stdout, stderr } = await start(['src/stdio.ts'], { PORT: 'abc' });
-    expect(stderr).toContain(`${PREFIX} エラー: PORT の値（"abc"）は不正です`);
+  test('the stdio server refuses SORA_MODULES=weeb with exit 1 (ignoring PORT and API_KEY), and writes nothing to stdout (the JSON-RPC stream)', async () => {
+    const { code, stdout, stderr } = await start(['src/stdio.ts'], { SORA_MODULES: 'weeb', PORT: 'abc', API_KEY: 'x' });
+    expect(stderr).toContain(`${PREFIX} エラー: SORA_MODULES の値（"weeb"）は不正です`);
+    expect(stderr).toContain(`${PREFIX} 環境変数の誤りが 1 件あるので、起動しません`);
     expect(stderr).not.toContain('Stdio server connected');
     expect(code).toBe(1);
     expect(stdout).toBe('');

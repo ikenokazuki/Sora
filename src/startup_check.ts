@@ -11,15 +11,29 @@ const BUNDLED = {
   SORA_RS_TRAFILATURA_PATH: '本文は Readability で取り出します',
 } as const;
 
+/**
+ * stdio では検査しない名前。stdio は待ち受けず、認証の中間層も通らないので使わない。どれも SORA_ の付かない汎用の名前で、
+ * 受け継いだシェルの環境では、ほかのプログラムの設定かもしれない（ほかの名前は stdio でも検査する）。
+ */
+const NOT_USED_BY_STDIO: readonly string[] = ['PORT', 'API_KEY', 'WEB_FETCHER_API_KEY', 'DAILY_REQUEST_LIMIT'];
+
 const PREFIX = '[Sora/Config]';
 
 /** checkEnv の結果と、同梱の実行ファイルの有無を出す。警告は出して続け、エラーがあれば exit(1)。 */
 export function checkStartupEnv({
-  env = process.env,
+  env: given = process.env,
+  transport = 'http',
   stderr = (line: string) => void process.stderr.write(`${line}\n`),
   exit = (code: number) => process.exit(code),
   exists = existsSync,
-}: { env?: Env; stderr?: (line: string) => void; exit?: (code: number) => void; exists?: (path: string) => boolean } = {}): void {
+}: {
+  env?: Env;
+  transport?: 'http' | 'stdio';
+  stderr?: (line: string) => void;
+  exit?: (code: number) => void;
+  exists?: (path: string) => boolean;
+} = {}): void {
+  const env = transport === 'stdio' ? Object.fromEntries(Object.entries(given).filter(([name]) => !NOT_USED_BY_STDIO.includes(name))) : given;
   const { errors, warnings } = checkEnv(env);
   for (const [name, effect] of Object.entries(BUNDLED) as [keyof typeof BUNDLED, string][]) {
     const path = envPath(name, env);
