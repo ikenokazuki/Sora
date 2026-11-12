@@ -94,6 +94,9 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **E3a**: root の Sora 本体から、Bun の `node:child_process` も `Bun.spawn` も、`uid`・`gid` を指定して子プロセスを起こせる（65532 で動いた）。puppeteer の `pipe: true`（TCP のデバッグポートを開かない接続）も、Bun で動く。
 - **E5**: 出口プロキシの試作。Chromium に `--proxy-server`・`--proxy-bypass-list=<-loopback>`・`--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1` を付けると、公開の https ページ（example.com）は、プロキシが名前を解決して接続した上で 200 で開く。ループバック（IP でも名前でも）とメタデータの IP は、すべてプロキシに回り、プロキシが拒否し、ループバックのサーバーには何も届かなかった。Chromium 自身の背景通信（Google への更新確認・時刻・アカウントなど）も、プロキシに見えた（試作の Chromium の引数での観測。Sora の起動引数での確認は、実装の PR で行う）。
 - **E6**: Bun 1.4.4 の `fetch` は、実行中に設定した `HTTPS_PROXY`・`HTTP_PROXY` を守り、ループバックも既定でプロキシに回す（`NO_PROXY` を設定すると外れる）。`proxy` オプションも効く。
+- **E8**（サンドボックス有効・非 root と、従来の root・`--no-sandbox`）: canvas のハッシュ・WebGL の vendor/renderer/パラメータ/ピクセル・navigator・画面・フォントのどれにも、**差がない**。
+- **E9・E10**（パイプ接続の安定性。Chromium 148）: **Bun 1.4.4 は、起動と終了 15 回・5 並行 ×3・強制終了（SIGKILL）の検知（`disconnected`）・再起動が、すべて通る。** **Bun 1.3.3 は、同じ耐久試験で「Connection closed.」になり、並行の起動のテストのあとに、パイプ接続が 60 秒止まった**（1 回ずつの操作と、12MB の応答は通る）。パイプは、Bun 1.4.4 以上でだけ使う。
+- **E11**（イメージの中。Bun 1.4.4・Chromium 156・root）: Sora の起動のまま、パイプで起動し（`--remote-debugging-pipe` があり、ポートの引数がない）、12MB の文字列と縦長のフルページ・スクリーンショットが完全に届く。強制終了は 50ms で検知し、次の `getBrowser()` が新しいブラウザを起動して描画できる。
 
 ## 設計
 
@@ -126,7 +129,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **別 uid**: root の Sora 本体から、65532 以降の uid で起動する。プロファイルは、その uid だけが読める一時ディレクトリ（0700）に置き、終了時に消す。Sora が root でないとき（開発機など）は、uid を切り替えない。
 - **tenant ごとのプロセスと uid**（`strict`）: tenant ごとに別のプロセス・別の uid（uid の池から割り当てる）。同じコンテナの中でも、ほかの tenant のプロセスの `/proc`・プロファイル・シグナルに届かない。プロセス数の上限と、使われなくなったプロセスの閉じ方（LRU）が要る。コンテナを増やさずに、tenant を分けられる。
 - **サンドボックスを有効にする**（`--no-sandbox` を外す）: E2・E3b のとおり、rootless Podman の既定で動く。Docker の既定の seccomp ではユーザー名前空間が作れず、動かない見込み（未検証）。そこで 3 段階にする。`auto`（既定。試して、使えなければ `--no-sandbox` に戻して警告し、状態を `/health` に出す）・`on`（使えなければ起動しない。`strict` の既定）・`off`。
-- **CDP はパイプ**（TCP のデバッグポートを開かない）。
+- **CDP はパイプ**（TCP のデバッグポートを開かない）。Bun 1.4.4 以上でだけ使い（`browserCdpMode`。実測 E9・E10）、それ未満はポートのまま。`SORA_BROWSER_PIPE` で上書きできる。PR 1b で入れた。
 - **利用者のバイト列を処理する用途**（`recognize_song` の音声のデコード。穴 28）は、`strict` では、その tenant の専用のブラウザのプロセス（uid の池の 1 枠）で、`setupPageSecurity` を付けたページで、ナビゲーションなしに行う。長期的には、ブラウザを使わないデコーダーにする。
 - **ブラウザを開くすべての経路**（追跡の `browser_track`・Weibo・音声のデコード）を、`browserSemaphore` と tenant の上限の下に置く（穴 22）。
 - 取得の途中で乗っ取られても、ほかの tenant に届かないよう、プロセスの寿命は短くする（使われなくなったら閉じる。いまの再利用の回数の上限も残す）。
