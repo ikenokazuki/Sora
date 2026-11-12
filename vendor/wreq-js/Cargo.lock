@@ -2084,7 +2084,7 @@ dependencies = [
 [[package]]
 name = "wreq-util"
 version = "0.2.0"
-source = "git+https://github.com/0x676e67/wreq-util?rev=917d2581d6761a94db66466caa6c2eb4d4cdbd43#917d2581d6761a94db66466caa6c2eb4d4cdbd43"
+source = "git+https://github.com/0x676e67/wreq-util?rev=4d21e3b65d6846187e02802172073438944e6399#4d21e3b65d6846187e02802172073438944e6399"
 dependencies = [
  "brotli 9.1.1",
  "flate2",
