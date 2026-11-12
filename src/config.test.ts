@@ -12,7 +12,6 @@ import {
   envRaw,
   envStr,
   envUrl,
-  envWithoutSecrets,
   EXTERNAL,
   LEGACY,
   NOT_SETTINGS,
@@ -22,7 +21,7 @@ import {
 } from './config.js';
 import { EXPLICIT_ONLY_MODULES as REGISTRY_EXPLICIT_ONLY } from './mcp/registry.js';
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
-import { withEnv } from './test_fixtures/env.js';
+import { childEnv } from './security/child_env.js';
 
 const all = { ...SETTINGS, ...EXTERNAL } as Record<string, Setting>;
 
@@ -69,7 +68,7 @@ const RENAMED_WARN: Record<string, string> = {
   SORA_BLUESKY_DIDS: 'SORA_INTEL_BLUESKY_DIDS',
 };
 
-/** 秘密の 12 個（値を表示しない。Chromium などの子プロセスに渡さない）。 */
+/** 秘密の 12 個（値を表示しない。子プロセスにも渡さない）。 */
 const SECRETS = [
   'SORA_API_KEY', 'SORA_ALERT_WEBHOOK_URL', 'SORA_PROXY_URL', 'SORA_PROXY_LIST', 'SORA_GCC_CERTIFIER', 'SORA_GCC_CUSTODIAN',
   'SORA_TRACKING_PAGE_SECRET', 'SORA_TRACKING_UPS_CLIENT_ID', 'SORA_TRACKING_UPS_CLIENT_SECRET',
@@ -463,31 +462,20 @@ describe('envRaw', () => {
   });
 });
 
-describe('envWithoutSecrets (the environment for Chromium and the bundled programs)', () => {
-  const kept = {
-    PATH: '/usr/bin', HOME: '/home/sora', LD_LIBRARY_PATH: '/opt/lib', TZ: 'UTC', SSL_CERT_FILE: '/etc/ssl/certs/ca.crt',
-    CHROME_PATH: '/usr/bin/chromium', HTTPS_PROXY: 'http://proxy.example.test:3128', no_proxy: 'localhost',
-    SORA_BROWSER_LOW_MEMORY: 'true', SORA_FETCH_TRUST_STORE: 'defaultPaths', OTHER_PROGRAM_TOKEN: 'not-ours',
-  };
-
-  test('drops every secret setting, the old names of secret settings and SORA_GCC_*, and keeps everything else', () => {
+describe('the child-process environment allowlist (src/security/child_env.ts) and the registry', () => {
+  test('never lets a secret setting, the old name of a secret setting or a SORA_GCC_* name through', () => {
     const secretNames = [...SECRETS, ...Object.entries(LEGACY).filter(([, { to }]) => to && SECRETS.includes(to)).map(([old]) => old), 'SORA_GCC_EXTRA'];
     expect(secretNames).toContain('API_KEY');
     expect(secretNames).toContain('FEDEX_API_SECRET');
-    const env: Record<string, string> = { ...kept, ...Object.fromEntries(secretNames.map((name) => [name, `fake-secret-${name}`])) };
-    const child = envWithoutSecrets(env);
-    expect(child).toEqual(kept);
+    const env: Record<string, string> = { PATH: '/usr/bin', ...Object.fromEntries(secretNames.map((name) => [name, `fake-secret-${name}`])) };
+    const child = childEnv({}, env);
+    expect(child).toEqual({ PATH: '/usr/bin' });
     expect(JSON.stringify(child)).not.toContain('fake-secret');
-    expect(env.SORA_API_KEY).toBe('fake-secret-SORA_API_KEY'); // the input is not changed
   });
 
-  test('reads process.env by default', async () => {
-    await withEnv({ SORA_API_KEY: 'fake-secret-default', SORA_BROWSER_LOW_MEMORY: 'on' }, () => {
-      const child = envWithoutSecrets();
-      expect(child.SORA_API_KEY).toBeUndefined();
-      expect(child.SORA_BROWSER_LOW_MEMORY).toBe('on');
-      expect(child.PATH).toBe(process.env.PATH);
-    });
+  test('passes no Sora setting at all (children get only the allowlisted OS and proxy names)', () => {
+    const settings = Object.fromEntries(Object.keys(SETTINGS).map((name) => [name, 'x']));
+    expect(childEnv({}, settings)).toEqual({});
   });
 });
 

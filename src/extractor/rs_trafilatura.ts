@@ -9,7 +9,8 @@
  */
 import { existsSync } from 'node:fs';
 import * as cheerio from 'cheerio';
-import { envPath, envWithoutSecrets } from '../config.js';
+import { envPath } from '../config.js';
+import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { markImagesForRs, restoreRsImages } from './rs_images.js';
 
@@ -31,8 +32,7 @@ const RS_TIMEOUT_MS = 5000;
 /** コマンドを 1 回走らせる。本文が空なら undefined。起動の失敗・壊れた出力は例外 */
 async function runRs(bin: string, html: string, url: string, pageType?: string): Promise<RsMainContent | undefined> {
   const args = [bin, '--url', url, '--hybrid', '--markdown', ...(pageType ? ['--page-type', pageType] : [])];
-  // env を渡さないと、Sora の起動時の環境（秘密を含む）をそのまま渡す
-  const proc = Bun.spawn(args, { stdin: new TextEncoder().encode(html), stdout: 'pipe', stderr: 'ignore', env: envWithoutSecrets() });
+  const proc = Bun.spawn(args, { stdin: new TextEncoder().encode(html), stdout: 'pipe', stderr: 'ignore', env: childEnv() });
   const timer = setTimeout(() => proc.kill(), RS_TIMEOUT_MS);
   try {
     const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);

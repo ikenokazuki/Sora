@@ -6,7 +6,7 @@ import { resolveChromiumPath } from './browser_engine.js';
 import { SETTINGS } from './config.js';
 
 // Chromium と同梱の実行ファイル（rs-trafilatura・yahoo-search-mcp）と住所データの構築の子プロセスは、Sora の秘密（API キー・運送会社の鍵・プロキシの資格情報など）を受け継がない。
-// ほかの環境変数（PATH・標準のプロキシ・SORA_ の秘密でない設定など）は、そのまま受け継ぐ。
+// 子プロセスに渡すのは許可リスト（security/child_env.ts）の環境変数だけで、秘密でない Sora の設定も渡さない。PATH のような許可リストの名前は渡る。
 
 const SECRETS = {
   SORA_API_KEY: 'fake-secret-api-key',
@@ -18,7 +18,8 @@ const SECRETS = {
   [SETTINGS.SORA_TRACKING_FEDEX_CLIENT_SECRET.legacy[0]]: 'fake-secret-fedex-old',
   SORA_GCC_CERTIFIER: '{"name":"fake-secret-gcc"}',
 };
-const KEPT = { SORA_BROWSER_LOW_MEMORY: 'false', SORA_CHILD_ENV_MARKER: 'kept-marker' };
+// 秘密でなくても、許可リストにない名前は渡らない
+const NOT_ALLOWED = { SORA_BROWSER_LOW_MEMORY: 'false', SORA_CHILD_ENV_MARKER: 'not-allowlisted' };
 
 function scratch(): { dir: string; script: (body: string) => string } {
   const dir = mkdtempSync(join(tmpdir(), 'sora-child-env-'));
@@ -37,8 +38,8 @@ function scratch(): { dir: string; script: (body: string) => string } {
 /** 失敗しても環境の中身を表示しない（開発機・CI のほかの秘密を出さない）よう、真偽値で比べる。 */
 function expectStripped(dumped: string): void {
   expect(dumped.includes('fake-secret'), 'a secret value').toBe(false);
-  for (const name of Object.keys(SECRETS)) expect(dumped.includes(name), name).toBe(false);
-  for (const kept of ['kept-marker', 'SORA_BROWSER_LOW_MEMORY', 'PATH=']) expect(dumped.includes(kept), kept).toBe(true);
+  for (const name of [...Object.keys(SECRETS), ...Object.keys(NOT_ALLOWED)]) expect(dumped.includes(name), name).toBe(false);
+  expect(dumped.includes('PATH='), 'PATH (allowlisted)').toBe(true);
 }
 
 /**
@@ -48,7 +49,7 @@ function expectStripped(dumped: string): void {
 async function runSora(code: string, env: Record<string, string>): Promise<string> {
   const proc = Bun.spawn([process.execPath, '--no-env-file', '-e', code], {
     cwd: new URL('..', import.meta.url).pathname,
-    env: { ...process.env, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...SECRETS, ...KEPT, ...env },
+    env: { ...process.env, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...SECRETS, ...NOT_ALLOWED, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   });

@@ -202,8 +202,9 @@ describe('webhookSent は送信の成否を表す', () => {
       await checkAllWatchTargets(matchScrape('version one text here') as never);
       const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
       expect(maxInFlight).toBe(3);
-      // 警告に URL は出さない（Webhook の URL は秘密を含む）。どの対象が失敗したかは結果の webhookSent で分かる
-      expect(warned()).toEqual(['[web-fetcher/webhook] Failed to send webhook: HTTP 500']);
+      // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）。どの対象が失敗したかは結果の webhookSent で分かる
+      expect(warned()).toEqual([expect.stringContaining(`${new URL(base).host}: HTTP 500`)]);
+      expect(warned().join('\n')).not.toContain('/bad');
       expect(storedBeforeSend).toEqual([true, true, true]);
       const sent = new Map(results.map((r) => [r.targetId, r.webhookSent]));
       expect(sent.get(a.target.id)).toBe(true);

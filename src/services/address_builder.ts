@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { envWithoutSecrets } from '../config.js';
 import type { AddressBuilder } from './address_data.js';
+import { childEnv } from '../security/child_env.js';
 import { AddressUnavailableError } from './address_errors.js';
 import { jobArtifactId, type BuildJob } from './address_store.js';
 
@@ -38,8 +38,8 @@ export class ChildProcessBuilder implements AddressBuilder {
   async run(job: BuildJob): Promise<void> {
     const id = jobArtifactId(job);
     const timeoutMs = this.options.timeoutMs?.(job) ?? DEFAULT_TIMEOUT_MS[job.kind];
-    // 構築は普通の fetch（標準のプロキシの変数だけを使う）なので、Sora の秘密は渡さない
-    const proc = Bun.spawn(this.command(job), { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: envWithoutSecrets() });
+    // 構築は普通の fetch（標準のプロキシの変数だけを使う）なので、許可リストの環境変数だけを渡す（Sora の秘密は渡さない）
+    const proc = Bun.spawn(this.command(job), { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: childEnv() });
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;

@@ -2537,7 +2537,8 @@ describe('Sora REST & MCP Endpoints', () => {
     try {
       await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
       expect(warn.mock.calls.map((c) => c.map(String).join(' '))).toEqual([
-        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination',
+        // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）
+        '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: 127.0.0.1:59999',
       ]);
     } finally {
       warn.mockRestore();
@@ -2805,11 +2806,11 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(sendWebhookNotification(url, { data: 'test' }), url).resolves.toBeUndefined();
       }
       expect(fetched).toEqual([]);
-      // URL は出さない（Webhook の URL は秘密を含む。管理者のアラートの宛先など）
-      expect(warned()).toEqual(blocked.map(() => '[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination'));
+      // ログには、ホスト名（とポート）だけを出す。URL のパス・クエリは出さない
+      expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${new URL(url).host}`));
     });
 
-    it('送れなかったときの警告にも URL を出さない（HTTP の失敗・接続の失敗）', async () => {
+    it('送れなかったときの警告には、ホスト名だけを出す（HTTP の失敗・接続の失敗）', async () => {
       globalThis.fetch = (async (input: RequestInfo | URL) => {
         if (String(input).includes('throws')) throw new Error('connection refused');
         return new Response(null, { status: 500 });
@@ -2817,10 +2818,11 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-a', {})).toBe(false);
       expect(await deliverWebhook('https://93.184.216.34/hooks/throws/secret-token-b', {})).toBe(false);
       expect(warned()).toEqual([
-        '[web-fetcher/webhook] Failed to send webhook: HTTP 500',
+        '[web-fetcher/webhook] Failed to send webhook to 93.184.216.34: HTTP 500',
         // 例外は code（無ければ name）だけを出す。文（message）は宛先の URL を含みうるので出さない
-        '[web-fetcher/webhook] Error sending webhook: Error',
+        '[web-fetcher/webhook] Error sending webhook to 93.184.216.34: Error',
       ]);
+      expect(warned().join('\n')).not.toContain('secret-token');
     });
 
     // Bun の fetch の例外の文は、宛先の URL を丸ごと含む（redirect: 'error' で受けた UnexpectedRedirect など）
@@ -2832,14 +2834,14 @@ describe('Sora REST & MCP Endpoints', () => {
     it('送信の例外は code だけを出し、例外の文に入った URL を出さない', async () => {
       globalThis.fetch = (async () => { throw redirectError('https://93.184.216.34/hooks/T000/secret-token-b'); }) as unknown as typeof fetch;
       expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-b', {})).toBe(false);
-      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
     });
 
     it('URL に引用符があっても、秘密の部分を出さない', async () => {
       const url = "https://93.184.216.34/hooks/T000/it's-secret-token-ZZ9";
       globalThis.fetch = (async () => { throw redirectError(url); }) as unknown as typeof fetch;
       expect(await deliverWebhook(url, {})).toBe(false);
-      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
     });
 
     it('とても長い URL でも、すぐに終わり、どの部分も出さない', async () => {
@@ -2849,13 +2851,13 @@ describe('Sora REST & MCP Endpoints', () => {
       const started = performance.now();
       expect(await deliverWebhook(url, {})).toBe(false);
       expect(performance.now() - started).toBeLessThan(1000);
-      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
     });
 
     it('時間切れは name を出す（code が数のとき）', async () => {
       globalThis.fetch = (async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); }) as unknown as typeof fetch;
       expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-t', {})).toBe(false);
-      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: TimeoutError']);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: TimeoutError']);
     });
 
     it('実際にリダイレクトを返す宛先でも、警告に URL を出さない（redirect: error で例外になる）', async () => {
@@ -2869,7 +2871,8 @@ describe('Sora REST & MCP Endpoints', () => {
         restore();
         server.stop(true);
       }
-      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook: UnexpectedRedirect']);
+      expect(warned()).toEqual([`[web-fetcher/webhook] Error sending webhook to 127.0.0.1:${port}: UnexpectedRedirect`]);
+      expect(warned().join('\n')).not.toContain('secret-token-c');
     });
 
     describe('管理者のアラート（SORA_ALERT_WEBHOOK_URL）', () => {
@@ -2907,14 +2910,13 @@ describe('Sora REST & MCP Endpoints', () => {
         expect(warned()).toEqual(['[Sora/Alert] Failed to send admin alert: UnexpectedRedirect']);
       });
 
-      it('私的な宛先は止め、その警告に URL（秘密の部分を含む）を出さない', async () => {
+      it('私的な宛先は止め、その警告にホスト名とポートだけを出す（パス・秘密の部分は出さない）', async () => {
         process.env.SORA_ALERT_WEBHOOK_URL = 'http://127.0.0.1:9/hooks/T000/B000/secret-token-1234';
         sendAdminAlert('test', { a: 1 });
         await settle(() => warn.mock.calls.length > 0);
         expect(fetched).toEqual([]);
-        expect(warned()).toEqual(['[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination']);
+        expect(warned()).toEqual(['[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: 127.0.0.1:9']);
         expect(warned().join('\n')).not.toContain('secret-token-1234');
-        expect(warned().join('\n')).not.toContain('127.0.0.1');
       });
     });
 

@@ -8,6 +8,7 @@ import {
   defaultXDetailProvider,
   cleanRealtimeItem,
 } from './x_detail.js';
+import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
 import { setYahooSearchCache, getYahooFreshCache, getYahooStaleCache } from '../retrieval/yahoo_cache.js';
@@ -27,7 +28,7 @@ import {
   termHits,
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
-import { envInt, envPath, envWithoutSecrets } from '../config.js';
+import { envInt, envPath } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
@@ -191,7 +192,7 @@ export async function callYahooMcp(toolName: string, args: Record<string, any>, 
     // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る
     const child = spawn(YAHOO_MCP_EXECUTABLE_PATH, [], {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: envWithoutSecrets(),
+      env: childEnv(), // 運用者の秘密を、通信するバイナリに渡さない
     });
 
     timer = setTimeout(() => {

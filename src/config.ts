@@ -430,8 +430,6 @@ export const LEGACY: Readonly<Record<string, { to?: SettingName; policy: 'error'
 
 /** 設定でない名前（定数・OS・テストとスクリプト用）。checkEnv は未知の SORA_* として扱わない。 */
 export const NOT_SETTINGS: readonly string[] = ['SORA_VERSION', 'SORA_MCP_INSTRUCTIONS', 'PATH', 'LOCALAPPDATA', 'SORA_LIVE_TESTS', 'SORA_TOOL_HEALTH_CASES_JSON', 'SORA_URL'];
-/** 運営者の当事者情報（GCC の認証者・保管者）の接頭辞。名前が増えても、子プロセスには渡さない（envWithoutSecrets だけが使う）。 */
-const GCC_SECRET_PREFIX = 'SORA_GCC_';
 
 const BOOL = new Map([['true', true], ['1', true], ['on', true], ['yes', true], ['false', false], ['0', false], ['off', false], ['no', false]]);
 
@@ -557,16 +555,6 @@ export function envRaw(name: EnvName, env: Env = process.env): string | undefine
   return isBlank(raw) ? undefined : (raw as string);
 }
 
-/** 子プロセスに渡さない名前: 秘密の設定と、その旧名（旧名のまま秘密を入れている環境もある）。`SORA_GCC_` で始まる名前も外す。 */
-const SECRET_NAMES: ReadonlySet<string> = new Set(Object.entries(TABLE).filter(([, s]) => s.secret).flatMap(([name, s]) => [name, ...(s.legacy ?? [])]));
-
-/**
- * Chromium と同梱の実行ファイル（yahoo-search-mcp・rs-trafilatura）に渡す環境。秘密（API キー・運送会社の鍵・プロキシの資格情報など）を外し、
- * ほか（PATH・HOME・LD_LIBRARY_PATH・SSL_CERT_FILE・標準のプロキシなど）はそのまま渡す。env は書き換えない。
- */
-export function envWithoutSecrets(env: Env = process.env): Env {
-  return Object.fromEntries(Object.entries(env).filter(([name]) => !SECRET_NAMES.has(name) && !name.startsWith(GCC_SECRET_PREFIX)));
-}
 
 function formOf(s: Setting): string {
   if (s.form) return s.form;

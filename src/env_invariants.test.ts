@@ -49,7 +49,12 @@ const workflowFiles = () => files('.github/workflows').filter((f) => f.endsWith(
 describe('(1) src/ の中で環境を読むのは src/config.ts だけ', () => {
   const NEEDLES = ['process.env', 'Bun.env', 'import.meta.env'];
   /** 引数の既定値（読み取りでなく、呼ぶ側の環境を受け取る口） */
-  const DEFAULT_PARAMS = ['env: Env = process.env', 'env: given = process.env'];
+  const DEFAULT_PARAMS = [
+    // `env: Env = process.env`・`source: Env = process.env`・`source: Record<string, string | undefined> = process.env`（名前の続きの字が無いこと）
+    /\b[A-Za-z_]\w*\s*:\s*(?:Env|Record<string,\s*string\s*\|\s*undefined>)\s*=\s*process\.env(?![A-Za-z0-9_$.])/g,
+    // 分割代入の引数: `{ env: given = process.env }`
+    /\benv:\s*given\s*=\s*process\.env(?![A-Za-z0-9_$.])/g,
+  ];
   /** 例外（ファイルと、その中で許す読み取り。名前の続きの字が無いこと（PATHEXT などは許さない）） */
   const ALLOWED: Record<string, RegExp> = {
     // Chromium の標準の場所と PATH の走査。OS の変数（NOT_SETTINGS）で、Sora の設定ではない（登録簿に読み取りの口が無い）
@@ -63,7 +68,7 @@ describe('(1) src/ の中で環境を読むのは src/config.ts だけ', () => {
       const t = line.trimStart();
       if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return [];
       let rest = line;
-      for (const ok of DEFAULT_PARAMS) rest = rest.replaceAll(ok, '');
+      for (const ok of DEFAULT_PARAMS) rest = rest.replace(ok, '');
       if (ALLOWED[f]) rest = rest.replace(ALLOWED[f], '');
       return NEEDLES.some((n) => rest.includes(n)) ? [`${f}:${i + 1}: ${line.trim()}`] : [];
     }));
