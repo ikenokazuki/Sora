@@ -187,7 +187,7 @@ export class SandboxFallback {
         return await run(true);
       } catch (error) {
         // 起動の失敗の文（Target closed など）だけでは、サンドボックスのせいだと分からない
-        throw new Error(`SORA_BROWSER_SANDBOX=on だが、サンドボックスを有効にして Chromium を起動できなかった（ユーザー名前空間を作れない環境では、auto にするか、seccomp・AppArmor を緩める）: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+        throw new Error(`SORA_BROWSER_SANDBOX=on だが、サンドボックスを有効にして Chromium を起動できなかった（ユーザー名前空間を作れない環境では、auto にするか、README 4.5 の seccomp プロファイル deploy/seccomp-sora.json を渡す。AppArmor は unconfined にしない）:${error instanceof Error ? error.message : String(error)}`, { cause: error });
       }
     }
     if (this.decision !== undefined) return run(this.decision);
@@ -199,7 +199,7 @@ export class SandboxFallback {
       // なしでも起動できなかったら、サンドボックスのせいではない（一時的な失敗かもしれない）ので、決めずに投げる。次の起動で、もう一度サンドボックスから試す
       const result = await run(false);
       this.decision = false;
-      warn(`Chromium のサンドボックスを有効にして起動できなかったので、サンドボックスなし（--no-sandbox）で起動する: ${error instanceof Error ? error.message : String(error)}`);
+      warn(`Chromium のサンドボックスを有効にして起動できなかったので、サンドボックスなし（--no-sandbox）で起動する（ユーザー名前空間を作れない環境。Docker の既定の seccomp なら、README 4.5 の deploy/seccomp-sora.json を --security-opt seccomp= で渡すと、使える）: ${error instanceof Error ? error.message : String(error)}`);
       return result;
     }
   }
