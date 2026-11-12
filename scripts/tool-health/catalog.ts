@@ -35,11 +35,6 @@ import { createNagerProvider } from '../../src/services/country_intel/providers/
 export interface RestRoute {
   method: string;
   path: string;
-  /**
-   * 型つきクライアント（client/）で、このルートの関数に付ける名前（camelCase）。
-   * 統合したツールのルートが、旧いツールの関数名（例: `scrapeBatch`）を保つために使う。
-   */
-  fn?: string;
 }
 
 export const CANONICAL_TOOLS: readonly string[] = [
@@ -60,11 +55,7 @@ export const CANONICAL_TOOLS: readonly string[] = [
 /**
  * ツール → REST のルート。配列は、モードごとに複数のルートを持つツール。null は REST の無いツール。
  *
- * 配列の順序には意味がある。
- * - `pair_mismatch`（schema:notation）は、MCP の引数を、同じ名前の引数を持つ最初のルートと比べる。
- * - 型つきクライアントでは、1 つ目のルートの関数名が `camel(ツール名)` になる（ルートが増えても変わらない）。
- *   2 つ目以降は `fn`、無ければメソッドとパスから決まる（`POST /gov/law-text` → `postGovLawText`）。
- *   `fn` はどのルートにも付けられ、あればそれが優先する。関数名はツールをまたいでも重ならない（重なると生成が失敗する）。
+ * 配列の順序には意味がある。`pair_mismatch`（schema:notation）は、MCP の引数を、同じ名前の引数を持つ最初のルートと比べる。
  */
 export type RestMap = Record<string, RestRoute | RestRoute[] | null>;
 
@@ -75,20 +66,20 @@ export function restRoutesOf(tool: string, map: RestMap = REST_MAP): RestRoute[]
 }
 
 export const REST_MAP: RestMap = {
-  scrape: [{ method: 'POST', path: '/scrape' }, { method: 'POST', path: '/scrape/batch', fn: 'scrapeBatch' }],
+  scrape: [{ method: 'POST', path: '/scrape' }, { method: 'POST', path: '/scrape/batch' }],
   search_deep: { method: 'POST', path: '/search/deep' },
-  crawl_site: [{ method: 'POST', path: '/crawl' }, { method: 'POST', path: '/map', fn: 'mapSite' }],
+  crawl_site: [{ method: 'POST', path: '/crawl' }, { method: 'POST', path: '/map' }],
   search_web: { method: 'POST', path: '/search/web' },
   search_social_posts: { method: 'POST', path: '/social/search' },
-  fetch_social_post: [{ method: 'POST', path: '/social/fetch' }, { method: 'POST', path: '/realtime/post', fn: 'fetchXPost' }],
+  fetch_social_post: [{ method: 'POST', path: '/social/fetch' }, { method: 'POST', path: '/realtime/post' }],
   browser_action: { method: 'POST', path: '/browser/action' },
   search_media: [
-    { method: 'POST', path: '/search/image', fn: 'searchImage' },
-    { method: 'POST', path: '/search/video', fn: 'searchVideo' },
-    { method: 'POST', path: '/search/news', fn: 'searchNews' },
+    { method: 'POST', path: '/search/image' },
+    { method: 'POST', path: '/search/video' },
+    { method: 'POST', path: '/search/news' },
   ],
   search_chiebukuro: { method: 'POST', path: '/search/chiebukuro' },
-  search_keywords: [{ method: 'POST', path: '/search/suggest', fn: 'suggestKeywords' }, { method: 'POST', path: '/search/trend', fn: 'searchTrend' }],
+  search_keywords: [{ method: 'POST', path: '/search/suggest' }, { method: 'POST', path: '/search/trend' }],
   search_realtime: { method: 'POST', path: '/search/realtime' },
   search_route: { method: 'POST', path: '/transit/route' },
   get_weather: { method: 'POST', path: '/weather' },
@@ -96,50 +87,50 @@ export const REST_MAP: RestMap = {
   track_package: { method: 'POST', path: '/tracking' },
   search_road_traffic: { method: 'POST', path: '/traffic/road' },
   get_disaster_info: [
-    { method: 'POST', path: '/disaster/warnings', fn: 'searchDisasterWarnings' },
-    { method: 'POST', path: '/disaster/earthquake', fn: 'searchEarthquake' },
+    { method: 'POST', path: '/disaster/warnings' },
+    { method: 'POST', path: '/disaster/earthquake' },
   ],
-  get_place_info: { method: 'POST', path: '/geo/elevation', fn: 'getElevation' },
+  get_place_info: { method: 'POST', path: '/geo/elevation' },
   search_poi: { method: 'POST', path: '/geo/poi' },
   lookup_address: [
-    { method: 'POST', path: '/geo/address/normalize', fn: 'normalizeAddress' },
-    { method: 'POST', path: '/geo/reverse', fn: 'reverseGeocode' },
-    { method: 'POST', path: '/geo/postal-code', fn: 'searchPostalCode' },
+    { method: 'POST', path: '/geo/address/normalize' },
+    { method: 'POST', path: '/geo/reverse' },
+    { method: 'POST', path: '/geo/postal-code' },
   ],
   watch: [
-    { method: 'POST', path: '/watch/register', fn: 'watchRegister' },
-    { method: 'POST', path: '/watch/check', fn: 'watchCheck' },
-    { method: 'GET', path: '/watch/list', fn: 'watchList' },
-    { method: 'DELETE', path: '/watch/:id', fn: 'watchDelete' },
+    { method: 'POST', path: '/watch/register' },
+    { method: 'POST', path: '/watch/check' },
+    { method: 'GET', path: '/watch/list' },
+    { method: 'DELETE', path: '/watch/:id' },
   ],
   search_music: [
     { method: 'POST', path: '/search/music' },
-    { method: 'POST', path: '/search/song', fn: 'searchSong' },
-    { method: 'POST', path: '/search/artist', fn: 'searchArtist' },
+    { method: 'POST', path: '/search/song' },
+    { method: 'POST', path: '/search/artist' },
   ],
-  search_laws: [{ method: 'POST', path: '/gov/laws' }, { method: 'POST', path: '/gov/law-text', fn: 'getLawText' }],
+  search_laws: [{ method: 'POST', path: '/gov/laws' }, { method: 'POST', path: '/gov/law-text' }],
   search_diet_minutes: { method: 'POST', path: '/gov/diet-minutes' },
   check_regulations: [
-    { method: 'POST', path: '/trade/cpsc-check', fn: 'checkCpscCertificate' },
-    { method: 'POST', path: '/trade/fda-check', fn: 'checkFdaRegulated' },
+    { method: 'POST', path: '/trade/cpsc-check' },
+    { method: 'POST', path: '/trade/fda-check' },
   ],
   lookup_hts: [
-    { method: 'POST', path: '/trade/hts-verify', fn: 'verifyHtsCode' },
-    { method: 'POST', path: '/trade/hts-predict', fn: 'predictHtsCode' },
+    { method: 'POST', path: '/trade/hts-verify' },
+    { method: 'POST', path: '/trade/hts-predict' },
   ],
   check_product_compliance: { method: 'POST', path: '/trade/compliance' },
   generate_gcc_certificate: { method: 'POST', path: '/trade/gcc-generate' },
   inspect_image: { method: 'POST', path: '/media/inspect-image' },
   get_youtube: [
-    { method: 'POST', path: '/youtube/transcript', fn: 'getYoutubeTranscript' },
-    { method: 'POST', path: '/youtube/channel', fn: 'getYoutubeChannel' },
+    { method: 'POST', path: '/youtube/transcript' },
+    { method: 'POST', path: '/youtube/channel' },
   ],
   recognize_song: { method: 'POST', path: '/music/recognize' },
   research_country_context: { method: 'POST', path: '/intelligence/country' },
   get_country_context: [
     { method: 'GET', path: '/intelligence/context/:contextId' },
-    { method: 'GET', path: '/intelligence/context/:contextId/evidence', fn: 'getCountryContextEvidence' },
-    { method: 'GET', path: '/intelligence/context/:contextId/updates', fn: 'getCountryContextUpdates' },
+    { method: 'GET', path: '/intelligence/context/:contextId/evidence' },
+    { method: 'GET', path: '/intelligence/context/:contextId/updates' },
   ],
   search_tools: null,
 };

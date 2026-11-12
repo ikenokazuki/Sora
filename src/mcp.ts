@@ -35,7 +35,7 @@ export {
 export type { GhostFetchModule, McpServerOptions, McpSessionState, SoraModule, ToolCatalogEntry } from './mcp/registry.js';
 export { buildSoraMcpInstructions, SORA_MCP_INSTRUCTIONS } from './mcp/instructions.js';
 
-/** createMcpServer が作ったサーバーのツール台帳（クライアント生成などの読み取り用）。 */
+/** createMcpServer が作ったサーバーのツール台帳（テストなどの読み取り用）。 */
 const TOOL_CATALOGS = new WeakMap<McpServer, Map<string, ToolCatalogEntry>>();
 export function toolCatalogOf(server: McpServer): ReadonlyMap<string, ToolCatalogEntry> {
   return TOOL_CATALOGS.get(server) ?? new Map();
