@@ -109,6 +109,7 @@ describe('(3) 設定ファイル・文書・CI の名前が登録簿にある', 
       'REGISTRY', 'IMAGE_NAME', 'CANDIDATE_TAG', // docker-publish.yml: イメージの名前とタグ
       'IMAGE_TAG', // live-tools.yml: 検査するイメージ（tool-health/run.ts の --image に渡す）
       'GH_TOKEN', // runtime-update-check.yml: gh の認証
+      'WREQ_UTIL', 'FORCE', 'RUN_URL', 'CONTAINER_RUNTIME', // wreq-native-update.yml: 試しビルド（scripts/wreq-native/trial.sh）への入力
       'LIBSTDCXX_PATH', 'LD_LIBRARY_PATH', // run_test.sh: nix の libstdc++ の場所
     ]);
     /** 読み取った名前（読み取り元ごと。`場所: 名前`） */
