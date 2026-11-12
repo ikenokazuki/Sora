@@ -1,6 +1,6 @@
-# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめた
+# Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめ、環境変数の名前を整理した
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,232・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。あわせて、環境変数の名前を整理しました（「環境変数の整理」。旧名は読みません）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,232・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。あわせて、環境変数の名前を整理しました（旧名は読みません。「先に気づく変更（運用者）」と「環境変数の整理」）。
 
 ## 先に気づく変更（呼び出し側）
 
@@ -17,6 +17,9 @@
 - **`lookup_hts` で HTS コードを照合するときは、商品の説明を `description` で渡します**（旧 `verify_hts_code` の `productDescription`）。REST の `/trade/hts-verify` は `productDescription` のままです。
 - **使い方に合わない引数は、入力の誤りになります。** まとめたツールで、選んだ使い方に無い引数を既定と違う値で渡すと（例: `scrape` の `urls` と `fullPage: false`、`search_media` の `type: "news"` と `page: 2`）、`isError` の「入力の誤り: …」に正しい使い方を添えて返します。旧ツールでは、宣言の無い引数は黙って捨てていました。既定と同じ値（LLM がスキーマの既定値をそのまま入れた場合）は通ります。
 - **X の個別投稿の取得が、モジュール `web` に移りました。** 旧 `fetch_x_post`（モジュール `yahoo`）は、`fetch_social_post`（`web`）の X の URL・`statusId` になりました。`SORA_MODULES` で `web` を外すと使えず、`yahoo` を外しても使えます。
+
+## 先に気づく変更（運用者）
+
 - **環境変数の名前を整理しました。旧名は別名として読みません。** 旧名 40 個のうち、25 個は名前を変え、8 個は 4 つの名前にまとめ、7 個は廃止しました。よく設定される 2 つは、`ENABLED_MODULES` が `SORA_MODULES`、`SORA_DEFER_TOOLS` が `SORA_MCP_DEFER_TOOLS` です。新しい名前が無く旧名だけがあるとき、10 個（認証キーの `WEB_FETCHER_API_KEY`・`API_KEY`、`ENABLED_MODULES`・`SORA_DEFER_TOOLS` など、無視すると認証が外れる・絞った設定が開く・外への通信やツールの一覧が変わるもの）は起動を拒否し、残りの 30 個は警告して起動を続けます（その設定は効いていません）。対応は「環境変数の整理」の表のとおりです。
   - 切り替えは 1 回で、旧名を新しい名前に書き換えてください。旧名と新しい名前を併記しないでください（v5 は旧名を読まず、消すよう警告し続けます）。
   - v4 に戻すときは、環境変数の設定も、v4 のときのものに丸ごと戻してください。v4 は新しい名前を読まないので、新しい名前のままでは、絞ったモジュールが開き、名前で挙げた `lyrics` などが無効になるなど、動いても設定が違う状態になります。
@@ -125,7 +128,7 @@
 - **キャッシュのキーが変わりました。** Web 検索・X 検索・`search_deep` のキャッシュのキーから、旗の値の欄を外しました。更新後の最初の検索はキャッシュに当たりません。古い行は読まれずに消えるので、手で消す必要はありません。
 - **組で設定する変数。** `SORA_HTS_CROSS_INDEX_URL` だけ、`SORA_HTS_CROSS_INDEX_SHA256` だけは、起動を拒否します（以前は、URL だけなら初めて使うときのエラー、SHA-256 だけなら黙って無視でした）。`SORA_HTS_CROSS_INDEX_URL` は `https://` か `file://` の URL だけで、`http://…` などは起動時のエラーです（以前はそのまま取得していました）。読むときは、リリースの索引に黙って戻さず、初めて使うときに判例の照会が失敗します（推測は判例なしで答えます）。運送会社（UPS・FedEx）の ID だけ・秘密だけは警告します（API を使わず、ブラウザで照会します）。FedEx の ID と秘密は組で読みます（以前は 2 組の名前が `||` で読まれ、別の組の ID と秘密が混ざりえました）。
 - **同梱の実行ファイルのパス。** `SORA_YAHOO_MCP_PATH` のファイルが無いときは、警告して既定の場所（`/usr/local/bin`・リポジトリの `bin`・`PATH`）を探します（以前は、そのパスを使って Yahoo の検索が失敗しました）。`SORA_RS_TRAFILATURA_PATH` のファイルが無いときは、警告して Readability で本文を取り出します。
-- **公開イメージの環境変数。** イメージの `ENV` は `SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH` になり、`SORA_DB_PATH=/data/sora.db` を足しました（「先に気づく変更」）。これらを上書きしていた派生のイメージは、新しい名前にしてください。
+- **公開イメージの環境変数。** イメージの `ENV` は `SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH` になり、`SORA_DB_PATH=/data/sora.db` を足しました（「先に気づく変更（運用者）」）。これらを上書きしていた派生のイメージは、新しい名前にしてください。
 - **文の変更。** 認証の `401` の文の `Bearer <API_KEY>` を `Bearer <key>` にしました（変数の名前と紛れるため）。Webhook の送信に失敗したときのログは、例外の種類（`code` か `name`。例: `UnexpectedRedirect`・`TimeoutError`）だけにしました。プライベートなネットワークの宛先として止めたときの警告にも、URL を出しません（Webhook の URL に秘密が入るため）。REST の文に入っている変数名も新しい名前です: 住所機能を止めたときの 404 `ADDRESS_DISABLED` の `error` は `住所機能は SORA_ADDRESS_MODE=off で無効化されています`（以前は `SORA_ADDRESS=off`）、`/lyrics`・`/music/recognize`・`/trade/hts/releases` の 404 `MODULE_DISABLED` は `Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,lyrics)` の形（以前は `ENABLED_MODULES`）です。文で判定している呼び出し側は直してください。
 - **README の `SORA_ALLOW_ANONYMOUS` の説明を、動きに合わせて直しました**（動きは変えていません）。キーを設定していて `SORA_ALLOW_ANONYMOUS=true` のときは、キー無しの要求も、誤ったキーの要求も、匿名として通ります。`401` で断るのは `false` のときだけです。
 - **内部の export。** ライブラリとして import していた場合だけ関係します。`resolveMaxMcpSessions`・`DEFAULT_MAX_MCP_SESSIONS` を消し、定数 `YAHOO_MCP_PATH` を `YAHOO_MCP_EXECUTABLE_PATH` にしました。
@@ -160,7 +163,7 @@
 - **REST の操作の一覧と定義を返す `GET /tools`・`GET /tools/<name>` を足しました（#76）。** `GET /tools` は `{ count, tools: [{ name, method, path, category, summary }] }`（既定のモジュールで 52 件）で、`q`・`category` で絞れます。`GET /tools/<name>` は入力のスキーマ・path と query の引数・文書にあるエラー・別名や GET の形（`alternatives`）を返し、`?response=true` で応答のスキーマも付けます。
   - OpenAPI のすべての操作（この PR の時点で 84、`GET /client` を廃止した v5.0.0 では 82）に `operationId`・`tags`・認証の宣言・共通のエラー応答（`default`）を付け、パスの変数の宣言が無かった操作に `parameters` を足しました。
   - エラー応答の形を `{ error, code, status, retryable, details? }` にそろえました（検索の 12 経路・追跡の 3 経路、認証の 401（`UNAUTHORIZED`、`message` は残す）、本文が 10MB を超える 413（`PAYLOAD_TOO_LARGE`））。`error` の文と HTTP ステータスは変えていません。
-  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。このとき `GET /client`・`GET /client/<path>` を `deprecated` にしました（v5.0.0 で廃止。「先に気づく変更」）。
+  - コードを実行できる LLM への案内（`instructions`・`search_tools` の応答の末尾・スキル `sora-client`）を、型付きクライアントから REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）に替えました。このとき `GET /client`・`GET /client/<path>` を `deprecated` にしました（v5.0.0 で廃止。「先に気づく変更（呼び出し側）」）。
 
 - **静的取得が信頼する root から、鍵が漏れた `emSign ECC Root CA - G3` を外しました（#81）。** 2026-10-20 に eMudhra の中間 CA の秘密鍵の漏えいが確認され、Mozilla がこの root を外しましたが、wreq-js 3.2.0 に同梱の root には残っていました（経路上の攻撃者が、どのサーバーにもなりすませる状態でした）。公開イメージは、イメージのビルドで作った一覧（Debian の root 148 件と、Bun の最新の root 118 件を合わせ、信頼を外した root を除いた 158 件）だけを信頼します（`SORA_FETCH_TRUST_STORE=defaultPaths`）。消えるのは `emSign ECC Root CA - G3` だけです（同じ 75 ホストで、前後の接続の結果は同じ）。ブラウザ（Chromium）の root は対象外です。新しい環境変数 `SORA_FETCH_TRUST_STORE`（`combined`・`mozilla`・`defaultPaths`）の未設定は、従来どおり wreq-js の既定です。
 - **静的取得の TLS・HTTP の実装（wreq-js の native）を、イメージのビルドでソースからビルドするようにしました（#82・#83）。** npm のビルド済みの native は、wreq-js が新しい版を公開しないかぎり古いまま残ります（3.2.0 は 2026-08-23 が最後）。#82 は、依存を npm 版と同じにしたビルドで、挙動は変わりません（133 プロファイルの ClientHello が同じ）。#83 は、依存を上流の wreq-util（main）に向け、Chrome 150〜154 のプロファイルを使います（固定の rev と `Cargo.lock` は `vendor/wreq-js/`、作り直しは `bun scripts/wreq-native/update.ts`）。Containerfile などを変える PR だけ、イメージを実際にビルドして確認する CI も足しました。
