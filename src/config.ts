@@ -428,9 +428,10 @@ export const LEGACY: Readonly<Record<string, { to?: SettingName; policy: 'error'
   ...REMOVED.map((old) => [old, { policy: 'warn' }]),
 ]);
 
-/** 設定でない名前（定数・OS・テストとスクリプト用）。checkEnv は未知の SORA_* として扱わない。`SORA_GCC_` で始まる名前も同じ。 */
+/** 設定でない名前（定数・OS・テストとスクリプト用）。checkEnv は未知の SORA_* として扱わない。 */
 export const NOT_SETTINGS: readonly string[] = ['SORA_VERSION', 'SORA_MCP_INSTRUCTIONS', 'PATH', 'LOCALAPPDATA', 'SORA_LIVE_TESTS', 'SORA_TOOL_HEALTH_CASES_JSON', 'SORA_URL'];
-const NOT_SETTING_PREFIX = 'SORA_GCC_';
+/** 運営者の当事者情報（GCC の認証者・保管者）の接頭辞。名前が増えても、子プロセスには渡さない（envWithoutSecrets だけが使う）。 */
+const GCC_SECRET_PREFIX = 'SORA_GCC_';
 
 const BOOL = new Map([['true', true], ['1', true], ['on', true], ['yes', true], ['false', false], ['0', false], ['off', false], ['no', false]]);
 
@@ -564,7 +565,7 @@ const SECRET_NAMES: ReadonlySet<string> = new Set(Object.entries(TABLE).filter((
  * ほか（PATH・HOME・LD_LIBRARY_PATH・SSL_CERT_FILE・標準のプロキシなど）はそのまま渡す。env は書き換えない。
  */
 export function envWithoutSecrets(env: Env = process.env): Env {
-  return Object.fromEntries(Object.entries(env).filter(([name]) => !SECRET_NAMES.has(name) && !name.startsWith(NOT_SETTING_PREFIX)));
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !SECRET_NAMES.has(name) && !name.startsWith(GCC_SECRET_PREFIX)));
 }
 
 function formOf(s: Setting): string {
@@ -665,7 +666,7 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
 
   for (const name of Object.keys(env).sort()) {
     if (!name.startsWith('SORA_') || isBlank(env[name]) || Object.hasOwn(TABLE, name) || Object.hasOwn(LEGACY, name)) continue;
-    if (NOT_SETTINGS.includes(name) || name.startsWith(NOT_SETTING_PREFIX)) continue;
+    if (NOT_SETTINGS.includes(name)) continue;
     warnings.push(`${name} は Sora の設定にありません（綴りを確かめてください）`);
   }
 

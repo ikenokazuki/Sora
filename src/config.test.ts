@@ -513,13 +513,14 @@ describe('checkEnv', () => {
   });
 
   test('(a) unknown SORA_* names warn; the non-setting names are known', () => {
-    const { errors, warnings } = checkEnv({ SORA_MODULE: 'web', SORA_BROWSER_LOW_MEMRY: '1' });
+    const { errors, warnings } = checkEnv({ SORA_MODULE: 'web', SORA_BROWSER_LOW_MEMRY: '1', SORA_GCC_CERTIFER: '{}' });
     expect(errors).toEqual([]);
-    expect(warnings).toHaveLength(2);
+    expect(warnings).toHaveLength(3);
     expect(warnings.join('\n')).toContain('SORA_MODULE');
     expect(warnings.join('\n')).toContain('SORA_BROWSER_LOW_MEMRY');
+    expect(warnings.join('\n')).toContain('SORA_GCC_CERTIFER'); // 綴りの誤り（SORA_GCC_ の接頭辞でも、知らない名前は警告する）
     expect(checkEnv({
-      SORA_VERSION: '5.0.0', SORA_MCP_INSTRUCTIONS: 'x', SORA_GCC_SOMETHING: 'x', SORA_LIVE_TESTS: '1',
+      SORA_VERSION: '5.0.0', SORA_MCP_INSTRUCTIONS: 'x', SORA_LIVE_TESTS: '1',
       SORA_TOOL_HEALTH_CASES_JSON: '[]', SORA_URL: 'http://127.0.0.1:3016', LOCALAPPDATA: 'C:\\x', OTHER_PROGRAM_SETTING: 'x',
     })).toEqual({ errors: [], warnings: [] });
   });
