@@ -183,6 +183,30 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
 /** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
 export const STEALTH_TIMEZONE = 'Asia/Tokyo';
 
+/** Bun の版（`1.4.4` など。canary の接尾辞は無視）が、最小の版以上か。読めなければ false。 */
+export function bunAtLeast(min: readonly [number, number, number], version: string = Bun.version): boolean {
+  const match = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
+  if (!match) return false;
+  const actual = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let i = 0; i < 3; i++) {
+    if (actual[i] !== min[i]) return actual[i] > min[i];
+  }
+  return true;
+}
+
+/**
+ * CDP（Chromium を操作する口）の繋ぎ方。パイプなら TCP のデバッグポートを開かない（127.0.0.1 で待ち受けず、DNS rebinding や、
+ * 同じコンテナのほかのプロセスから届かない）。既定は、Bun 1.4.4 以上ならパイプ。Bun 1.3.3 は、起動と終了を繰り返したあとに、
+ * パイプの接続が閉じる・応答が返らなくなることがある（2026-11-12 に確認。1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで通る）ので、
+ * それ未満はポートのまま。SORA_BROWSER_PIPE=false（0・off・no）で、版によらずポートに戻せる。true（1・on・yes）で、版によらずパイプにする。
+ */
+export function browserCdpMode(env: Record<string, string | undefined> = process.env, bunVersion: string = Bun.version): 'pipe' | 'port' {
+  const raw = (env.SORA_BROWSER_PIPE ?? '').trim().toLowerCase();
+  if (['false', '0', 'off', 'no'].includes(raw)) return 'port';
+  if (['true', '1', 'on', 'yes'].includes(raw)) return 'pipe';
+  return bunAtLeast([1, 4, 4], bunVersion) ? 'pipe' : 'port';
+}
+
 /** Chromium に渡す環境変数。運用者の秘密（API キーなど）は渡さない（security/child_env.ts）。TZ は、ブラウザが名乗るタイムゾーン。 */
 export function chromiumEnv(source: Record<string, string | undefined> = process.env): Record<string, string> {
   return childEnv({ TZ: STEALTH_TIMEZONE }, source);
@@ -281,6 +305,8 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
   return puppeteer.launch({
     executablePath: CHROME_EXECUTABLE_PATH,
     headless: true,
+    // CDP の繋ぎ方（パイプか TCP のデバッグポートか）は browserCdpMode を参照。
+    pipe: browserCdpMode() === 'pipe',
     args,
     // Puppeteerがデフォルト付与するフラグのうち、一般ユーザー環境に不自然な差分を除去
     // （Patchright方式に倣った近似化）。--enable-automation は navigator.webdriver を
