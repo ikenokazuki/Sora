@@ -7,7 +7,7 @@ import { checkEnv, envPath, type Env } from './config.js';
 
 /** 同梱の実行ファイルのパスと、ファイルが無いときに起きること。 */
 const BUNDLED = {
-  SORA_YAHOO_MCP_PATH: '同梱の Yahoo 検索を起動できません',
+  SORA_YAHOO_MCP_PATH: '代わりに既定の場所（/usr/local/bin・リポジトリの bin・PATH）を探します',
   SORA_RS_TRAFILATURA_PATH: '本文は Readability で取り出します',
 } as const;
 

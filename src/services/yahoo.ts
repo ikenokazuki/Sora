@@ -31,9 +31,10 @@ import { envInt, envPath, envWithoutSecrets } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
-// Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む）
+// Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む。そのファイルが無ければ、未設定と同じく既定の場所を探す）
+const configuredYahooMcpPath = envPath('SORA_YAHOO_MCP_PATH');
 export const YAHOO_MCP_EXECUTABLE_PATH =
-  envPath('SORA_YAHOO_MCP_PATH') ??
+  (configuredYahooMcpPath && existsSync(configuredYahooMcpPath) ? configuredYahooMcpPath : undefined) ??
   (existsSync('/usr/local/bin/yahoo-search-mcp') ? '/usr/local/bin/yahoo-search-mcp' :
    existsSync(join(import.meta.dir, '../../bin/yahoo-search-mcp')) ? join(import.meta.dir, '../../bin/yahoo-search-mcp') :
    'yahoo-search-mcp');

@@ -57,7 +57,7 @@ describe('checkStartupEnv', () => {
     const yahoo = run({ SORA_YAHOO_MCP_PATH: ' /opt/missing/yahoo-search-mcp ' });
     expect(yahoo.exits).toEqual([]);
     expect(yahoo.asked).toEqual(['/opt/missing/yahoo-search-mcp']);
-    expect(yahoo.lines).toEqual([`${PREFIX} 警告: SORA_YAHOO_MCP_PATH のファイル（"/opt/missing/yahoo-search-mcp"）がありません。同梱の Yahoo 検索を起動できません（パスを確かめてください）`]);
+    expect(yahoo.lines).toEqual([`${PREFIX} 警告: SORA_YAHOO_MCP_PATH のファイル（"/opt/missing/yahoo-search-mcp"）がありません。代わりに既定の場所（/usr/local/bin・リポジトリの bin・PATH）を探します（パスを確かめてください）`]);
 
     const rs = run({ SORA_RS_TRAFILATURA_PATH: '/opt/missing/rs-trafilatura' });
     expect(rs.exits).toEqual([]);

@@ -361,7 +361,7 @@ describe('検索', () => {
 });
 
 describe('Yahoo', () => {
-  test('SORA_YAHOO_MCP_PATH は読み込み時に読み、前後の空白を除く。旧名 YAHOO_MCP_PATH は読まない', async () => {
+  test('SORA_YAHOO_MCP_PATH は読み込み時に読み、前後の空白を除く。ファイルが無ければ既定の場所を探す。旧名 YAHOO_MCP_PATH は読まない', async () => {
     const path = (vars: Record<string, string>) => loadTimeResult(
       `import { YAHOO_MCP_EXECUTABLE_PATH } from './src/services/yahoo.ts'; console.log('RESULT', YAHOO_MCP_EXECUTABLE_PATH);`,
       ['SORA_YAHOO_MCP_PATH', 'YAHOO_MCP_PATH'],
@@ -369,7 +369,10 @@ describe('Yahoo', () => {
     );
     const auto = await path({});
     expect(auto.startsWith('RESULT '), auto).toBe(true);
-    expect(await path({ SORA_YAHOO_MCP_PATH: ' /opt/fake/yahoo-search-mcp ' })).toBe('RESULT /opt/fake/yahoo-search-mcp');
+    // 在るファイル（この bun 自身）は、空白を除いてそのまま使う
+    expect(await path({ SORA_YAHOO_MCP_PATH: ` ${process.execPath} ` })).toBe(`RESULT ${process.execPath}`);
+    // 無いファイルは、未設定と同じく既定の場所を探す（起動時の検査が警告する）
+    expect(await path({ SORA_YAHOO_MCP_PATH: ' /opt/missing/yahoo-search-mcp ' })).toBe(auto);
     expect(await path({ YAHOO_MCP_PATH: '/opt/old/yahoo-search-mcp' })).toBe(auto);
   }, 30_000);
 
