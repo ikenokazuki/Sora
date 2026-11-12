@@ -2,190 +2,26 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { getSecurityMetrics, resetSecurityMetrics } from '../security/metrics.js';
-import { EgressGateway, type EgressGatewayOptions } from './egress_gateway.js';
+import {
+  closedPort,
+  closesWithin,
+  connectHead,
+  createEgressTestKit,
+  fakeResolver,
+  type ProxyReply,
+  readBytes,
+  treatLoopbackAsPublic,
+  waitUntil,
+} from './egress_test_kit.js';
 
-// ---- テスト用の道具（本番のクラスには入れない） ----
+// ---- テスト用の道具（egress_test_kit.ts。ファイルごとに 1 つ作り、afterEach で後始末する） ----
 
-const cleanups: Array<() => void | Promise<void>> = [];
+const kit = createEgressTestKit();
+const { startTcpServer, startEchoServer, startGateway, rawRequest, startOrigin } = kit;
 afterEach(async () => {
-  while (cleanups.length > 0) await cleanups.pop()?.();
+  await kit.cleanup();
   resetSecurityMetrics();
 });
-
-/** 接続を受ける TCP サーバーを立てる。閉じるときは、残っている接続も切る */
-async function startTcpServer(
-  onConnection: (socket: net.Socket) => void,
-  options: net.ServerOpts = {},
-): Promise<{ port: number; connections: net.Socket[] }> {
-  const connections: net.Socket[] = [];
-  const server = net.createServer(options, (socket) => {
-    connections.push(socket);
-    socket.on('error', () => {}); // ゲートウェイが接続を切った後に書いても、テストを落とさない（切るのが、期待する動作の場合がある）
-    onConnection(socket);
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  cleanups.push(async () => {
-    for (const socket of connections) socket.destroy();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  });
-  return { port: (server.address() as net.AddressInfo).port, connections };
-}
-
-const startEchoServer = () => startTcpServer((socket) => socket.pipe(socket));
-
-/** 誰も待ち受けていないポート（接続できない宛先） */
-async function closedPort(): Promise<number> {
-  const server = net.createServer();
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const port = (server.address() as net.AddressInfo).port;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
-  return port;
-}
-
-async function startGateway(options: EgressGatewayOptions = {}): Promise<{ gateway: EgressGateway; port: number }> {
-  const gateway = new EgressGateway(options);
-  const port = await gateway.start();
-  cleanups.push(() => gateway.stop());
-  return { gateway, port };
-}
-
-/** 名前の表から解決する偽のリゾルバー。表に無い名前は、解決に失敗する。呼ばれた名前を記録する */
-function fakeResolver(table: Record<string, string[]>) {
-  const calls: string[] = [];
-  const resolve = async (host: string) => {
-    calls.push(host);
-    const addresses = table[host];
-    if (!addresses) throw new Error(`ENOTFOUND ${host}`);
-    return addresses;
-  };
-  return { resolve, calls };
-}
-
-interface ProxyReply {
-  status: number;
-  headers: Record<string, string>;
-  socket: net.Socket;
-  /** 頭部の後ろに、すでに届いていたバイト */
-  rest: Buffer;
-}
-
-/** ゲートウェイに、生の要求の頭部を送り、応答の頭部（空行まで）を読む */
-function rawRequest(port: number, head: string | Buffer, later?: string | Buffer): Promise<ProxyReply> {
-  return new Promise((resolve, reject) => {
-    const socket = net.connect({ host: '127.0.0.1', port });
-    cleanups.push(() => void socket.destroy());
-    let received = Buffer.alloc(0);
-    socket.on('error', reject);
-    socket.on('close', () => reject(new Error('応答の頭部の前に、接続が閉じた')));
-    socket.on('data', function onData(chunk: Buffer) {
-      received = Buffer.concat([received, chunk]);
-      const end = received.indexOf('\r\n\r\n');
-      if (end < 0) return;
-      socket.off('data', onData);
-      const [statusLine, ...lines] = received.subarray(0, end).toString('latin1').split('\r\n');
-      const headers = Object.fromEntries(
-        lines.map((line) => {
-          const colon = line.indexOf(':');
-          return [line.slice(0, colon).toLowerCase(), line.slice(colon + 1).trim()];
-        }),
-      );
-      resolve({ status: Number(statusLine.split(' ')[1]), headers, socket, rest: received.subarray(end + 4) });
-    });
-    socket.write(head);
-    // 応答の頭部を待たずに、続き（本文の残りなど）を送る
-    if (later !== undefined) setTimeout(() => socket.write(later), 50);
-  });
-}
-
-const connectHead = (target: string) => `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`;
-
-/** ソケットから、ちょうど n バイトを読む（すでに読んだ分は prefix で渡す）。時間内に揃わなければ、そこまでを返す */
-function readBytes(socket: net.Socket, n: number, prefix: Buffer = Buffer.alloc(0), timeoutMs = 5000): Promise<Buffer> {
-  return new Promise((resolve) => {
-    let received = prefix;
-    const finish = () => {
-      clearTimeout(timer);
-      socket.off('data', onData);
-      resolve(received);
-    };
-    const onData = (chunk: Buffer) => {
-      received = Buffer.concat([received, chunk]);
-      if (received.length >= n) finish();
-    };
-    const timer = setTimeout(finish, timeoutMs);
-    if (received.length >= n) return finish();
-    socket.on('data', onData);
-  });
-}
-
-/** 接続が閉じるのを待つ。閉じたら true、時間内に閉じなければ false */
-function closesWithin(socket: net.Socket, ms: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (socket.destroyed) return resolve(true);
-    const timer = setTimeout(() => resolve(false), ms);
-    socket.once('close', () => {
-      clearTimeout(timer);
-      resolve(true);
-    });
-  });
-}
-
-interface RecordedRequest {
-  /** 要求行と頭部（空行の前まで） */
-  head: string;
-  body: Buffer;
-}
-
-interface Origin {
-  port: number;
-  requests: RecordedRequest[];
-  /** 接続ごとに、宛先が受け取った全バイト（頭部・本文のほか、余計なバイトが届いていないかを見るため） */
-  received: Buffer[];
-}
-
-/**
- * 1 つの要求を読んで記録し、決まった応答を返す、HTTP の宛先。
- * 要求に `Connection: close` が無ければ、応答のあとも接続を開けておく（keep-alive）。閉じるのは、ゲートウェイが付けさせたときだけ
- */
-async function startOrigin(responseBody: Buffer | string = 'hello'): Promise<Origin> {
-  const requests: RecordedRequest[] = [];
-  const everything: Buffer[] = [];
-  const server = await startTcpServer((socket) => {
-    let received = Buffer.alloc(0);
-    let handled = false;
-    const index = everything.push(Buffer.alloc(0)) - 1;
-    socket.on('data', (chunk: Buffer) => {
-      everything[index] = Buffer.concat([everything[index], chunk]);
-      received = Buffer.concat([received, chunk]);
-      const end = received.indexOf('\r\n\r\n');
-      if (end < 0 || handled) return;
-      const head = received.subarray(0, end).toString('latin1');
-      const length = Number(/^content-length:\s*(\d+)/im.exec(head)?.[1] ?? 0);
-      if (received.length < end + 4 + length) return;
-      handled = true;
-      requests.push({ head, body: received.subarray(end + 4, end + 4 + length) });
-      const payload = Buffer.from(responseBody);
-      const closing = /^connection:\s*close/im.test(head);
-      socket.write(`HTTP/1.1 200 OK\r\nContent-Length: ${payload.length}\r\nConnection: ${closing ? 'close' : 'keep-alive'}\r\n\r\n`);
-      socket.write(payload);
-      if (closing) socket.end();
-    });
-  });
-  return { port: server.port, requests, received: everything };
-}
-
-/** 条件が成り立つまで待つ（時間内に成り立てば true） */
-async function waitUntil(predicate: () => boolean, ms = 2000): Promise<boolean> {
-  const deadline = Date.now() + ms;
-  while (Date.now() < deadline) {
-    if (predicate()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  return predicate();
-}
-
-/** テストの接続先（127.0.0.1 の自前のサーバー）を、「公開」とみなす判定 */
-const treatLoopbackAsPublic = { isPrivateIp: () => false };
 
 // ---- CONNECT ----
 
@@ -296,7 +132,7 @@ describe('CONNECT: 中継の作法', () => {
     const { port } = await startGateway({ resolve, allowedPorts: [echo.port], ...treatLoopbackAsPublic });
 
     const client = net.connect({ host: '127.0.0.1', port });
-    cleanups.push(() => void client.destroy());
+    kit.addCleanup(() => void client.destroy());
     await new Promise<void>((resolveConnect) => client.once('connect', () => resolveConnect()));
     client.write(connectHead(`slow.test:${echo.port}`));
     await new Promise((resolveWait) => setTimeout(resolveWait, 50)); // ゲートウェイが、名前の解決を待っている
@@ -448,7 +284,7 @@ describe('入口の頑丈さ', () => {
     // 自分からは閉じないクライアント（こちらの送信終了を受けても、閉じ返さない）
     const socket = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
     socket.on('error', () => {}); // 切られたあとに送ると、RST を受ける
-    cleanups.push(() => void socket.destroy());
+    kit.addCleanup(() => void socket.destroy());
     await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
     socket.write('EHLO example.test\r\n\r\n'); // 400 になる要求
     socket.resume(); // 読み出さないと、end が発生しない
@@ -465,7 +301,7 @@ describe('入口の頑丈さ', () => {
     const hostile: net.Socket[] = [];
     for (let i = 0; i < 2; i++) {
       const socket = net.connect({ host: '127.0.0.1', port, allowHalfOpen: true });
-      cleanups.push(() => void socket.destroy());
+      kit.addCleanup(() => void socket.destroy());
       hostile.push(socket);
       await new Promise<void>((resolve) => socket.once('connect', () => resolve()));
       socket.write('EHLO example.test\r\n\r\n');
@@ -498,7 +334,7 @@ describe('入口の頑丈さ', () => {
   test('頭部が来ない接続は、時間切れで閉じる（接続を溜めさせない）', async () => {
     const { port } = await startGateway({ headTimeoutMs: 50 });
     const socket = net.connect({ host: '127.0.0.1', port });
-    cleanups.push(() => void socket.destroy());
+    kit.addCleanup(() => void socket.destroy());
     expect(await closesWithin(socket, 2000)).toBe(true);
   });
 });
@@ -657,47 +493,7 @@ describe('http:// の転送: 拒否する要求', () => {
 
 // ---- 上流のプロキシ（運用者の SORA_PROXY_*）への連鎖 ----
 
-interface FakeUpstream {
-  port: number;
-  /** 受け取った、最初の要求の頭部（空行の前まで） */
-  heads: string[];
-  connections: net.Socket[];
-  /** 接続ごとに、上流が受け取った全バイト */
-  received: Buffer[];
-}
-
-/**
- * 運用者のプロキシの代わり。最初の要求の頭部を記録し、CONNECT には reply で答える（200 のあとは、受けたバイトをそのまま返す）。
- * CONNECT 以外（絶対 URI の要求）には、決まった本文の 200 で答えて閉じる。
- */
-async function startFakeUpstream(reply: (head: string) => string | Buffer = () => 'HTTP/1.1 200 Connection Established\r\n\r\n'): Promise<FakeUpstream> {
-  const heads: string[] = [];
-  const everything: Buffer[] = [];
-  const server = await startTcpServer((socket) => {
-    let received = Buffer.alloc(0);
-    let headDone = false;
-    const index = everything.push(Buffer.alloc(0)) - 1;
-    socket.on('data', (chunk: Buffer) => {
-      everything[index] = Buffer.concat([everything[index], chunk]);
-      if (headDone) return void socket.write(chunk); // トンネルの中は、エコー
-      received = Buffer.concat([received, chunk]);
-      const end = received.indexOf('\r\n\r\n');
-      if (end < 0) return;
-      headDone = true;
-      const head = received.subarray(0, end).toString('latin1');
-      heads.push(head);
-      if (head.startsWith('CONNECT ')) {
-        const response = reply(head);
-        socket.write(response);
-        const after = received.subarray(end + 4);
-        if (after.length > 0) socket.write(after);
-      } else {
-        socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nup');
-      }
-    });
-  });
-  return { port: server.port, heads, connections: server.connections, received: everything };
-}
+const startFakeUpstream = (reply?: (head: string) => string | Buffer) => kit.startFakeHttpProxy({ reply });
 
 describe('上流のプロキシ: 名前・IP リテラル・ポートを検査し、解決は上流に任せる', () => {
   test('CONNECT は、上流に CONNECT を送り、資格情報を付ける。名前は解決しない。200 のあとは、双方向に中継する', async () => {
@@ -899,7 +695,7 @@ describe('資源の上限と後始末', () => {
         },
       });
       const socket = net.connect({ host: '127.0.0.1', port });
-      cleanups.push(() => void socket.destroy());
+      kit.addCleanup(() => void socket.destroy());
       socket.write(connectHead('example.test:443'));
       expect(await closesWithin(socket, 2000)).toBe(true);
       expect(warn).toHaveBeenCalledTimes(1);
