@@ -124,7 +124,7 @@ export const SETTINGS = {
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',
-    defaultDoc: '`./data/sora.db`（`NODE_ENV=test` なら `:memory:`）',
+    defaultDoc: '`./data/sora.db`（`NODE_ENV=test` なら `:memory:`。公開イメージは `/data/sora.db`）',
     doc: 'SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します）',
   },
   SORA_PUBLIC_URL: {

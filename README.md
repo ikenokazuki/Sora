@@ -2513,66 +2513,174 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 
 Sora は 12-Factor App 原則に基づき、環境変数によってすべての動作・ネットワーク・セキュリティポリシーを一元管理します。
 
+起動のとき（待ち受ける前に）、環境変数を検査します。
+
+- **エラー（起動しません）**: 値が正しい形でないとき（変数の名前と正しい形を示します）、v5.0.0 で名前が変わった設定のうち、効かないと困るもの（認証キー・`SORA_MODULES` など）を旧名だけで設定しているとき（新しい名前を示します。旧名と扱いの一覧は `RELEASE_NOTES.md` の v5.0.0）、組で設定する判例の索引の URL と SHA-256 の片方だけのとき。エラーをすべて出してから、件数の行を出して終了コード 1 で止まります。
+- **警告（起動を続けます）**: 知らない `SORA_*` の名前（綴りの誤り）、効かない旧名・廃止した名前、運送会社の ID と秘密の片方だけ、同梱の実行ファイルのパス（`SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH`）にファイルが無いとき。
+- 秘密の値（API キー・プロキシの URL・運送会社の鍵など）は表示せず、「設定済み、長さ N」とだけ出します。出力はすべて標準エラーで、行の先頭は `[Sora/Config] エラー:`・`[Sora/Config] 警告:` です（stdio でも標準出力には何も出しません）。
+- stdio（`bun run stdio`）は待ち受けも認証もしないので、`PORT` と、認証キー・1 日の上限の v4 までの名前は検査しません（ほかの検査は同じです）。
+- `SORA_API_KEY` も `SORA_ALLOW_ANONYMOUS` も無いのは、エラーにしません。認証なしで起動します（Fail-Open。最初の要求でキー無しの警告を 1 回出します）。
+- 公開イメージは、DB を `/data/sora.db` に置きます（`SORA_DB_PATH`。住所データ・HTS は隣の `/data/address`・`/data/hts`）。`-v sora-data:/data` のように名前つきの volume を `/data` に付けると、コンテナを作り直しても残ります（付けなければ匿名の volume ができます）。
+- プロキシ: `SORA_PROXY_URL` はブラウザ（Chromium）と静的取得の両方に効きます。`SORA_PROXY_LIST` は静的取得だけに効き（静的取得では `SORA_PROXY_URL` より優先）、ブラウザには効きません。どちらも無いときは、標準の `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY` を使います。
+
+下の表は、設定の登録簿（`src/config.ts`）から `bun run gen:env` で作ります（表を直すときは登録簿の説明を直します）。
+
+<!-- env-table:start -->
+**全体**
+
 | 環境変数名 | デフォルト値 | 説明 |
 |---|---|---|
-| `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート |
-| `WEB_FETCHER_API_KEY` | *(未設定)* | **サーバー側の API 認証キー（最優先）**。設定時は `Authorization: Bearer <key>` または `X-API-Key` ヘッダーによる認証が必須化されます |
-| `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
-| `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
-| `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
-| `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
-| `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード |
-| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
-| `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
-| `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
-| `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
-| `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
-| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する範囲。都道府県コードのカンマ区切り（例: `13,14`）または `all`。指定したときだけ、起動の10秒後から、範囲内の市区町村を低優先度で順に取得して残す（予算を超えても破棄しない。再起動で続きから進む。進み具合は保存先の `preload.json`）。未設定なら起動時に何もしない。詳細は運用手引 `docs/operations/address-data.md` の §4 |
-| `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
-| `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
-| `SORA_DEFAULT_REFERER` | *(未設定 = 有効)* | `scrape` の静的取得の 1 回目に、検索経由の閲覧に見せる `Referer: https://www.google.com/`（と `Sec-Fetch-Site: cross-site`）を付ける。`off` で無効。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶときは付けない。robots.txt・sitemap・画像・JSON API には付けない。有料記事の「Google 経由は無料」を装う形になり、アクセス解析には検索流入として数えられるため、気になる場合は `off` |
-| `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
-| `HTTPS_PROXY` / `https_proxy` | *(未設定)* | 標準 HTTPS プロキシ URL（Chromium および外部 HTTPS 通信に自動適用） |
-| `ALL_PROXY` / `all_proxy` | *(未設定)* | 標準汎用プロキシ URL（SOCKS5 等） |
-| `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
-| `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
-| `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
-| `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
-| `SORA_BROWSER_LOW_MEMORY` | *(未設定 = 無効)* | `true`（`1`・`on`・`yes` も可）で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
+| `NODE_ENV` | *(未設定)* | プロセス環境の表示用（`bun test` は `test`。`test` のときは、`SORA_DB_PATH` が未設定なら DB をメモリ上に置くなど、テスト用の既定になります）。認証の判断には使いません（bun build がビルド時にインライン化するため）。キーが未設定なら、環境を問わず認証なしで使えます |
+| `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート（1〜65535）。起動のときに読みます |
+| `SORA_ALLOWED_HOSTS` | *(未設定 = `localhost`・`127.0.0.1`・`[::1]` をポート不問)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
+| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` で匿名の利用を認めます。キーが未設定なら、値によらず認証なしで使えます（`true` はキー無しの警告を止めるだけ）。キーを設定していて `true` のときは、キー無しの要求も誤ったキーの要求も匿名として通します（`401` で断るのは `false` のときだけ） |
+| `SORA_API_KEY` | *(未設定 = 認証なし)* | サーバーの API 認証キー。設定すると `Authorization: Bearer <key>` か `X-API-Key` ヘッダーでの認証が要ります。未設定なら認証なしで使えます（Fail-Open。キー無しの警告を 1 回出します） |
+| `SORA_DB_PATH` | `./data/sora.db`（`NODE_ENV=test` なら `:memory:`。公開イメージは `/data/sora.db`） | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します） |
+| `SORA_MODULES` | `all` | 有効にするモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics`・楽曲認識の `shazam`・HTS の版の保存の `hts-archive` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。知らない名前があると起動しません |
+| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。荷物ごとの表示ページの `pageUrl` の組み立てに使います |
+
+**認証**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_AUTH_DAILY_LIMIT` | *(無制限)* | API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます |
+| `SORA_AUTH_LOOPBACK_NO_KEY` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
+| `SORA_AUTH_TRUST_PROXY` | `false` | `true` で `X-Forwarded-For` の先頭のアドレスを接続元として信頼します（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。リバースプロキシ配下でのみ設定してください |
+
+**ログ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_LOG_FORMAT` | `text` | `json` でリクエストログを構造化 JSON で出力します |
+
+**通知**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラートの Webhook URL（Slack・Discord など）。プライベートなネットワークの宛先には送りません |
+
+**MCP**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_MCP_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools` 常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード。stdio では常に無効です |
+| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
+| `SORA_MCP_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
+
+**ブラウザ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `CHROME_BIN` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH` が無いか、そのファイルが無いときに見ます） |
+| `CHROME_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH`・`CHROME_BIN` の次に見ます） |
+| `SORA_BROWSER_ALLOW_EVALUATE` | `false` | `true` のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断 |
+| `SORA_BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
+| `SORA_BROWSER_LOW_MEMORY` | `false` | `true` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`SORA_BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
+| `SORA_BROWSER_MAX_CONCURRENCY` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1 以上。50 を超える値は 50 にします）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます |
+
+**静的取得**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_FETCH_ALLOW_PRIVATE_NETWORK` | `false` | `true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**） |
+| `SORA_FETCH_DEFAULT_REFERER` | `true` | `scrape` の静的取得の 1 回目に、検索経由の閲覧に見せる `Referer: https://www.google.com/`（と `Sec-Fetch-Site: cross-site`）を付ける。`off` で無効。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶときは付けない。robots.txt・sitemap・画像・JSON API には付けない。有料記事の「Google 経由は無料」を装う形になり、アクセス解析には検索流入として数えられるため、気になる場合は `off` |
 | `SORA_FETCH_MAX_CHROME_PROFILE` | `149`（公開イメージは `154`） | 静的取得が使う Chrome プロファイル（`chrome_<版>`）の上限。ブラウザも、この版までしか名乗りません（UA・TLS・ヘッダを、静的取得と同じにするため）。実際の Chromium がこれより新しければ、この版になります。3 桁の Chrome の版（136 以上）で、未設定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、Containerfile で自前にビルドした native（上流の wreq-util の Chrome 150〜154 のプロファイルを持つ）に合わせて 154 にしています。**値を下げれば、UA・TLS・ヘッダがその版のものに戻ります**（例: `149`。イメージの作り直しは要りません）。native が持たない版を指定すると、最初の静的取得で、native が持つ最大まで下げて警告を出します。起動のときに読みます |
-| `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
-| `ALLOW_BROWSER_EVALUATE` | *(未設定 = 遮断)* | `true` を指定したときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意JS実行）が動きます。未設定やそれ以外の値は遮断 |
-| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
-| `RS_TRAFILATURA_PATH` | *(未設定。イメージでは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
-| `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
+| `SORA_RS_TRAFILATURA_PATH` | *(未設定。公開イメージは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
+
+**プロキシ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `ALL_PROXY` | *(未設定)* | 標準の汎用プロキシ URL（SOCKS5 など。`HTTP_PROXY` が無いときに見ます） |
+| `all_proxy` | *(未設定)* | `ALL_PROXY` の小文字の綴り（`ALL_PROXY` が無いときに見ます） |
+| `HTTPS_PROXY` | *(未設定)* | 標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`） |
+| `https_proxy` | *(未設定)* | `HTTPS_PROXY` の小文字の綴り（`HTTPS_PROXY` が無いときに見ます） |
+| `HTTP_PROXY` | *(未設定)* | 標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます） |
+| `http_proxy` | *(未設定)* | `HTTP_PROXY` の小文字の綴り（`HTTP_PROXY` が無いときに見ます） |
+| `NO_PROXY` | *(未設定)* | プロキシを通さないホストのカンマ区切り（例: `localhost,127.0.0.1,.local`）。ブラウザと静的取得に効きます |
+| `no_proxy` | *(未設定)* | `NO_PROXY` の小文字の綴り（`NO_PROXY` が無いときに見ます） |
+| `SORA_PROXY_LIST` | *(未設定)* | 静的取得だけに使うプロキシ URL のカンマ区切りリスト。設定時はリクエストごとにランダムでローテーションします（`SORA_PROXY_URL` より優先。ブラウザには効きません）。SSRF 対策のため、MCP・REST のリクエストの引数からは指定できません |
+| `SORA_PROXY_URL` | *(未設定)* | Sora 専用のプロキシ URL（`http://`・`https://`・`socks5://`）。ブラウザ（Chromium）と静的取得の両方に効き、標準の `HTTPS_PROXY` などより優先します（静的取得では `SORA_PROXY_LIST` がさらに優先） |
+
+**検索**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_SEARCH_SCRAPE_DEADLINE_MS` | `0`（打ち切り無し） | 深層検索（`search_deep`）の本文取得の既定の打ち切り上限（ms）。`0` で打ち切り無し。リクエストの `scrapeDeadlineMs` が優先されます。`scrape` ツールには効きません |
+
+**Yahoo**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
+| `SORA_YAHOO_MCP_PATH` | *(自動検出。公開イメージは `/app/yahoo-search-mcp`)* | 同梱の Yahoo 検索の実行ファイル（`yahoo-search-mcp`）のパス。未設定か、そのファイルが無いとき（起動時に警告します）は、`/usr/local/bin/yahoo-search-mcp`・リポジトリの `bin/yahoo-search-mcp`・`PATH` の順に探します。起動のときに読みます |
+| `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
+
+**X**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_X_DETAIL_BASE_URL` | `https://api.fxtwitter.com` | X の投稿の詳細を取る FxTwitter 互換の API（自前の FxEmbed など）の URL。起動のときに読みます |
+| `SORA_X_DETAIL_PROVIDER` | `true` | `off` で FxTwitter/FxEmbed による X の投稿の詳細の補完を無効化します（失敗しても検索は続きます）。起動のときに読みます |
+| `SORA_X_DETAIL_TIMEOUT_MS` | `1500` | X の投稿の詳細の取得 1 件の待ち時間の上限（ms）。起動のときに読みます |
+
+**OpenPOI**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | `search_poi` が呼ぶ OpenPOI API の URL |
+
+**住所**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
+| `SORA_ADDRESS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/address` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。`SORA_DB_PATH` が `:memory:` のときは一時ディレクトリ |
+| `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
+| `SORA_ADDRESS_MODE` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
+| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する範囲。都道府県コードのカンマ区切り（例: `13,14`）または `all`。指定したときだけ、起動の10秒後から、範囲内の市区町村を低優先度で順に取得して残す（予算を超えても破棄しない。再起動で続きから進む。進み具合は保存先の `preload.json`）。未設定なら起動時に何もしない。詳細は運用手引 `docs/operations/address-data.md` の §4 |
+| `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
+
+**HTS**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_HTS_CROSS_INDEX_SHA256` | *(リリースの索引の値)* | `SORA_HTS_CROSS_INDEX_URL` の索引のファイルの SHA-256（16 進 64 字）。URL と両方を指定します |
+| `SORA_HTS_CROSS_INDEX_URL` | *(リリースの索引)* | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`https://` か `file://`）。`SORA_HTS_CROSS_INDEX_SHA256` と両方を指定します |
+| `SORA_HTS_CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
 | `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます。`hts-archive` モジュールを有効にすると、保存した HTS の版も `releases/` に置きます（Module 15） |
-| `CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
-| `SORA_CROSS_INDEX_URL` / `SORA_CROSS_INDEX_SHA256` | （リリースの索引） | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`file://` も可）と SHA-256。両方を指定します |
+
+**GCC**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
 | `SORA_GCC_CERTIFIER` | *(未設定)* | `generate_gcc_certificate`・`POST /trade/gcc-generate` の証明者の既定。JSON のオブジェクト `{"name","street","city","state","country","email","phone"}`。呼び出しに `certifier` が無い（中身が空の）ときだけ丸ごと使い、呼び出し側の値と項目ごとに混ぜることはありません。**共有のサーバーでは設定しないでください**（`certifier` を省いたすべての呼び出しの証明書に、この値が入ります）。読めない値は、GCC を作る品があるときだけエラーになります。見本・仮置きの確かめはしません |
 | `SORA_GCC_CUSTODIAN` | *(未設定)* | 同じ形で、試験の記録を持つ人（16 CFR 1110.11(a)(4)）の既定。`recordCustodian` が無いときだけ使います。共有のサーバーでは設定しないでください |
-| `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します。v2.49.1・v2.49.2） |
-| `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
-| `ALLOW_LOCAL_FETCH` | `false` | `true` の場合、`localhost` / プライベート IP へのスクレイピングを許可します（SSRF 対策の緩和。**テスト用途のみ**） |
-| `SORA_WEB_NATIVE_RANKING` | `true` | 単一 SERP をプロバイダ順で保持します。`false` で従来の BM25 全体並べ替え（`providerRank` は記録継続） |
-| `SORA_RRF_ENABLED` | `true` | 複数クエリ統合に RRF を使用します。`false` で first-wins dedup |
-| `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
-| `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
-| `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、その場合は `true` を指定して警告を止めます）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
-| `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
-| `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
-| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
+
+**追跡**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_TRACKING_DHL_API_KEY` | *(未設定)* | DHL の統合の追跡 API（Shipment Tracking - Unified）の API キー。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_FEDEX_CLIENT_ID` | *(未設定)* | FedEx の追跡 API（OAuth）のクライアント ID（API キー）。`SORA_TRACKING_FEDEX_CLIENT_SECRET` と組で設定します。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_FEDEX_CLIENT_SECRET` | *(未設定)* | FedEx の追跡 API（OAuth）のクライアントシークレット。`SORA_TRACKING_FEDEX_CLIENT_ID` と組で設定します |
 | `SORA_TRACKING_PAGE_SECRET` | *(未設定)* | 荷物ごとの表示ページ（照会結果の `pageUrl`、`GET /t/:carrier/:number`）の署名に使う秘密鍵。`SORA_PUBLIC_URL` と両方を設定したときだけ表示ページが有効になり、照会結果に `pageUrl` が付きます。未設定なら表示ページは `404` で、起動時の処理もありません。値を変えると、発行済みの URL はすべて無効になります |
-| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。`pageUrl` の組み立てに使います |
-| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
-| `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
-| `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
-| `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
-| `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
-| `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
-| `SORA_WEB_RETRY_WAIT_MS` | *(deprecated)* | 初期spacingのoverrideとしてのみ使用。通常はProvider pressure controllerが制御します |
+| `SORA_TRACKING_UPS_CLIENT_ID` | *(未設定)* | UPS の追跡 API（OAuth）のクライアント ID。`SORA_TRACKING_UPS_CLIENT_SECRET` と組で設定します。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_UPS_CLIENT_SECRET` | *(未設定)* | UPS の追跡 API（OAuth）のクライアントシークレット。`SORA_TRACKING_UPS_CLIENT_ID` と組で設定します |
+
+**国・地域の情報**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_INTEL_BLUESKY_DIDS` | *(未設定 = 全員)* | 設定すると、Bluesky の取得先は、この DID のアカウントの投稿だけを残します（カンマ区切り） |
+| `SORA_INTEL_DISABLED` | *(未設定)* | 国・地域の情報（`research_country_context`）で止める取得先の ID のカンマ区切り（例: `usgs,eonet`） |
+| `SORA_INTEL_SCRAPE` | `true` | `off` で、国・地域の情報の記事の本文の取得（内蔵のスクレイパ、ブラウザなし）を止めます |
+| `SORA_INTEL_WEB_SEARCH` | `true` | `off` で、国・地域の情報の公式の Web 検索（Yahoo）を止めます（取得先は残り、結果が空になります） |
+
+<!-- env-table:end -->
 
 ### 4.4 低メモリ環境での運用
 
