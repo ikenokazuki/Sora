@@ -14,6 +14,7 @@ on:
       - scripts/wreq-native/**
       - scripts/browser-isolation-check.ts
       - scripts/browser-capdrop-check.ts
+      - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
       - src/browser_launch_plan.ts
@@ -36,6 +37,7 @@ jobs:
       # イメージの中で、(1) 置き換えた native を読めていること、(2) イメージの Chromium と自前の native が、同じ Chrome の姿（ClientHello）を送ること
       # （docs/browser-alignment.md）、(3) Chromium が root でなく別 uid で動き、運用者の秘密を読めないこと（サンドボックスは使えなければ off でよい）、
       # (4)(5) --cap-drop=ALL の運用を壊さないこと（落とせなければ警告して従来どおり。5 つの capability を足せば別 uid）を確かめる。
+      # (6)(7) Docker の既定の seccomp を、deploy/seccomp-sora.json に替えると、Chromium のサンドボックスが有効になること（ランナーの Docker で）を確かめる。
       # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check
