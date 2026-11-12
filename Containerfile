@@ -149,18 +149,20 @@ COPY --from=browser-harvester /etc/fonts /etc/fonts
 COPY --from=browser-harvester /etc/ssl/certs /etc/ssl/certs
 # wreq-js が既定のファイルとして読む一覧を、Stage 3c で作ったものに置き換える（Chromium は NSS の組み込みの root を使うので、これは読まない）
 COPY --from=ca-bundle /tmp/ca-bundle.pem /etc/ssl/certs/ca-certificates.crt
-# 本文の取り出し（src/extractor/rs_trafilatura.ts が RS_TRAFILATURA_PATH から呼ぶ）
+# 本文の取り出し（src/extractor/rs_trafilatura.ts が SORA_RS_TRAFILATURA_PATH から呼ぶ）
 COPY --from=rs-trafilatura /src/target/release/extract_stdin /usr/local/bin/rs-trafilatura
 COPY --from=rs-trafilatura /src/LICENSE-MIT /src/LICENSE-APACHE /usr/share/licenses/rs-trafilatura/
 # PID 1 で孤児プロセスを回収する init。bun が PID 1 だと、共有 Chromium を閉じるたびに
 # 補助プロセス（zygote・crashpad）がゾンビとして残る
 COPY --from=browser-harvester /usr/bin/tini-static /usr/bin/tini
 
+# SQLite（キャッシュ・監視対象・Cookie など）と、その隣の住所データ・HTS は、末尾の VOLUME の /data に置く
 ENV PORT=8000 \
     NODE_ENV=production \
+    SORA_DB_PATH=/data/sora.db \
     CHROME_PATH=/usr/lib/chromium/chromium \
-    YAHOO_MCP_PATH=/app/yahoo-search-mcp \
-    RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura \
+    SORA_YAHOO_MCP_PATH=/app/yahoo-search-mcp \
+    SORA_RS_TRAFILATURA_PATH=/usr/local/bin/rs-trafilatura \
     SORA_FETCH_TRUST_STORE=defaultPaths
 
 # 静的取得とブラウザが名乗る Chrome の版の上限（src/http_fetcher.ts）。Stage 1b の native が持つ最新のプロファイル。
