@@ -52,11 +52,6 @@ export function resolveChromiumPath(): string | undefined {
     }
   }
 
-  try {
-    const { execSync } = require('child_process');
-    const path = execSync('which chromium 2>/dev/null || which google-chrome 2>/dev/null || which chrome 2>/dev/null', { encoding: 'utf8' }).trim();
-    if (path && existsSync(path)) return path;
-  } catch {}
   return undefined;
 }
 
