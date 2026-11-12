@@ -488,7 +488,8 @@ export async function fetchWithSafeRedirects(
     }
 
     try {
-      await validateHostIpDns(parsed.hostname);
+      // 直接つなぐ（プロキシもゲートウェイも通さない）ときは、名前を解決できないなら、取得を始めない（検査のときだけ失敗させる攻撃を通さない）
+      await validateHostIpDns(parsed.hostname, { failClosed: !effectiveProxyUrl });
     } catch (e) {
       incrementSecurityCounter('sora_redirect_block_total');
       throw e;

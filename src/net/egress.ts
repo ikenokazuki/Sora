@@ -36,6 +36,16 @@ export function isEgressGatewayEnabled(env: NodeJS.ProcessEnv = process.env): bo
   return true;
 }
 
+/**
+ * ブラウザが、この宛先の名前を、Sora の手元で（OS の DNS で）引くか。出口のゲートウェイ・運用者のプロキシ越しなら、相手が解決するので、引かない。
+ * NO_PROXY の宛先は、プロキシを通さず、直接つなぐので、手元で引く（ゲートウェイを使うときは、NO_PROXY の宛先も、ゲートウェイが解決する）。
+ */
+export function browserResolvesLocally(host: string, env?: NodeJS.ProcessEnv): boolean {
+  if (isEgressGatewayEnabled(env)) return false;
+  const { proxyServer, proxyBypassList } = getProxyConfig(env);
+  return !proxyServer || isProxyBypassed(host, proxyBypassList);
+}
+
 /** SORA_EGRESS_PORTS（カンマ区切りの 1〜65535）を読む。未設定・空は undefined（ゲートウェイの既定: 80・443）。誤りは、起動のときに気づけるよう、エラー */
 export function parseAllowedPorts(raw: string | undefined): number[] | undefined {
   const text = raw?.trim();

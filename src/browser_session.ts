@@ -19,6 +19,7 @@ import {
   type BrowserActionStep,
 } from './scraper.js';
 import { errorMessage } from './errors.js';
+import { browserResolvesLocally } from './net/egress.js';
 
 function hashToken(token?: string): string | undefined {
   if (!token) return undefined;
@@ -334,7 +335,7 @@ async function runActionsOnPage(
             throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
           }
           if (process.env.ALLOW_LOCAL_FETCH !== 'true') {
-            await validateHostIpDns(parsedUrl.hostname);
+            await validateHostIpDns(parsedUrl.hostname, { failClosed: browserResolvesLocally(parsedUrl.hostname) });
           }
           await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
           await bypassCloudflareTurnstile(page);
