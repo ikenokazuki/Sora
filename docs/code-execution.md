@@ -73,7 +73,7 @@ for h in official:
     print(sora("POST", "/scrape", {"url": h["url"]})["content"][:500])
 ```
 
-## 型付き TypeScript クライアント
+## 型付き TypeScript クライアント（v5.0.0 で廃止）
 
 v2.40.0 から型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>` は、v5.0.0 で廃止し、型付きクライアントそのもの（リポジトリの `client/` と生成器）も消した。言語や、TypeScript・bun の有無に依存するため。エージェントは REST を直接呼ぶ（`GET /tools` → `GET /tools/<name>` → 呼ぶ）。型が要るときは、`GET /openapi.json` から標準のジェネレータでクライアントを作る。
 
