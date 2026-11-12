@@ -14,12 +14,17 @@ on:
       - scripts/wreq-native/**
       - scripts/browser-isolation-check.ts
       - scripts/browser-capdrop-check.ts
+      - scripts/browser-egress-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
       - src/browser_launch_plan.ts
       - src/browser_stealth.ts
       - src/http_fetcher.ts
+      - src/net/egress.ts
+      - src/net/egress_gateway.ts
+      - src/net/ip_policy.ts
+      - src/net/proxy_config.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}
@@ -38,6 +43,8 @@ jobs:
       # （docs/browser-alignment.md）、(3) Chromium が root でなく別 uid で動き、運用者の秘密を読めないこと（サンドボックスは使えなければ off でよい）、
       # (4)(5) --cap-drop=ALL の運用を壊さないこと（落とせなければ警告して従来どおり。5 つの capability を足せば別 uid）を確かめる。
       # (6)(7) Docker の既定の seccomp を、deploy/seccomp-sora.json に替えると、Chromium のサンドボックスが有効になること（ランナーの Docker で）を確かめる。
+      # (8)(9) ブラウザの通信を出口のゲートウェイに通すと（SORA_EGRESS_GATEWAY=on）、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらないこと
+      # （既定の運用と、サンドボックス有効の硬化した運用の両方で）を確かめる。
       # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check

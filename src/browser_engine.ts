@@ -5,6 +5,7 @@ import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { errorMessage } from './errors.js';
 import {
+  browserProxyArgs,
   createProfileDir,
   DEFAULT_LAUNCHER,
   missingDropCapabilities,
@@ -16,9 +17,12 @@ import {
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
+import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
+import { getProxyConfig } from './net/proxy_config.js';
 
 // 判定の本体は net/ip_policy.ts に移した。ここからも、これまでどおり import できるようにしておく
 export { isBlockedHostname, isPrivateIp, isPrivateIpUint32, parseIpv4ToUint32 } from './net/ip_policy.js';
+export { getProxyConfig } from './net/proxy_config.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -124,32 +128,13 @@ let sharedBrowserInstance: Browser | null = null;
  */
 let sharedBrowserLaunch: Promise<Browser> | null = null;
 
-/**
- * 環境変数からプロキシ設定を取得します。
- * 優先順位: SORA_PROXY_URL > HTTPS_PROXY / https_proxy > HTTP_PROXY / http_proxy > ALL_PROXY / all_proxy
- * NO_PROXY / no_proxy はプロキシ除外リストとして解釈されます。
- */
-export function getProxyConfig(): { proxyServer?: string; proxyBypassList?: string } {
-  const proxyServer =
-    process.env.SORA_PROXY_URL?.trim() ||
-    process.env.HTTPS_PROXY?.trim() ||
-    process.env.https_proxy?.trim() ||
-    process.env.HTTP_PROXY?.trim() ||
-    process.env.http_proxy?.trim() ||
-    process.env.ALL_PROXY?.trim() ||
-    process.env.all_proxy?.trim() ||
-    undefined;
-
-  const proxyBypassList =
-    process.env.NO_PROXY?.trim() ||
-    process.env.no_proxy?.trim() ||
-    undefined;
-
-  return { proxyServer, proxyBypassList };
-}
-
 /** 共有または専用 Chromium ブラウザインスタンスの取得 */
 export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+  // ゲートウェイを使うときは、すべての通信が、1 つのゲートウェイ（と、その上流の運用者のプロキシ）を通る。ブラウザごとの別のプロキシは、
+  // 黙って無視すると、ゲートウェイを迂回したと思わせるので、エラーにする
+  if (overrideProxyUrl && isEgressGatewayEnabled()) {
+    throw new Error('SORA_EGRESS_GATEWAY=on のときは、ブラウザごとのプロキシの指定は使えない（すべての通信が、出口のゲートウェイを通る）');
+  }
   const config = getProxyConfig();
   const effectiveProxy = overrideProxyUrl?.trim() || config.proxyServer;
   const effectiveBypass = config.proxyBypassList;
@@ -333,10 +318,9 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     `--disable-features=${wreqAlignDisabledFeatures(profileMajor).join(',')}`,
   ];
   if (userAgent) args.push(`--user-agent=${userAgent}`);
-  if (proxy) {
-    args.push(`--proxy-server=${proxy}`);
-    if (bypass) args.push(`--proxy-bypass-list=${bypass}`);
-  }
+  // 出口のゲートウェイを使うときは、すべての通信を、ゲートウェイに通す（使うときに、初めて起動する）。使わないときは、運用者のプロキシを、そのまま渡す
+  const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
+  args.push(...browserProxyArgs({ gateway, proxy, bypass }));
   if (isBrowserLowMemory()) args.push('--enable-low-end-device-mode');
 
   // root の Sora 本体から、別の uid に落として起動するか・Chromium のサンドボックスを使うか（browser_launch_plan.ts）。
