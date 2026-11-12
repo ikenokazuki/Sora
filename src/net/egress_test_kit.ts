@@ -4,6 +4,7 @@
  * （作ったサーバー・接続・ゲートウェイを、後始末する）。
  */
 import net from 'node:net';
+import tls from 'node:tls';
 import { EgressGateway, type EgressGatewayOptions } from './egress_gateway.js';
 
 export interface ProxyReply {
@@ -18,6 +19,16 @@ export interface RecordedRequest {
   /** 要求行と頭部（空行の前まで） */
   head: string;
   body: Buffer;
+}
+
+/** 運用者の（HTTP の）プロキシの代役 */
+export interface FakeHttpProxy {
+  port: number;
+  /** 受け取った、最初の要求の頭部（空行の前まで） */
+  heads: string[];
+  connections: net.Socket[];
+  /** 接続ごとに、プロキシが受け取った全バイト */
+  received: Buffer[];
 }
 
 export interface Origin {
@@ -103,17 +114,22 @@ export function createEgressTestKit() {
     while (cleanups.length > 0) await cleanups.pop()?.();
   };
 
-  /** 接続を受ける TCP サーバーを立てる。閉じるときは、残っている接続も切る */
+  /**
+   * 接続を受ける TCP サーバーを立てる（tls を渡すと、TLS のサーバー）。閉じるときは、残っている接続も切る。
+   * onConnection には、確立した接続（TLS なら、ハンドシェイクのあと）が渡る
+   */
   async function startTcpServer(
     onConnection: (socket: net.Socket) => void,
-    options: net.ServerOpts = {},
+    options: net.ServerOpts & { tls?: { key: string | Buffer; cert: string | Buffer } } = {},
   ): Promise<{ port: number; connections: net.Socket[] }> {
     const connections: net.Socket[] = [];
-    const server = net.createServer(options, (socket) => {
+    const handler = (socket: net.Socket) => {
       connections.push(socket);
       socket.on('error', () => {}); // ゲートウェイが接続を切った後に書いても、テストを落とさない（切るのが、期待する動作の場合がある）
       onConnection(socket);
-    });
+    };
+    const { tls: tlsOptions, ...netOptions } = options;
+    const server: net.Server = tlsOptions ? tls.createServer({ ...tlsOptions, ...netOptions }, handler) : net.createServer(netOptions, handler);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     addCleanup(async () => {
       for (const socket of connections) socket.destroy();
@@ -190,5 +206,43 @@ export function createEgressTestKit() {
     return { port: server.port, requests, received: everything };
   }
 
-  return { addCleanup, cleanup, startTcpServer, startEchoServer, startGateway, rawRequest, startOrigin };
+  /**
+   * 運用者のプロキシの代わり。最初の要求の頭部を記録し、CONNECT には reply で答える（200 のあとは、受けたバイトをそのまま返す）。
+   * CONNECT 以外（絶対 URI の要求）には、決まった本文の 200 で答えて閉じる。tls を渡すと、プロキシへの接続が TLS（https:// のプロキシ）
+   */
+  async function startFakeHttpProxy(
+    options: { reply?: (head: string) => string | Buffer; tls?: { key: string | Buffer; cert: string | Buffer } } = {},
+  ): Promise<FakeHttpProxy> {
+    const reply = options.reply ?? (() => 'HTTP/1.1 200 Connection Established\r\n\r\n');
+    const heads: string[] = [];
+    const everything: Buffer[] = [];
+    const server = await startTcpServer(
+      (socket) => {
+        let received = Buffer.alloc(0);
+        let headDone = false;
+        const index = everything.push(Buffer.alloc(0)) - 1;
+        socket.on('data', (chunk: Buffer) => {
+          everything[index] = Buffer.concat([everything[index], chunk]);
+          if (headDone) return void socket.write(chunk); // トンネルの中は、エコー
+          received = Buffer.concat([received, chunk]);
+          const end = received.indexOf('\r\n\r\n');
+          if (end < 0) return;
+          headDone = true;
+          const head = received.subarray(0, end).toString('latin1');
+          heads.push(head);
+          if (head.startsWith('CONNECT ')) {
+            socket.write(reply(head));
+            const after = received.subarray(end + 4);
+            if (after.length > 0) socket.write(after);
+          } else {
+            socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nup');
+          }
+        });
+      },
+      options.tls ? { tls: options.tls } : {},
+    );
+    return { port: server.port, heads, connections: server.connections, received: everything };
+  }
+
+  return { addCleanup, cleanup, startTcpServer, startEchoServer, startGateway, rawRequest, startOrigin, startFakeHttpProxy };
 }

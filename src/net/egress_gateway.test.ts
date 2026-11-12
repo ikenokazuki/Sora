@@ -493,47 +493,7 @@ describe('http:// の転送: 拒否する要求', () => {
 
 // ---- 上流のプロキシ（運用者の SORA_PROXY_*）への連鎖 ----
 
-interface FakeUpstream {
-  port: number;
-  /** 受け取った、最初の要求の頭部（空行の前まで） */
-  heads: string[];
-  connections: net.Socket[];
-  /** 接続ごとに、上流が受け取った全バイト */
-  received: Buffer[];
-}
-
-/**
- * 運用者のプロキシの代わり。最初の要求の頭部を記録し、CONNECT には reply で答える（200 のあとは、受けたバイトをそのまま返す）。
- * CONNECT 以外（絶対 URI の要求）には、決まった本文の 200 で答えて閉じる。
- */
-async function startFakeUpstream(reply: (head: string) => string | Buffer = () => 'HTTP/1.1 200 Connection Established\r\n\r\n'): Promise<FakeUpstream> {
-  const heads: string[] = [];
-  const everything: Buffer[] = [];
-  const server = await startTcpServer((socket) => {
-    let received = Buffer.alloc(0);
-    let headDone = false;
-    const index = everything.push(Buffer.alloc(0)) - 1;
-    socket.on('data', (chunk: Buffer) => {
-      everything[index] = Buffer.concat([everything[index], chunk]);
-      if (headDone) return void socket.write(chunk); // トンネルの中は、エコー
-      received = Buffer.concat([received, chunk]);
-      const end = received.indexOf('\r\n\r\n');
-      if (end < 0) return;
-      headDone = true;
-      const head = received.subarray(0, end).toString('latin1');
-      heads.push(head);
-      if (head.startsWith('CONNECT ')) {
-        const response = reply(head);
-        socket.write(response);
-        const after = received.subarray(end + 4);
-        if (after.length > 0) socket.write(after);
-      } else {
-        socket.end('HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nup');
-      }
-    });
-  });
-  return { port: server.port, heads, connections: server.connections, received: everything };
-}
+const startFakeUpstream = (reply?: (head: string) => string | Buffer) => kit.startFakeHttpProxy({ reply });
 
 describe('上流のプロキシ: 名前・IP リテラル・ポートを検査し、解決は上流に任せる', () => {
   test('CONNECT は、上流に CONNECT を送り、資格情報を付ける。名前は解決しない。200 のあとは、双方向に中継する', async () => {

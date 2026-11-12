@@ -8,9 +8,23 @@
  */
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import tls from 'node:tls';
+import { SocksClient } from 'socks';
 import { errorMessage } from '../errors.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { isBlockedHostname, isPrivateIp as defaultIsPrivateIp } from './ip_policy.js';
+
+/** 運用者の上流のプロキシ */
+export interface EgressUpstream {
+  /** プロキシの種類。http（既定。プロキシへは平文で接続）・https（プロキシへの接続が TLS）・socks5 */
+  type?: 'http' | 'https' | 'socks5';
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  /** https の上流の証明書を検証する CA（既定は、システムの CA）。私的な CA のプロキシ用 */
+  ca?: string | Buffer;
+}
 
 /** 拒否の理由。カウンター `sora_egress_denied_<理由>_total` の名前になる */
 export type DenyReason = 'bad_request' | 'port' | 'blocked_host' | 'private_ip' | 'dns' | 'limit';
@@ -37,10 +51,21 @@ export interface EgressGatewayOptions {
   /** 拒否・失敗の応答を返したあと、クライアントが接続を閉じてこなくても、この時間が過ぎたら切る */
   denyLingerMs?: number;
   /**
-   * 運用者の上流の http プロキシ（SORA_PROXY_*）。あれば、すべての宛先を、ここへの CONNECT・絶対 URI の要求にする。
+   * 運用者の上流のプロキシ（SORA_PROXY_*）。あれば、すべての宛先を、ここ経由でつなぐ。
    * 名前の解決は上流が行うので、ここでの検査は、名前・IP リテラル・ポートまで（答えの IP は見えない。上流が内部に届かないことは、運用者が保証する）。
    */
-  upstream?: { host: string; port: number; username?: string; password?: string };
+  upstream?: EgressUpstream;
+}
+
+/** コンストラクターで整えた、上流のプロキシ。authorization は、http・https の上流に付ける Proxy-Authorization の値 */
+interface ResolvedUpstream {
+  type: NonNullable<EgressUpstream['type']>;
+  host: string;
+  port: number;
+  username?: string;
+  password?: string;
+  ca?: string | Buffer;
+  authorization?: string;
 }
 
 /** 検査を通した宛先への接続。leftover は、上流のプロキシの 200 の頭部と同じ送信に混じっていた、トンネルのバイト */
@@ -67,10 +92,16 @@ class GatewayError extends Error {
     message: string,
     /** 方針による拒否の理由。接続の失敗など、方針でないものは undefined */
     readonly reason?: DenyReason,
+    /** 運用者の設定の誤りの可能性がある失敗（上流のプロキシに接続できない・認証に失敗など）。警告に出す（同じ文は 1 回だけ） */
+    readonly warn = false,
   ) {
     super(message);
   }
 }
+
+/** 上流のプロキシを指す文（警告・エラーの文に使う）。資格情報は含めない */
+const describeUpstream = (upstream: { type: string; host: string; port: number }): string =>
+  `上流の ${upstream.type} プロキシ（${formatHost(upstream.host)}:${upstream.port}）`;
 
 const STATUS_TEXT: Record<number, string> = {
   400: 'Bad Request',
@@ -98,6 +129,41 @@ function hasControlCharacter(value: string): boolean {
   return false;
 }
 
+const UPSTREAM_SCHEMES: Record<string, { type: NonNullable<EgressUpstream['type']>; defaultPort: number }> = {
+  'http:': { type: 'http', defaultPort: 80 },
+  'https:': { type: 'https', defaultPort: 443 },
+  'socks5:': { type: 'socks5', defaultPort: 1080 },
+  'socks5h:': { type: 'socks5', defaultPort: 1080 },
+};
+
+/**
+ * 運用者のプロキシの URL（SORA_PROXY_URL など）を、上流の設定に直す。http・https・socks5（socks5h）に対応し、それ以外は、理由を添えて断る。
+ * 資格情報は、パーセントエンコードを戻す。エラーの文には、資格情報を含めない。
+ */
+export function parseUpstreamProxyUrl(value: string): EgressUpstream {
+  if (!/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(value)) throw new Error('上流プロキシの URL を読めない（http://・https://・socks5:// で始める）');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('上流プロキシの URL を読めない');
+  }
+  const scheme = UPSTREAM_SCHEMES[url.protocol];
+  if (!scheme) throw new Error(`対応していない上流プロキシのスキーム: ${url.protocol.replace(/:$/, '')}（http・https・socks5 に対応）`);
+  const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host) throw new Error('上流プロキシの URL を読めない（ホストが空）');
+  const port = url.port === '' ? scheme.defaultPort : Number(url.port);
+  if (port < 1 || port > 65535) throw new Error(`上流プロキシのポートが範囲外: ${port}`);
+  const credentials: Pick<EgressUpstream, 'username' | 'password'> = {};
+  try {
+    if (url.username) credentials.username = decodeURIComponent(url.username);
+    if (url.password) credentials.password = decodeURIComponent(url.password);
+  } catch {
+    throw new Error('上流プロキシの資格情報を読めない（パーセントエンコードの誤り）');
+  }
+  return { type: scheme.type, host, port, ...credentials };
+}
+
 /** IPv6 リテラルは、URI・CONNECT の宛先では角括弧で囲む */
 const formatHost = (host: string): string => (net.isIPv6(host) ? `[${host}]` : host);
 
@@ -122,11 +188,13 @@ export class EgressGateway {
   private readonly resolveName: (host: string) => Promise<string[]>;
   private readonly isPrivateIp: (ip: string) => boolean;
   private readonly limits: typeof DEFAULTS;
-  private readonly upstream: { host: string; port: number; authorization?: string } | undefined;
+  private readonly upstream: ResolvedUpstream | undefined;
   private server: net.Server | undefined;
   private readonly sockets = new Set<net.Socket>();
   /** 受けているクライアントの接続の数（maxConnections の判定に使う） */
   private activeClients = 0;
+  /** すでに警告に出した文（同じ文は、要求のたびには出さない） */
+  private readonly warned = new Set<string>();
 
   constructor(options: EgressGatewayOptions = {}) {
     this.allowedPorts = new Set(options.allowedPorts ?? DEFAULT_PORTS);
@@ -135,8 +203,12 @@ export class EgressGateway {
     this.isPrivateIp = options.isPrivateIp ?? defaultIsPrivateIp;
     const upstream = options.upstream;
     this.upstream = upstream && {
+      type: upstream.type ?? 'http',
       host: upstream.host,
       port: upstream.port,
+      username: upstream.username,
+      password: upstream.password,
+      ca: upstream.ca,
       authorization:
         upstream.username === undefined ? undefined : `Basic ${Buffer.from(`${upstream.username}:${upstream.password ?? ''}`).toString('base64')}`,
     };
@@ -215,9 +287,17 @@ export class EgressGateway {
     client.on('data', onData);
   }
 
+  /** 設定の誤りに気づけるよう、同じ文は 1 回だけ警告に出す（文の種類が増え続けても、溜めすぎない） */
+  private warnOnce(message: string): void {
+    if (this.warned.has(message) || this.warned.size >= 50) return;
+    this.warned.add(message);
+    console.warn(`[Sora] 出口のゲートウェイ: ${message}`);
+  }
+
   /** 拒否・失敗の応答を返して、閉じる。方針による拒否は、数える */
   private deny(client: net.Socket, error: GatewayError): void {
     if (error.reason) incrementSecurityCounter(`sora_egress_denied_${error.reason}_total`);
+    if (error.warn) this.warnOnce(error.message);
     const header = error.reason ? `X-Sora-Egress-Deny: ${error.reason}\r\n` : '';
     client.end(`HTTP/1.1 ${error.status} ${STATUS_TEXT[error.status] ?? 'Error'}\r\n${header}Content-Length: 0\r\nConnection: close\r\n\r\n`);
     // 頭部を読んだあと一時停止していたので、読み始める（相手の送信終了を受け、届いたバイトは捨てる）。
@@ -249,11 +329,13 @@ export class EgressGateway {
     const opened = await this.open(client, destination.host, destination.port, 'forward');
     if (!opened) return;
     const authority = formatHost(destination.host) + (destination.port === 80 ? '' : `:${destination.port}`);
+    // http・https のプロキシへは、絶対 URI の要求（プロキシが宛先へ送る）。直接つなぐときと、socks5（宛先への接続を確立済み）は、宛先への origin-form
+    const viaHttpProxy = this.upstream !== undefined && this.upstream.type !== 'socks5';
     const forwarded = [
-      `${method} ${this.upstream ? `http://${authority}${destination.path}` : destination.path} HTTP/1.1`,
+      `${method} ${viaHttpProxy ? `http://${authority}${destination.path}` : destination.path} HTTP/1.1`,
       `Host: ${authority}`,
       ...headers.map(([name, value]) => `${name}: ${value}`),
-      ...(this.upstream?.authorization ? [`Proxy-Authorization: ${this.upstream.authorization}`] : []),
+      ...(viaHttpProxy && this.upstream?.authorization ? [`Proxy-Authorization: ${this.upstream.authorization}`] : []),
       'Connection: close',
     ];
     opened.socket.write(`${forwarded.join('\r\n')}\r\n\r\n`);
@@ -352,21 +434,23 @@ export class EgressGateway {
   }
 
   /** 運用者の上流プロキシに接続する。トンネルなら、CONNECT を送って 200 を確かめる（名前の解決は、上流が行う） */
-  private async dialUpstream(
-    upstream: { host: string; port: number; authorization?: string },
-    host: string,
-    port: number,
-    purpose: 'tunnel' | 'forward',
-  ): Promise<Opened> {
-    const socket = await this.connectFirst([upstream.host], upstream.port);
+  private async dialUpstream(upstream: ResolvedUpstream, host: string, port: number, purpose: 'tunnel' | 'forward'): Promise<Opened> {
+    if (upstream.type === 'socks5') return this.dialSocks5(upstream, host, port);
+    let socket: net.Socket;
+    try {
+      socket = upstream.type === 'https' ? await this.connectTls(upstream) : await this.connectFirst([upstream.host], upstream.port);
+    } catch (error) {
+      if (error instanceof GatewayError && error.warn) throw error;
+      throw new GatewayError(502, `${describeUpstream(upstream)}に接続できない`, undefined, true);
+    }
     if (purpose === 'forward') return { socket, leftover: Buffer.alloc(0) };
     const authority = `${formatHost(host)}:${port}`;
     const request = [`CONNECT ${authority} HTTP/1.1`, `Host: ${authority}`, ...(upstream.authorization ? [`Proxy-Authorization: ${upstream.authorization}`] : [])];
     socket.write(`${request.join('\r\n')}\r\n\r\n`);
     try {
-      const response = await this.readHead(socket);
+      const response = await this.readHead(socket, `${describeUpstream(upstream)}の応答の頭部を読めない`);
       const status = /^HTTP\/1\.[01] (\d{3})/.exec(response.head)?.[1];
-      if (status !== '200') throw new GatewayError(502, `上流のプロキシが CONNECT を断った: ${status ?? '読めない応答'}`);
+      if (status !== '200') throw new GatewayError(502, `${describeUpstream(upstream)}が CONNECT を断った: ${status ?? '読めない応答'}`, undefined, true);
       return { socket, leftover: response.rest };
     } catch (error) {
       socket.destroy();
@@ -374,8 +458,56 @@ export class EgressGateway {
     }
   }
 
+  /** 上流の https プロキシに、TLS で接続する。証明書を検証する（ca があれば、それで。無ければ、システムの CA で） */
+  private connectTls(upstream: ResolvedUpstream): Promise<net.Socket> {
+    return new Promise((resolve, reject) => {
+      const options: tls.ConnectionOptions = { host: upstream.host, port: upstream.port };
+      if (!net.isIP(upstream.host)) options.servername = upstream.host; // IP アドレスは、SNI に使えない
+      if (upstream.ca !== undefined) options.ca = upstream.ca;
+      const socket = tls.connect(options);
+      const fail = (error?: Error) => {
+        socket.destroy();
+        reject(new GatewayError(502, `${describeUpstream(upstream)}に TLS で接続できない: ${error ? errorMessage(error) : '時間切れ'}`, undefined, true));
+      };
+      socket.setTimeout(this.limits.connectTimeoutMs, () => fail());
+      socket.once('error', fail);
+      socket.once('secureConnect', () => {
+        socket.setTimeout(0);
+        socket.off('error', fail);
+        this.track(socket);
+        resolve(socket);
+      });
+    });
+  }
+
+  /**
+   * 上流の socks5 プロキシ経由で、宛先に接続する。名前は、名前のまま渡す（プロキシが解決する）。
+   * 確立した接続は、直接つないだときと同じに扱える（トンネルも、http:// の転送も、宛先への接続）。
+   */
+  private async dialSocks5(upstream: ResolvedUpstream, host: string, port: number): Promise<Opened> {
+    let socket: net.Socket;
+    try {
+      ({ socket } = await SocksClient.createConnection({
+        proxy: {
+          host: upstream.host,
+          port: upstream.port,
+          type: 5,
+          ...(upstream.username === undefined ? {} : { userId: upstream.username, password: upstream.password ?? '' }),
+        },
+        command: 'connect',
+        destination: { host, port },
+        timeout: this.limits.connectTimeoutMs,
+      }));
+    } catch (error) {
+      throw new GatewayError(502, `${describeUpstream(upstream)}との socks5 の手続きに失敗した: ${errorMessage(error)}`, undefined, true);
+    }
+    socket.allowHalfOpen = true; // 片側が送信を終えても、反対向きの転送を続ける（直接つないだときと同じ）
+    this.track(socket);
+    return { socket, leftover: Buffer.alloc(0) };
+  }
+
   /** ソケットから、空行までの頭部を読む（大きさの上限・時間切れつき）。読んだあとは一時停止し、頭部のあとのバイトは rest で返す */
-  private readHead(socket: net.Socket): Promise<{ head: string; rest: Buffer }> {
+  private readHead(socket: net.Socket, failure: string): Promise<{ head: string; rest: Buffer }> {
     return new Promise((resolve, reject) => {
       let received = Buffer.alloc(0);
       const finish = (action: () => void) => {
@@ -385,7 +517,7 @@ export class EgressGateway {
         socket.off('error', onGone);
         action();
       };
-      const onGone = () => finish(() => reject(new GatewayError(502, '上流のプロキシの応答の頭部を読めない')));
+      const onGone = () => finish(() => reject(new GatewayError(502, failure, undefined, true)));
       const onData = (chunk: Buffer) => {
         received = Buffer.concat([received, chunk]);
         const end = received.indexOf('\r\n\r\n');
