@@ -42,6 +42,7 @@
     "linkedom": "^0.18.13",
     "papaparse": "^5.4.1",
     "puppeteer-core": "npm:rebrowser-puppeteer-core@^24.8.1",
+    "socks": "^2.8.9",
     "turndown": "^7.2.4",
     "unpdf": "^1.8.1",
     "wreq-js": "^3.2.0",

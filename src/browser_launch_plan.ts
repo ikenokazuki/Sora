@@ -123,6 +123,26 @@ export function planBrowserLaunch(options: {
   return { plan: { drop, sandbox }, warnings };
 }
 
+/**
+ * Chromium の、プロキシまわりの起動引数。
+ * ゲートウェイを使うときは、すべての通信をゲートウェイに通す（--proxy-server。ループバックも、--proxy-bypass-list=<-loopback> で通す）。
+ * ブラウザ自身の名前解決は、ゲートウェイ以外を全部失敗させ（直接の接続の抜け道を塞ぐ）、UDP（QUIC）の直接の通信も止める。
+ * 運用者のプロキシと NO_PROXY は、ゲートウェイの上流の設定として使うので、ブラウザには渡さない。
+ * 使わないときは、これまでどおり、運用者のプロキシと NO_PROXY を渡す。
+ */
+export function browserProxyArgs(options: { gateway?: { host: string; url: string }; proxy?: string; bypass?: string }): string[] {
+  if (options.gateway) {
+    return [
+      `--proxy-server=${options.gateway.url}`,
+      '--proxy-bypass-list=<-loopback>',
+      `--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE ${options.gateway.host}`,
+      '--disable-quic',
+    ];
+  }
+  if (!options.proxy) return [];
+  return [`--proxy-server=${options.proxy}`, ...(options.bypass ? [`--proxy-bypass-list=${options.bypass}`] : [])];
+}
+
 /** サンドボックスを有効にするために、起動の引数から --no-sandbox と --disable-setuid-sandbox を外す（元の配列は書き換えない）。 */
 export function withoutNoSandbox(args: readonly string[]): string[] {
   return args.filter((arg) => arg !== '--no-sandbox' && arg !== '--disable-setuid-sandbox');

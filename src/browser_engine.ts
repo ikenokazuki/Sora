@@ -6,6 +6,7 @@ import { totalmem } from 'os';
 import { envBool, envInt, envPath, envRaw, envStr, envUrl, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import {
+  browserProxyArgs,
   createProfileDir,
   DEFAULT_LAUNCHER,
   missingDropCapabilities,
@@ -16,6 +17,13 @@ import {
 } from './browser_launch_plan.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
+import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
+import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
+import { getProxyConfig } from './net/proxy_config.js';
+
+// 判定の本体は net/ip_policy.ts に移した。ここからも、これまでどおり import できるようにしておく
+export { isBlockedHostname, isPrivateIp, isPrivateIpUint32, parseIpv4ToUint32 } from './net/ip_policy.js';
+export { getProxyConfig } from './net/proxy_config.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -112,21 +120,13 @@ let sharedBrowserInstance: Browser | null = null;
  */
 let sharedBrowserLaunch: Promise<Browser> | null = null;
 
-/**
- * 環境変数からプロキシ設定を取得します。
- * 優先順位: SORA_PROXY_URL > HTTPS_PROXY / https_proxy > HTTP_PROXY / http_proxy > ALL_PROXY / all_proxy
- * NO_PROXY / no_proxy はプロキシ除外リストとして解釈されます。
- */
-export function getProxyConfig(): { proxyServer?: string; proxyBypassList?: string } {
-  // 標準の名前は検査しない文字列（scheme の無い host:port も Chromium は受け付ける）なので、ここで前後の空白を除く
-  const first = (names: Parameters<typeof envStr>[0][]) => names.map((name) => envStr(name)?.trim()).find(Boolean);
-  const proxyServer = envUrl('SORA_PROXY_URL') || first(['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy']);
-  const proxyBypassList = first(['NO_PROXY', 'no_proxy']);
-  return { proxyServer, proxyBypassList };
-}
-
 /** 共有または専用 Chromium ブラウザインスタンスの取得 */
 export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+  // ゲートウェイを使うときは、すべての通信が、1 つのゲートウェイ（と、その上流の運用者のプロキシ）を通る。ブラウザごとの別のプロキシは、
+  // 黙って無視すると、ゲートウェイを迂回したと思わせるので、エラーにする
+  if (overrideProxyUrl && isEgressGatewayEnabled()) {
+    throw new Error('SORA_EGRESS_GATEWAY=on のときは、ブラウザごとのプロキシの指定は使えない（すべての通信が、出口のゲートウェイを通る）');
+  }
   const config = getProxyConfig();
   const effectiveProxy = overrideProxyUrl?.trim() || config.proxyServer;
   const effectiveBypass = config.proxyBypassList;
@@ -309,10 +309,9 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     `--disable-features=${wreqAlignDisabledFeatures(profileMajor).join(',')}`,
   ];
   if (userAgent) args.push(`--user-agent=${userAgent}`);
-  if (proxy) {
-    args.push(`--proxy-server=${proxy}`);
-    if (bypass) args.push(`--proxy-bypass-list=${bypass}`);
-  }
+  // 出口のゲートウェイを使うときは、すべての通信を、ゲートウェイに通す（使うときに、初めて起動する）。使わないときは、運用者のプロキシを、そのまま渡す
+  const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
+  args.push(...browserProxyArgs({ gateway, proxy, bypass }));
   if (isBrowserLowMemory()) args.push('--enable-low-end-device-mode');
 
   // root の Sora 本体から、別の uid に落として起動するか・Chromium のサンドボックスを使うか（browser_launch_plan.ts）。
@@ -544,203 +543,6 @@ export function resolveBrowserConcurrency(raw: string | undefined, memBytes: num
 
 /** 同時に動かすブラウザの数（モジュールの読み込み時に決める）。 */
 export const browserSemaphore = new SimpleSemaphore(resolveBrowserConcurrency(envRaw('SORA_BROWSER_MAX_CONCURRENCY'), detectMemoryLimitBytes()));
-
-/**
- * 任意の IPv4 表記（10進ドット、8進数、16進数、短縮表記、32bit整数）を 32bit 符号なし整数に正規化する。
- * SSRF バイパス攻撃（0177.0.0.1 や 0x7f000001、127.1 等）を確実に検知・遮断するために使用。
- */
-export function parseIpv4ToUint32(host: string): number | null {
-  const clean = host.toLowerCase().trim().replace(/^\[|\]$/g, '');
-  const parts = clean.split('.');
-  if (parts.length > 4 || parts.length === 0) return null;
-
-  const values: number[] = [];
-  for (const p of parts) {
-    if (!p) return null;
-    let val: number;
-    if (p.startsWith('0x')) {
-      val = parseInt(p.slice(2), 16);
-    } else if (p.startsWith('0') && p.length > 1 && !/[89a-f]/i.test(p)) {
-      val = parseInt(p, 8);
-    } else if (/^\d+$/.test(p)) {
-      val = parseInt(p, 10);
-    } else {
-      return null;
-    }
-    if (Number.isNaN(val) || val < 0) return null;
-    values.push(val);
-  }
-
-  let ip = 0;
-  if (values.length === 1) {
-    ip = values[0];
-  } else if (values.length === 2) {
-    if (values[0] > 0xff || values[1] > 0xffffff) return null;
-    ip = ((values[0] << 24) >>> 0) + values[1];
-  } else if (values.length === 3) {
-    if (values[0] > 0xff || values[1] > 0xff || values[2] > 0xffff) return null;
-    ip = ((values[0] << 24) >>> 0) + (values[1] << 16) + values[2];
-  } else if (values.length === 4) {
-    if (values.some((v) => v > 0xff)) return null;
-    ip = ((values[0] << 24) >>> 0) + (values[1] << 16) + (values[2] << 8) + values[3];
-  } else {
-    return null;
-  }
-  return ip >>> 0;
-}
-
-export function isPrivateIpUint32(num: number): boolean {
-  const b0 = (num >>> 24) & 0xff;
-  const b1 = (num >>> 16) & 0xff;
-  const b2 = (num >>> 8) & 0xff;
-
-  // 0.0.0.0/8 (Current network / broadcast)
-  if (b0 === 0) return true;
-  // 10.0.0.0/8 (Private)
-  if (b0 === 10) return true;
-  // 127.0.0.0/8 (Loopback)
-  if (b0 === 127) return true;
-  // 100.64.0.0/10 (CGNAT / RFC 6598)
-  if (b0 === 100 && b1 >= 64 && b1 <= 127) return true;
-  // 169.254.0.0/16 (Link-Local / Cloud Metadata)
-  if (b0 === 169 && b1 === 254) return true;
-  // 172.16.0.0/12 (Private)
-  if (b0 === 172 && b1 >= 16 && b1 <= 31) return true;
-  // 192.0.2.0/24 (TEST-NET-1)
-  if (b0 === 192 && b1 === 0 && b2 === 2) return true;
-  // 192.168.0.0/16 (Private)
-  if (b0 === 192 && b1 === 168) return true;
-  // 198.18.0.0/15 (Benchmark testing)
-  if (b0 === 198 && (b1 === 18 || b1 === 19)) return true;
-  // 198.51.100.0/24 (TEST-NET-2)
-  if (b0 === 198 && b1 === 51 && b2 === 100) return true;
-  // 203.0.113.0/24 (TEST-NET-3)
-  if (b0 === 203 && b1 === 0 && b2 === 113) return true;
-  // 224.0.0.0/4 (Multicast) & 240.0.0.0/4 (Reserved) & 255.255.255.255 (Broadcast)
-  if (b0 >= 224) return true;
-
-  return false;
-}
-
-/**
- * IPv6 アドレス文字列を 8 個の 16bit 値へ展開する。`::` の省略、末尾の IPv4 表記（::ffff:1.2.3.4）、
- * ゾーン ID（fe80::1%eth0）に対応。解釈できなければ null。
- */
-function parseIpv6(text: string): number[] | null {
-  let s = text;
-  const zone = s.indexOf('%');
-  if (zone >= 0) s = s.slice(0, zone);
-  if (!s.includes(':')) return null;
-
-  // 末尾が IPv4 表記なら 2 個の 16bit 値に直す
-  const lastColon = s.lastIndexOf(':');
-  const tail = s.slice(lastColon + 1);
-  if (tail.includes('.')) {
-    if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(tail)) return null;
-    const v4 = parseIpv4ToUint32(tail);
-    if (v4 === null) return null;
-    s = s.slice(0, lastColon + 1) + ((v4 >>> 16) & 0xffff).toString(16) + ':' + (v4 & 0xffff).toString(16);
-  }
-
-  let groups: string[];
-  const dc = s.indexOf('::');
-  if (dc >= 0) {
-    if (s.indexOf('::', dc + 1) >= 0) return null; // `::` は 1 回だけ
-    const [left, right] = s.split('::');
-    const head = left ? left.split(':') : [];
-    const rest = right ? right.split(':') : [];
-    if (head.length + rest.length > 7) return null;
-    groups = [...head, ...new Array<string>(8 - head.length - rest.length).fill('0'), ...rest];
-  } else {
-    groups = s.split(':');
-    if (groups.length !== 8) return null;
-  }
-
-  const out: number[] = [];
-  for (const g of groups) {
-    if (!/^[0-9a-f]{1,4}$/.test(g)) return null;
-    out.push(parseInt(g, 16));
-  }
-  return out;
-}
-
-/** IPv6 リテラルが、ループバック・プライベート・リンクローカル・マルチキャスト等の宛先か（埋め込み IPv4 も見る） */
-function isPrivateIpv6(text: string): boolean {
-  const g = parseIpv6(text);
-  // ':' を含むのに IPv6 として読めない文字列は、通すより止める方が安全
-  if (!g) return true;
-  const [a, b, c, d, e, f, x, y] = g;
-  const embeddedV4 = (((x << 16) | y) >>> 0);
-  const upperFiveZero = a === 0 && b === 0 && c === 0 && d === 0 && e === 0;
-
-  // ::/96 は、未指定（::）・ループバック（::1）・IPv4 互換の旧形式（::a.b.c.d）で、どれも公開された宛先にならない
-  if (upperFiveZero && f === 0) return true;
-  if (upperFiveZero && f === 0xffff) return isPrivateIpUint32(embeddedV4); // IPv4-mapped  ::ffff:a.b.c.d
-  if (a === 0 && b === 0 && c === 0 && d === 0 && e === 0xffff && f === 0) return isPrivateIpUint32(embeddedV4); // IPv4-translated
-  if (a === 0x64 && b === 0xff9b) {
-    if (c === 0 && d === 0 && e === 0 && f === 0) return isPrivateIpUint32(embeddedV4); // NAT64 64:ff9b::/96
-    if (c === 1) return true; // 64:ff9b:1::/48 ローカル用 NAT64
-  }
-  if (a === 0x2002) return isPrivateIpUint32((((b << 16) | c) >>> 0)); // 6to4 2002::/16（IPv4 は 16〜47bit）
-  if (a === 0x2001 && b === 0) return true; // Teredo 2001::/32
-  if (a === 0x2001 && b === 0x0db8) return true; // ドキュメント用 2001:db8::/32
-  if (a === 0x0100 && b === 0 && c === 0 && d === 0) return true; // 100::/64 破棄用
-  if ((a & 0xfe00) === 0xfc00) return true; // ULA fc00::/7
-  if ((a & 0xffc0) === 0xfe80) return true; // リンクローカル fe80::/10
-  if ((a & 0xffc0) === 0xfec0) return true; // サイトローカル fec0::/10（非推奨）
-  if ((a & 0xff00) === 0xff00) return true; // マルチキャスト ff00::/8
-  return false;
-}
-
-export function isPrivateIp(ip: string): boolean {
-  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
-
-  // 1. IPv6 リテラルは必ず ':' を含み、ホスト名には現れない。':' の有無で IPv6 判定に入るかを決める。
-  //    （以前は先頭が 'fc'/'fd'/'ff' の文字列を無条件に IPv6 扱いにして、fda.gov や ffmpeg.org まで遮断していた）
-  if (trimmed.includes(':')) return isPrivateIpv6(trimmed);
-
-  // 2. 任意の進数・短縮表記を含む IPv4 の 32bit 整数への正規化
-  const num = parseIpv4ToUint32(trimmed);
-  if (num !== null) {
-    return isPrivateIpUint32(num);
-  }
-
-  // 3. 先頭が IPv4 の名前（127.0.0.1.nip.io のようなワイルドカード DNS）は、解決を待たずに止める。
-  //    先頭の 4 ラベルが IPv4 として読める場合だけ見る（10.example.com のような通常の名前は対象外）。
-  const lead = trimmed.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\./);
-  if (lead) {
-    const leadNum = parseIpv4ToUint32(lead[1]);
-    if (leadNum !== null) return isPrivateIpUint32(leadNum);
-  }
-
-  return false;
-}
-
-/** ブロック対象ホスト名判定ヘルパー */
-export function isBlockedHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
-  if (
-    h === 'localhost' ||
-    h === '127.0.0.1' ||
-    h === '::1' ||
-    h === '::' ||
-    h === '0.0.0.0' ||
-    h.endsWith('.localhost') ||
-    h.endsWith('.local') ||
-    h.endsWith('.internal')
-  ) {
-    return true;
-  }
-  if (
-    h === '169.254.169.254' ||
-    h === 'metadata.google.internal' ||
-    h === 'metadata.internal' ||
-    h === 'instance-data'
-  ) {
-    return true;
-  }
-  return isPrivateIp(h);
-}
 
 const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();
 const DNS_CACHE_TTL_MS = 60_000;

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   DEFAULT_BROWSER_UID,
   DEFAULT_LAUNCHER,
+  browserProxyArgs,
   createProfileDir,
   missingDropCapabilities,
   planBrowserLaunch,
@@ -257,5 +258,32 @@ describe('SandboxFallback（サンドボックスを試して、起動できな�
 
   test('起動する前の status は unknown', () => {
     expect(new SandboxFallback().status()).toBe('unknown');
+  });
+});
+
+describe('browserProxyArgs（Chromium の、プロキシまわりの起動引数）', () => {
+  test('ゲートウェイを使うときは、すべての通信をゲートウェイに通し、ブラウザ自身の名前解決と UDP（QUIC）の直接の通信を止める', () => {
+    expect(browserProxyArgs({ gateway: { host: '127.0.0.1', url: 'http://127.0.0.1:4567' } })).toEqual([
+      '--proxy-server=http://127.0.0.1:4567',
+      '--proxy-bypass-list=<-loopback>', // 付けないと、Chromium は、ループバックだけ、プロキシを使わない
+      '--host-resolver-rules=MAP * ~NOTFOUND , EXCLUDE 127.0.0.1', // ゲートウェイ以外の名前は、解決させない（直接の接続の抜け道を塞ぐ）
+      '--disable-quic',
+    ]);
+  });
+
+  test('ゲートウェイを使うときは、運用者のプロキシ・NO_PROXY の指定は、ブラウザには渡さない（ゲートウェイの上流として使う）', () => {
+    const args = browserProxyArgs({ gateway: { host: '127.0.0.1', url: 'http://127.0.0.1:4567' }, proxy: 'socks5://proxy.example:1080', bypass: 'localhost,.corp.example' });
+    expect(args.join(' ')).not.toContain('proxy.example');
+    expect(args.join(' ')).not.toContain('.corp.example');
+  });
+
+  test('ゲートウェイを使わないときは、これまでどおり（運用者のプロキシと NO_PROXY を、そのまま渡す）', () => {
+    expect(browserProxyArgs({ proxy: 'http://proxy.example:8080' })).toEqual(['--proxy-server=http://proxy.example:8080']);
+    expect(browserProxyArgs({ proxy: 'http://proxy.example:8080', bypass: 'localhost,.local' })).toEqual([
+      '--proxy-server=http://proxy.example:8080',
+      '--proxy-bypass-list=localhost,.local',
+    ]);
+    expect(browserProxyArgs({})).toEqual([]);
+    expect(browserProxyArgs({ bypass: 'localhost' })).toEqual([]); // プロキシが無ければ、除外の指定だけでは、何もしない（これまでと同じ）
   });
 });

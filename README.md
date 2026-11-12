@@ -2710,6 +2710,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **別 uid:** root で動く Sora 本体が、Chromium を uid 65532 に落として起動します（`SORA_BROWSER_UID`。Docker の既定の capability で動きます）。乗っ取られた Chromium から、Sora 本体の環境変数（API キーなど）やデータベースには届きません。
 - **Chromium 自身のサンドボックス**（`SORA_BROWSER_SANDBOX`）: ユーザー名前空間と seccomp-bpf で、ページを描く renderer を閉じ込めます。ただし、Docker の既定の seccomp は、ユーザー名前空間を作る syscall を止めるので、既定のままでは使えず、`--no-sandbox` に戻ります（起動時に警告が 1 行出ます）。rootless Podman の既定では、そのまま使えます。
 
+さらに、ブラウザの外向きの通信を、Sora の中の**出口のゲートウェイ**に通せます（`SORA_EGRESS_GATEWAY=on`。既定は off です）。ページが、DNS rebinding などで、ループバック・社内のアドレス・クラウドのメタデータの IP へ遷移しようとしても、ゲートウェイが名前を 1 回だけ解決し、内部の IP が 1 つでもあれば断り、検査した IP にだけつなぎます。ブラウザ自身の名前解決と HTTP/3 も止めるので、起動の引数の上では、ゲートウェイを通らない経路は残りません。ただし、乗っ取られたブラウザは、起動の引数を無視して直接つなげます。それを防ぐのは、上の別 uid・サンドボックスと、コンテナの外向きの通信を絞るネットワークの設定です。ゲートウェイを通しても、ブラウザの TLS の ClientHello は変わりません（イメージの中で確かめています）。
+
 Docker でもサンドボックスを使うには、Docker の既定の seccomp プロファイルに、`clone`・`unshare`・`chroot` の許可だけを足したプロファイル [`deploy/seccomp-sora.json`](deploy/seccomp-sora.json) を渡します。
 
 ```bash

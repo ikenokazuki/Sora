@@ -8,6 +8,8 @@
 #   5. --cap-drop=ALL に、uid を落とすのに要る 5 つ（CHOWN・DAC_OVERRIDE・KILL・SETGID・SETUID）だけを足した運用でも、3 が通る
 #   6. Docker の既定の seccomp を、ユーザー名前空間を許す版（deploy/seccomp-sora.json）に替えると、Chromium のサンドボックスが有効になる（SORA_BROWSER_SANDBOX=on。有効にできなければ失敗する）
 #   7. 6 に、--cap-drop=ALL と、uid を落とすのに要る 5 つの capability、no-new-privileges を足した運用でも、サンドボックスが有効になる
+#   8. ブラウザの通信を、出口のゲートウェイ（SORA_EGRESS_GATEWAY=on）に通すと、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/browser-egress-check.ts）
+#   9. 8 を、7 と同じ硬化した運用（サンドボックス有効）でも確かめる
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -55,3 +57,17 @@ docker run --rm --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --securit
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_API_KEY=sk-verify-image-fake-secret -e SORA_BROWSER_SANDBOX=on \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/browser-isolation-check.ts
+
+# 8. ブラウザの通信を、出口のゲートウェイ（SORA_EGRESS_GATEWAY=on。確認のスクリプトが設定する）に通す。内部の宛先（ループバック）はゲートウェイが断り、名前はゲートウェイが解決し、
+#    ブラウザの ClientHello は、ゲートウェイ越しでも直接のときと変わらない（scripts/browser-egress-check.ts。設計 1）
+docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/browser-egress-check.ts
+
+# 9. 8 を、7 と同じ硬化した運用（サンドボックス有効・--cap-drop=ALL に 5 つだけ・no-new-privileges）でも確かめる。サンドボックスの中のブラウザも、ゲートウェイに届くこと
+docker run --rm --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --security-opt no-new-privileges \
+  --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_BROWSER_SANDBOX=on \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/browser-egress-check.ts
