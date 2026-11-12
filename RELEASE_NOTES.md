@@ -114,7 +114,7 @@
   - `SORA_MODULES` の `*`・`all` は、値のどこにあっても全部の意味です（例: `web,all`）。知らないモジュール名は起動時のエラーです（以前は黙って無視し、綴りを誤るとツールが消えました）。
   - `SORA_PROXY_URL` は scheme（`http`・`https`・`socks5`）が必須になりました（`host:3128` のような値は不正で、標準の `HTTPS_PROXY` などに譲ります）。`SORA_PROXY_LIST` も、その形の要素だけから選びます（以前は要素を検査しませんでした）。標準の `HTTPS_PROXY` などは、標準の名前なので検査しません。
   - `SORA_X_DETAIL_BASE_URL`・`SORA_OPENPOI_BASE_URL` は、前後の空白と末尾の `/` をすべて除き、URL でない値は既定の宛先に戻ります（以前は値をそのまま使い、取得が失敗しました）。`SORA_ALERT_WEBHOOK_URL` は、そのまま呼ぶ宛先なので、末尾の `/` を保ちます。
-- **秘密の環境変数は、Chromium・`yahoo-search-mcp`・`rs-trafilatura` に受け継がれなくなりました。** 対象は、登録簿で秘密としている設定（`SORA_API_KEY`・`SORA_ALERT_WEBHOOK_URL`・`SORA_PROXY_URL`・`SORA_PROXY_LIST`・`SORA_TRACKING_*` の鍵・`SORA_TRACKING_PAGE_SECRET`・`SORA_GCC_*`）と、その旧名です。ほかの変数（`PATH`・`HOME`・`SSL_CERT_FILE`・標準のプロキシの変数など）と、登録簿に無い、ほかのプログラムの秘密は、そのまま渡ります。同じユーザーで動くプロセスは親の `/proc/<pid>/environ` を読めるので、子プロセスから秘密を隔てる仕組みではありません（Chromium は `--no-sandbox` で動きます）。
+- **秘密の環境変数は、Chromium・`yahoo-search-mcp`・`rs-trafilatura`・住所データを作る子プロセスに受け継がれなくなりました。** 対象は、登録簿で秘密としている設定（`SORA_API_KEY`・`SORA_ALERT_WEBHOOK_URL`・`SORA_PROXY_URL`・`SORA_PROXY_LIST`・`SORA_TRACKING_*` の鍵・`SORA_TRACKING_PAGE_SECRET`・`SORA_GCC_*`）と、その旧名です。ほかの変数（`PATH`・`HOME`・`SSL_CERT_FILE`・標準のプロキシの変数など）と、登録簿に無い、ほかのプログラムの秘密は、そのまま渡ります。同じユーザーで動くプロセスは親の `/proc/<pid>/environ` を読めるので、子プロセスから秘密を隔てる仕組みではありません（Chromium は `--no-sandbox` で動きます）。
 - **Yahoo の Web 検索の負荷の制御で、初期の間隔が 0 から 400 ミリ秒になりました**（以前は、未設定の変数が `Number('')` で `0` に読まれていた不具合）。
   - 2 つ目以降の候補の検索の前の待ちは `min(間隔, 250)` ミリ秒です。起動直後は、成功が 3 回続くまで 250 ミリ秒、4 回目のあとは 200 ミリ秒、5 回目のあとから 150 ミリ秒です（以前は、最初の成功のあとから 150 ミリ秒）。429 以外の失敗のあとも同じ待ちを通ります（起動直後は最大 250 + 250 ミリ秒。以前は 0）。
   - 429 では、間隔が 400 → 800（medium）→ 1600（high）と広がります（以前は 0 のまま）。high の間は、追加検索（adaptive rescue）をしません。
