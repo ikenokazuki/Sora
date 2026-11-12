@@ -91,7 +91,7 @@ v2.40.0 から型付き TypeScript クライアントを配っていた `GET /cl
 | | 文字数 |
 |---|---|
 | 既定（13 ツール） | 23,060 |
-| 全ツール（33 ツール） | 57,227 |
+| 全ツール（33 ツール） | 57,232 |
 | `instructions` | 8,685 |
 
 `search_tools` の応答（クエリ「住所」）: 既定 681、`names` 377、`summary` 626、`schema` 3,649 文字（前の値は既定 649、`names` 390、`summary` 594、`schema` 2,624。当たるのは `get_place_info`・`search_poi`・`lookup_address`）。
