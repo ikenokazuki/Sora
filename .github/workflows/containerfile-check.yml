@@ -16,13 +16,16 @@ on:
       - scripts/browser-capdrop-check.ts
       - scripts/browser-egress-check.ts
       - scripts/static-egress-check.ts
+      - scripts/fetch-egress-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
       - src/browser_launch_plan.ts
       - src/browser_stealth.ts
       - src/http_fetcher.ts
+      - src/services/address_builder.ts
       - src/net/egress.ts
+      - src/net/egress_fetch.ts
       - src/net/egress_gateway.ts
       - src/net/ip_policy.ts
       - src/net/proxy_config.ts
