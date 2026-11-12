@@ -1237,7 +1237,7 @@ describe('Sora REST & MCP Endpoints', () => {
         params: {
           protocolVersion: '2024-11-05',
           capabilities: {},
-          clientInfo: { name: 'n8n-mcp-client', version: '2.33.7' },
+          clientInfo: { name: 'example-mcp-client', version: '2.33.7' },
         },
       }),
     });
@@ -1301,7 +1301,7 @@ describe('Sora REST & MCP Endpoints', () => {
         params: {
           protocolVersion: '2024-11-05',
           capabilities: {},
-          clientInfo: { name: 'second-n8n-client', version: '2.33.7' },
+          clientInfo: { name: 'second-example-client', version: '2.33.7' },
         },
       }),
     });
