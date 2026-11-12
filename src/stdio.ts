@@ -1,8 +1,12 @@
 #!/usr/bin/env bun
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer, slimToolsListMessage } from './mcp.js';
+import { checkStartupEnv } from './startup_check.js';
 
 async function main() {
+  // 環境変数の検査（出力は標準エラーだけ。標準出力は JSON-RPC の流れ）。誤りがあれば、接続する前に exit(1)。
+  // stdio は待ち受けず認証も無いので、PORT と認証の汎用の旧名は見ない
+  checkStartupEnv({ transport: 'stdio' });
   const server = createMcpServer({
     deferTools: false, // stdio 環境では全ツール（33 種）を直接即時登録
   });

@@ -8,7 +8,7 @@ import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js'
 // テストの事前設定（test_preload.ts）は、外へ出ないよう、プロキシの環境変数に、閉じたポートの架空のプロキシを入れている。
 // ゲートウェイは、それを運用者の上流として読むので、このファイルの間だけ外す
 const kit = createEgressTestKit();
-const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'ALLOW_LOCAL_FETCH', 'SORA_EGRESS_GATEWAY'];
+const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_EGRESS_GATEWAY'];
 const hosts = ['web.test', 'rebind.test', 'native.test', 'other.test', '127.0.0.1'];
 let saved: Record<string, string | undefined> = {};
 
@@ -73,9 +73,9 @@ describe('fetchWithSafeRedirects と出口のゲートウェイ', () => {
     const headers = { 'X-Custom': 'v' };
     // 比べる相手: ゲートウェイを通さない取得（内部への取得を許す設定で、宛先は 127.0.0.1）
     process.env.SORA_EGRESS_GATEWAY = 'off';
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     await fetchWithSafeRedirects(`http://127.0.0.1:${origin.port}/a?x=1`, 5000, 0, headers);
-    delete process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     process.env.SORA_EGRESS_GATEWAY = 'on';
     const { resolve } = fakeResolver({ 'web.test': ['127.0.0.1'] });
     await getEgressGateway({ allowedPorts: [origin.port], resolve, isPrivateIp: () => false });

@@ -1,6 +1,7 @@
 // 米国CPSC 一般適合証明書 (GCC: 16 CFR Part 1110) の作成と、通関の保留に出す一式。
 // 証明書に載せる値は呼び出し側が渡したものだけ。規則の判断は同梱の CPSC の一覧と HTS の桁で行い、外には取りに行かない
 import { createHash } from 'node:crypto';
+import { envError, envJson } from '../config.js';
 import { errorMessage } from '../errors.js';
 import { GccPartySchema } from '../types.js';
 import { type GccRenderItem, NO_STATE, PARTY_FIELDS, renderGccPackageHtml } from './gcc_html.js';
@@ -239,14 +240,14 @@ function assertGccInputs(options: GenerateGccCertificateOptions): void {
 function resolveParty(party: GccParty | undefined, envName: 'SORA_GCC_CERTIFIER' | 'SORA_GCC_CUSTODIAN', needed: boolean): GccParty | undefined {
   const given = trimDeep(party);
   if (given && PARTY_FIELDS.some((f) => given[f])) return given;
-  const raw = process.env[envName]?.trim();
-  if (!raw) return undefined;
-  try {
-    return trimDeep(GccPartySchema.parse(JSON.parse(raw)));
-  } catch {
-    if (!needed) return undefined;
+  // 未設定と読めない値（JSON でない・形が違う）を分けるために envError を見る（値は出さない。秘密の設定）
+  const value = envJson(envName);
+  const parsed = value === undefined ? undefined : GccPartySchema.safeParse(value);
+  if (parsed?.success) return trimDeep(parsed.data);
+  if (needed && (parsed || envError(envName))) {
     throw new Error(`${envName} を読めません（JSON のオブジェクトで name・street・city・state・country・email・phone）`);
   }
+  return undefined;
 }
 
 /**

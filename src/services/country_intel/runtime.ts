@@ -1,3 +1,4 @@
+import { envBool, envList } from '../../config.js';
 import { researchCountryContext, type ResearchDependencies } from './report.js';
 import { createGdacsProvider } from './providers/gdacs.js';
 import { createGdeltExportProvider } from './providers/gdelt_files.js';
@@ -55,9 +56,7 @@ export interface DefaultRuntimeOptions {
 
 /** 環境変数または明示指定で無効化された provider ID の集合。 */
 export function disabledCountryIntelProviders(overrides?: readonly string[]): ReadonlySet<string> {
-  const raw = overrides ?? (process.env.SORA_INTEL_DISABLED ?? '');
-  const ids = (Array.isArray(raw) ? raw : String(raw).split(',')).map((id) => id.trim()).filter(Boolean);
-  return new Set(ids);
+  return new Set((overrides ?? envList('SORA_INTEL_DISABLED')).map((id) => id.trim()).filter(Boolean));
 }
 
 /** 内蔵スクレイパの本文取得アダプタ。fast mode（ブラウザなし）、再試行なし。 */
@@ -116,7 +115,7 @@ export function createDefaultCountryIntelDependencies(
     cache: overrides.cache ?? defaultProviderCache,
     scrapeArticle: overrides.scrapeArticle
       ?? options.scrapeArticle
-      ?? (process.env.SORA_INTEL_SCRAPE === 'off' ? undefined : createScrapeArticleAdapter()),
+      ?? (envBool('SORA_INTEL_SCRAPE') ? createScrapeArticleAdapter() : undefined),
     providers: [
       createGdeltExportProvider({ fetchFn }),
       createGdacsProvider(fetchFn),
@@ -136,7 +135,7 @@ export function createDefaultCountryIntelDependencies(
       createThepaperHotProvider(fetchFn),
       createOfficialWebProvider({
         searchWeb: options.officialWebSearch
-          ?? (process.env.SORA_INTEL_WEB_SEARCH === 'off' ? async () => [] : createYahooWebSearchAdapter()),
+          ?? (envBool('SORA_INTEL_WEB_SEARCH') ? createYahooWebSearchAdapter() : async () => []),
         verifiedDomains: OFFICIAL_DOMAIN_SEEDS.map((seed) => seed.domain),
       }),
       createBlueskyProvider(),

@@ -14,24 +14,24 @@ beforeAll(() => {
 });
 afterAll(() => restoreExternalFetch?.());
 
-/** ALLOW_LOCAL_FETCH を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
+/** SORA_FETCH_ALLOW_PRIVATE_NETWORK を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
 function setLocalFetch(value: string | undefined): () => void {
-  const prev = process.env.ALLOW_LOCAL_FETCH;
-  if (value === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-  else process.env.ALLOW_LOCAL_FETCH = value;
+  const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  if (value === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = value;
   return () => {
-    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prev;
+    if (prev === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
   };
 }
 
-/** このファイルのテストが ALLOW_LOCAL_FETCH を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
+/** このファイルのテストが SORA_FETCH_ALLOW_PRIVATE_NETWORK を書き換えたまま終わらないことを確かめる（失敗やタイムアウトでも次のテストに漏らさない） */
 let allowLocalFetchAtStart: string | undefined;
 beforeAll(() => {
-  allowLocalFetchAtStart = process.env.ALLOW_LOCAL_FETCH;
+  allowLocalFetchAtStart = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 });
 afterAll(() => {
-  expect(process.env.ALLOW_LOCAL_FETCH).toBe(allowLocalFetchAtStart);
+  expect(process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK).toBe(allowLocalFetchAtStart);
 });
 
 /** example.com と同じ内容の HTML を返す手元サーバーで、外部サイトに頼らず本文取得を確かめる。 */
@@ -40,13 +40,13 @@ async function withExamplePage<T>(fn: (url: string) => Promise<T>): Promise<T> {
     + '<p>This domain is for use in illustrative examples in documents. You may use this domain in literature without prior coordination or asking for permission.</p>'
     + '<p><a href="https://www.iana.org/domains/example">More information...</a></p></div></body></html>';
   const server = Bun.serve({ port: 0, fetch: () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
-  const prev = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
     return await fn(`http://127.0.0.1:${server.port}/`);
   } finally {
-    if (prev === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prev;
+    if (prev === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     server.stop(true);
   }
 }
@@ -66,7 +66,10 @@ function restoreEnv(snapshot: Record<string, string | undefined>): void {
   }
 }
 import * as cheerio from 'cheerio';
-import { extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
+import { deliverWebhook, extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
+import * as enrichmentModule from './enrichment.js';
+import { sendAdminAlert } from './services/health.js';
+import { withEnv } from './test_fixtures/env.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -182,8 +185,8 @@ import {
 
 describe('web-fetcher Core Functions', () => {
   it('isBlockedHostname should block local, private IPs, decimal IPs, and metadata hostnames', () => {
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     try {
       expect(isBlockedHostname('localhost')).toBe(true);
       expect(isBlockedHostname('127.0.0.1')).toBe(true);
@@ -202,7 +205,7 @@ describe('web-fetcher Core Functions', () => {
       expect(isBlockedHostname('example.com')).toBe(false);
       expect(isBlockedHostname('yahoo.co.jp')).toBe(false);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
+      if (prev !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 
@@ -706,25 +709,25 @@ describe('web-fetcher Auth Middleware', () => {
   });
 
   it('should reject direct local access by default when API key is set', async () => {
-    const prev = process.env.ALLOW_LOCAL_NO_AUTH;
-    delete process.env.ALLOW_LOCAL_NO_AUTH;
+    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
+    delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
     try {
       const res = await testApp.fetch(new Request('http://localhost/protected'));
       expect(res.status).toBe(401);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_NO_AUTH = prev;
+      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
     }
   });
 
-  it('should allow direct local access only when ALLOW_LOCAL_NO_AUTH=true', async () => {
-    const prev = process.env.ALLOW_LOCAL_NO_AUTH;
-    process.env.ALLOW_LOCAL_NO_AUTH = 'true';
+  it('should allow direct local access only when SORA_AUTH_LOOPBACK_NO_KEY=true', async () => {
+    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
+    process.env.SORA_AUTH_LOOPBACK_NO_KEY = 'true';
     try {
       const res = await testApp.fetch(new Request('http://localhost/protected'));
       expect(res.status).toBe(200);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_NO_AUTH = prev;
-      else delete process.env.ALLOW_LOCAL_NO_AUTH;
+      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
+      else delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
     }
   });
 
@@ -2527,9 +2530,9 @@ describe('Sora REST & MCP Endpoints', () => {
   });
 
   it('sendWebhookNotification should handle notification without throwing errors', async () => {
-    // 手元の宛先には送らず（ALLOW_LOCAL_FETCH が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
-    const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
+    // 手元の宛先には送らず（SORA_FETCH_ALLOW_PRIVATE_NETWORK が無いとき）、console.warn に出す。テストの出力に混ぜず、ここで受けて確かめる
+    const prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
     try {
       await expect(sendWebhookNotification('http://127.0.0.1:59999/invalid-webhook', { test: true })).resolves.toBeUndefined();
@@ -2539,7 +2542,7 @@ describe('Sora REST & MCP Endpoints', () => {
       ]);
     } finally {
       warn.mockRestore();
-      if (prevEnv !== undefined) process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      if (prevEnv !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
     }
   });
 
@@ -2700,8 +2703,8 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(batchJson.retryable).toBe(false);
   });
 
-  it('ALLOW_BROWSER_EVALUATE=false should block arbitrary script execution via evaluate', async () => {
-    process.env.ALLOW_BROWSER_EVALUATE = 'false';
+  it('SORA_BROWSER_ALLOW_EVALUATE=false should block arbitrary script execution via evaluate', async () => {
+    process.env.SORA_BROWSER_ALLOW_EVALUATE = 'false';
     const res = await app.request('/browser/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2716,7 +2719,7 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.actionOutputs).toBeDefined();
     expect(json.actionOutputs[0].result).toBeUndefined();
     expect(json.actionOutputs[0].error).toContain('evaluate is disabled');
-    delete process.env.ALLOW_BROWSER_EVALUATE;
+    delete process.env.SORA_BROWSER_ALLOW_EVALUATE;
   });
 
   it('POST /scrape/stream should return SSE stream with progress and done events', async () => {
@@ -2781,14 +2784,14 @@ describe('Sora REST & MCP Endpoints', () => {
         fetched.push(String(input));
         return new Response(null, { status: 200 });
       }) as typeof fetch;
-      prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      delete process.env.ALLOW_LOCAL_FETCH;
+      prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     });
     afterEach(() => {
       warn.mockRestore();
       globalThis.fetch = realFetch;
-      if (prevEnv === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = prevEnv;
+      if (prevEnv === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
     });
 
     it('does not fetch loopback, private, link-local and localhost destinations', async () => {
@@ -2805,6 +2808,116 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(fetched).toEqual([]);
       // ログには、ホスト名（とポート）だけを出す。URL のパス・クエリは出さない
       expect(warned()).toEqual(blocked.map((url) => `[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${new URL(url).host}`));
+    });
+
+    it('送れなかったときの警告には、ホスト名だけを出す（HTTP の失敗・接続の失敗）', async () => {
+      globalThis.fetch = (async (input: RequestInfo | URL) => {
+        if (String(input).includes('throws')) throw new Error('connection refused');
+        return new Response(null, { status: 500 });
+      }) as typeof fetch;
+      expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-a', {})).toBe(false);
+      expect(await deliverWebhook('https://93.184.216.34/hooks/throws/secret-token-b', {})).toBe(false);
+      expect(warned()).toEqual([
+        '[web-fetcher/webhook] Failed to send webhook to 93.184.216.34: HTTP 500',
+        // 例外は code（無ければ name）だけを出す。文（message）は宛先の URL を含みうるので出さない
+        '[web-fetcher/webhook] Error sending webhook to 93.184.216.34: Error',
+      ]);
+      expect(warned().join('\n')).not.toContain('secret-token');
+    });
+
+    // Bun の fetch の例外の文は、宛先の URL を丸ごと含む（redirect: 'error' で受けた UnexpectedRedirect など）
+    const redirectError = (url: string) => Object.assign(
+      new Error(`UnexpectedRedirect fetching "${url}". For more information, pass \`verbose: true\` in the second argument to fetch()`),
+      { code: 'UnexpectedRedirect' },
+    );
+
+    it('送信の例外は code だけを出し、例外の文に入った URL を出さない', async () => {
+      globalThis.fetch = (async () => { throw redirectError('https://93.184.216.34/hooks/T000/secret-token-b'); }) as unknown as typeof fetch;
+      expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-b', {})).toBe(false);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
+    });
+
+    it('URL に引用符があっても、秘密の部分を出さない', async () => {
+      const url = "https://93.184.216.34/hooks/T000/it's-secret-token-ZZ9";
+      globalThis.fetch = (async () => { throw redirectError(url); }) as unknown as typeof fetch;
+      expect(await deliverWebhook(url, {})).toBe(false);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
+    });
+
+    it('とても長い URL でも、すぐに終わり、どの部分も出さない', async () => {
+      // 例外の文を正規表現でなめると、引用符のあとの長い英数字の並びで 2 乗の時間がかかり、イベントループが止まる
+      const url = `https://93.184.216.34/hooks/T000/'${'a'.repeat(200_000)}`;
+      globalThis.fetch = (async () => { throw redirectError(url); }) as unknown as typeof fetch;
+      const started = performance.now();
+      expect(await deliverWebhook(url, {})).toBe(false);
+      expect(performance.now() - started).toBeLessThan(1000);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: UnexpectedRedirect']);
+    });
+
+    it('時間切れは name を出す（code が数のとき）', async () => {
+      globalThis.fetch = (async () => { throw new DOMException('The operation timed out.', 'TimeoutError'); }) as unknown as typeof fetch;
+      expect(await deliverWebhook('https://93.184.216.34/hooks/T000/secret-token-t', {})).toBe(false);
+      expect(warned()).toEqual(['[web-fetcher/webhook] Error sending webhook to 93.184.216.34: TimeoutError']);
+    });
+
+    it('実際にリダイレクトを返す宛先でも、警告に URL を出さない（redirect: error で例外になる）', async () => {
+      globalThis.fetch = realFetch;
+      const server = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response(null, { status: 302, headers: { Location: '/elsewhere/' } }) });
+      const port = server.port; // stop のあとは 0 になる
+      const restore = setLocalFetch('true');
+      try {
+        expect(await deliverWebhook(`http://127.0.0.1:${port}/hooks/T000/B000/secret-token-c`, {})).toBe(false);
+      } finally {
+        restore();
+        server.stop(true);
+      }
+      expect(warned()).toEqual([`[web-fetcher/webhook] Error sending webhook to 127.0.0.1:${port}: UnexpectedRedirect`]);
+      expect(warned().join('\n')).not.toContain('secret-token-c');
+    });
+
+    describe('管理者のアラート（SORA_ALERT_WEBHOOK_URL）', () => {
+      let prev: string | undefined;
+      beforeEach(() => {
+        prev = process.env.SORA_ALERT_WEBHOOK_URL;
+        delete process.env.SORA_ALERT_WEBHOOK_URL;
+      });
+      afterEach(() => {
+        if (prev === undefined) delete process.env.SORA_ALERT_WEBHOOK_URL;
+        else process.env.SORA_ALERT_WEBHOOK_URL = prev;
+      });
+      // 送るのは待たない（fire-and-forget）ので、結果が出るまで待つ
+      const settle = async (done: () => boolean) => {
+        for (let i = 0; i < 200 && !done(); i++) await Bun.sleep(5);
+        await Bun.sleep(20);
+      };
+
+      it('新しい名前の宛先へ送る', async () => {
+        process.env.SORA_ALERT_WEBHOOK_URL = 'https://93.184.216.34/hooks/alert';
+        sendAdminAlert('test', { a: 1 });
+        await settle(() => fetched.length > 0);
+        expect(fetched).toEqual(['https://93.184.216.34/hooks/alert']);
+      });
+
+      it('送信が例外で終わっても、警告に URL を出さない', async () => {
+        process.env.SORA_ALERT_WEBHOOK_URL = 'https://93.184.216.34/hooks/T000/secret-token-d';
+        const send = spyOn(enrichmentModule, 'sendWebhookNotification').mockRejectedValue(redirectError('https://93.184.216.34/hooks/T000/secret-token-d'));
+        try {
+          sendAdminAlert('test', { a: 1 });
+          await settle(() => warn.mock.calls.length > 0);
+        } finally {
+          send.mockRestore();
+        }
+        expect(warned()).toEqual(['[Sora/Alert] Failed to send admin alert: UnexpectedRedirect']);
+      });
+
+      it('私的な宛先は止め、その警告にホスト名とポートだけを出す（パス・秘密の部分は出さない）', async () => {
+        process.env.SORA_ALERT_WEBHOOK_URL = 'http://127.0.0.1:9/hooks/T000/B000/secret-token-1234';
+        sendAdminAlert('test', { a: 1 });
+        await settle(() => warn.mock.calls.length > 0);
+        expect(fetched).toEqual([]);
+        expect(warned()).toEqual(['[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: 127.0.0.1:9']);
+        expect(warned().join('\n')).not.toContain('secret-token-1234');
+      });
     });
 
     it('fetches a public destination (control for the blocked cases)', async () => {
@@ -2841,13 +2954,11 @@ describe('Sora REST & MCP Endpoints', () => {
   it('createAuthMiddleware should allow requests when no API key is set (fail-open)', async () => {
     const testApp = new Hono();
     const prevNodeEnv = process.env.NODE_ENV;
-    const prevKey = process.env.WEB_FETCHER_API_KEY;
-    const prevApiKey = process.env.API_KEY;
+    const prevKey = process.env.SORA_API_KEY;
 
     try {
       process.env.NODE_ENV = 'production';
-      delete process.env.WEB_FETCHER_API_KEY;
-      delete process.env.API_KEY;
+      delete process.env.SORA_API_KEY;
 
       testApp.use('*', createAuthMiddleware());
       testApp.get('/test', (c) => c.json({ ok: true }));
@@ -2858,8 +2969,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(json.ok).toBe(true);
     } finally {
       process.env.NODE_ENV = prevNodeEnv;
-      if (prevKey) process.env.WEB_FETCHER_API_KEY = prevKey;
-      if (prevApiKey) process.env.API_KEY = prevApiKey;
+      if (prevKey) process.env.SORA_API_KEY = prevKey;
     }
   });
 
@@ -3383,10 +3493,10 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.dependencies.jma).toBeDefined();
   });
 
-  it('createAuthMiddleware should enforce DAILY_REQUEST_LIMIT quota and return 429 when exceeded', async () => {
+  it('createAuthMiddleware should enforce SORA_AUTH_DAILY_LIMIT quota and return 429 when exceeded', async () => {
     const testApp = new Hono();
-    const prevLimit = process.env.DAILY_REQUEST_LIMIT;
-    process.env.DAILY_REQUEST_LIMIT = '2';
+    const prevLimit = process.env.SORA_AUTH_DAILY_LIMIT;
+    process.env.SORA_AUTH_DAILY_LIMIT = '2';
 
     try {
       testApp.use('*', createAuthMiddleware('test-quota-key'));
@@ -3406,9 +3516,9 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(json3.limit).toBe(2);
     } finally {
       if (prevLimit !== undefined) {
-        process.env.DAILY_REQUEST_LIMIT = prevLimit;
+        process.env.SORA_AUTH_DAILY_LIMIT = prevLimit;
       } else {
-        delete process.env.DAILY_REQUEST_LIMIT;
+        delete process.env.SORA_AUTH_DAILY_LIMIT;
       }
     }
   });
@@ -4678,8 +4788,8 @@ describe('Sora REST & MCP Endpoints', () => {
 
     it('fetchImageBuffer should block private IPs (SSRF protection)', async () => {
       const { fetchImageBuffer } = await import('./services/image_inspect.js');
-      const prevEnv = process.env.ALLOW_LOCAL_FETCH;
-      delete process.env.ALLOW_LOCAL_FETCH;
+      const prevEnv = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
 
       try {
         await expect(fetchImageBuffer('http://127.0.0.1/test.jpg')).rejects.toThrow();
@@ -4688,7 +4798,7 @@ describe('Sora REST & MCP Endpoints', () => {
         await expect(fetchImageBuffer('ftp://example.com/test.jpg')).rejects.toThrow();
       } finally {
         if (prevEnv !== undefined) {
-          process.env.ALLOW_LOCAL_FETCH = prevEnv;
+          process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevEnv;
         }
       }
     });
@@ -5629,7 +5739,7 @@ describe('Sora REST & MCP Endpoints', () => {
       expect(text).toContain('hello');
     });
 
-    it('sanitizeMcpResponse drops outputSchema from tools/list (JSON and SSE) unless SORA_TOOL_OUTPUT_SCHEMA=true', async () => {
+    it('sanitizeMcpResponse drops outputSchema from tools/list (JSON and SSE) unless SORA_MCP_OUTPUT_SCHEMA=true', async () => {
       const payload = JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -5638,16 +5748,14 @@ describe('Sora REST & MCP Endpoints', () => {
       const json = () => new Response(payload, { headers: { 'content-type': 'application/json' } });
       const sse = () => new Response(`data: ${payload}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
 
-      expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
-      expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
-
-      process.env.SORA_TOOL_OUTPUT_SCHEMA = 'true';
-      try {
+      await withEnv({ SORA_MCP_OUTPUT_SCHEMA: undefined }, async () => {
+        expect(await (await sanitizeMcpResponse(json())).text()).not.toContain('outputSchema');
+        expect(await (await sanitizeMcpResponse(sse())).text()).not.toContain('outputSchema');
+      });
+      await withEnv({ SORA_MCP_OUTPUT_SCHEMA: 'true' }, async () => {
         expect(await (await sanitizeMcpResponse(json())).text()).toContain('outputSchema');
         expect(await (await sanitizeMcpResponse(sse())).text()).toContain('outputSchema');
-      } finally {
-        delete process.env.SORA_TOOL_OUTPUT_SCHEMA;
-      }
+      });
     });
 
     describe('Official X Account Detection & Hybrid Realtime Search', () => {

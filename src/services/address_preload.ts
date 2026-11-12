@@ -1,5 +1,6 @@
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Env } from '../config.js';
 import { loadAddressConfig } from './address_config.js';
 import type { AddressData } from './address_data.js';
 import { AddressUnavailableError } from './address_errors.js';
@@ -177,7 +178,7 @@ export async function runPreload(data: AddressData, options: PreloadOptions = {}
  * 指定が無ければ何も読み込まず、予約もしない（null）。
  */
 export function startAddressPreload(
-  env: Record<string, string | undefined> = process.env,
+  env: Env = process.env,
   options: { delayMs?: number } = {},
 ): ReturnType<typeof setTimeout> | null {
   const config = loadAddressConfig(env);

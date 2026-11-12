@@ -35,6 +35,7 @@ describe('parseTrustStoreMode（SORA_FETCH_TRUST_STORE）', () => {
   test('不正な値は undefined（既定のまま）にして、警告を 1 回出す。例外は投げない', () => {
     expect(parseTrustStoreMode('system')).toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('SORA_FETCH_TRUST_STORE'));
   });
 });
 

@@ -10,8 +10,8 @@ describe('chromiumEnv（Chromium に渡す環境変数）', () => {
       LANG: 'C.UTF-8',
       HTTPS_PROXY: 'http://proxy:3128',
       SORA_API_KEY: 'sk-secret',
-      UPS_CLIENT_SECRET: 'ups-secret',
-      ADMIN_ALERT_WEBHOOK_URL: 'https://hooks.example/T0/B0/x',
+      SORA_TRACKING_UPS_CLIENT_SECRET: 'ups-secret',
+      SORA_ALERT_WEBHOOK_URL: 'https://hooks.example/T0/B0/x',
     });
     expect(env).toEqual({ PATH: '/usr/bin', HOME: '/root', TZ: STEALTH_TIMEZONE, LANG: 'C.UTF-8', HTTPS_PROXY: 'http://proxy:3128' });
   });

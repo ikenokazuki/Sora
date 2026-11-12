@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { envStr, envUrl } from '../../config.js';
 import type { TrackingResult } from './types.js';
 
 // 荷物ごとの表示ページ（GET /t/:carrier/:number?sig=…）。佐川急便のように、公式に送り状番号を渡せる URL が無い
@@ -6,8 +7,8 @@ import type { TrackingResult } from './types.js';
 // 両方を設定したときだけ有効（既定は無効）。署名で Sora が発行した URL だけを通し、任意の番号を照会する踏み台にしない。
 
 function pageConfig(): { secret: string; baseUrl: string } | undefined {
-  const secret = process.env.SORA_TRACKING_PAGE_SECRET;
-  const baseUrl = process.env.SORA_PUBLIC_URL?.replace(/\/+$/, '');
+  const secret = envStr('SORA_TRACKING_PAGE_SECRET');
+  const baseUrl = envUrl('SORA_PUBLIC_URL'); // 末尾の `/` は外して返る
   return secret && baseUrl ? { secret, baseUrl } : undefined;
 }
 

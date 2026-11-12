@@ -51,13 +51,13 @@ function redPixels(base64: string): number {
 
 describe('browser_action・inspect_image（手元のサーバー）', () => {
   let server: ReturnType<typeof Bun.serve>;
-  const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+  const prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   const base = () => `http://127.0.0.1:${server.port}`;
   const restore: Array<() => void> = [];
   let svgHits = 0;
 
   beforeAll(() => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -78,8 +78,8 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
   });
   afterAll(() => {
     server.stop(true);
-    if (prevAllow === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = prevAllow;
+    if (prevAllow === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
   });
   afterEach(() => { while (restore.length) restore.pop()!(); });
 
@@ -123,16 +123,16 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
   browserTest('画像が要る呼び出しが途中で失敗しても、次の呼び出しで開いたままのページの画像を読み直して撮る', async () => {
     const opened = await scraper.executeBrowserActions({ createSession: true, url: `${base()}/clip`, extract: { markdown: false } });
     const sessionId = opened.sessionId as string;
-    const prevAllow = process.env.ALLOW_LOCAL_FETCH;
+    const prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     try {
       // 手元のサーバーへの移動を拒んで、読み直しの前に呼び出しを失敗させる
-      process.env.ALLOW_LOCAL_FETCH = 'false';
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
       await expect(scraper.executeBrowserActions({ sessionId, url: `${base()}/article`, extract: { markdown: false, clipSelector: '#pic' } })).rejects.toThrow();
-      process.env.ALLOW_LOCAL_FETCH = prevAllow;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
       const clip = await scraper.executeBrowserActions({ sessionId, extract: { markdown: false, clipSelector: '#pic' } });
       expect(redPixels(clip.screenshot!)).toBeGreaterThan(2000);
     } finally {
-      process.env.ALLOW_LOCAL_FETCH = prevAllow;
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow;
       await closeBrowserSession(sessionId);
     }
   }, 60_000);
@@ -230,7 +230,7 @@ describe('browser_action・inspect_image（手元のサーバー）', () => {
     const request = (BrowserActionRequestSchema.shape as any);
     expect(request.timeout.description).toContain('navigate');
     const step = BrowserActionStepSchema.shape as any;
-    expect(step.type.description).toContain('ALLOW_BROWSER_EVALUATE=true');
+    expect(step.type.description).toContain('SORA_BROWSER_ALLOW_EVALUATE=true');
     for (const action of ['click', 'fill', 'type']) expect(step.delay.description).toContain(action);
     expect(step.type.description).toContain('extract.screenshot');
   });

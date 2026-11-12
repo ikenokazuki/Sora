@@ -127,14 +127,14 @@ cloud（雲）も空にあり空は世界中繋がってます。
    - 海外製ツール（Firecrawl / Tavily）では対応できない「Yahoo! 知恵袋」「X (Twitter) リアルタイム速報」「気象庁公式オープンデータ直結（全国 1,805 市区町村自動選定）」「電車乗換案内」を単一 MCP で提供。
 2. **⚡ ミリ秒級の応答 & 低メモリ（2026-10-08 実測）**:
    - Bun ランタイムで、`/health` は 1ms 前後、起動から応答可能になるまで約 0.6 秒、起動直後の常駐メモリは約 160MB（静的取得後 約 200MB）。
-   - ブラウザ描画（SPA 昇格・`browser_action` 等）が必要になった時だけ Chromium が起動し（描画中は合計 約 950MB）、無操作 5 分（`BROWSER_IDLE_TTL_MS`）で閉じて約 200MB に戻ります。
+   - ブラウザ描画（SPA 昇格・`browser_action` 等）が必要になった時だけ Chromium が起動し（描画中は合計 約 950MB）、無操作 5 分（`SORA_BROWSER_IDLE_TTL_MS`）で閉じて約 200MB に戻ります。
 3. **📦 完全オールインワン & ゼロミドルウェア**:
    - Redis、PostgreSQL、外部ワーカーキュー等は一切不要。単一コンテナだけで即座に完結。
 4. **🛡️ Distroless（シェルなし）& 厳格なセキュリティ**:
    - ベースイメージに `gcr.io/distroless/cc-debian12` を採用。コンテナ内に `/bin/sh`, `bash`, `curl` 等が存在せず、RCE（任意コード実行）攻撃を無力化。
    - SSRF / DNS Rebinding 遮断、定数時間比較による Timing Attack 防止、ブラウザセッション所有権分離、DoS 防御（Body Limit 10MB）を標準装備。
 5. **🕹️ ステートフルなブラウザ操作 DSL**:
-   - `open` → `fill` → `click` → `screenshot` → `evaluate`（`evaluate` は `ALLOW_BROWSER_EVALUATE=true` のときだけ）の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
+   - `open` → `fill` → `click` → `screenshot` → `evaluate`（`evaluate` は `SORA_BROWSER_ALLOW_EVALUATE=true` のときだけ）の複数ターン対話型ブラウザセッションを API / MCP から直接制御。
 6. **⚡ 次世代スクレイピング＆構造化抽出エンジン (v2.13.0+)**:
    - **BrowserContext セッション分離 & アセット高速遮断**: 常駐 Chromium におけるセッションごとの完全隔離と、不要メディア・Webフォント・3Dモデル・広告トラッカーのネットワーク層即時遮断（転送量を大幅に削減。ページにより異なる）。CSS/JS は保持しレイアウト計算と不可視要素除外を担保。
    - **本文ベースの静止検知（SPA待機）**: 固定スリープを廃止し、見えている本文（長さ・先頭/中央/末尾・画像数）が 200ms 変化しなくなった時点で完了。多言語化ウィジェット等が属性だけを書き換え続けるページで、上限まで待たない。`networkidle` が来ないページも、`load` 後 5 秒で打ち切って現在の DOM から本文を取得。
@@ -172,7 +172,7 @@ cloud（雲）も空にあり空は世界中繋がってます。
 | 常駐メモリ（起動直後） | 約 160 MB | bun プロセスのみ（Chromium 未起動） |
 | 常駐メモリ（静的取得後） | 約 195 MB | `mode: fast` でスクレイプした後 |
 | 常駐メモリ（ブラウザ描画中） | 約 950 MB | bun 約 250MB + Chromium 約 700MB（7 プロセス） |
-| 常駐メモリ（無操作 5 分後） | 約 200 MB | Chromium 解放後（`BROWSER_IDLE_TTL_MS`） |
+| 常駐メモリ（無操作 5 分後） | 約 200 MB | Chromium 解放後（`SORA_BROWSER_IDLE_TTL_MS`） |
 | イメージサイズ | 約 750 MB | Bun + Chromium + 日本語フォント（展開後。圧縮して約 345 MB） |
 | 必要なコンテナ構成 | 単一コンテナ | Redis / PostgreSQL / ワーカーキュー不要 |
 | セキュリティ設計 | Distroless（シェルなし・非 root） | `gcr.io/distroless/cc-debian12` |
@@ -253,11 +253,11 @@ GitHub Container Registry (GHCR) から 1 コマンドで即座に起動でき�
 docker run -d \
   --name sora \
   -p 3016:8000 \
-  -e ENABLED_MODULES="all" \
+  -e SORA_MODULES="all" \
   ghcr.io/ikenokazuki/sora:latest
 ```
 
-APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
+APIキーによる認証は任意です。必要な場合のみ `-e SORA_API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
 
 > [!NOTE]
 > `localhost` / `127.0.0.1` / `[::1]` からの接続は、ホスト側のポート（上の例では 3016）が何であってもそのまま使えます。LAN の IP アドレス・公開ホスト名・リバースプロキシ経由で MCP（`/mcp`・`/sse`・`/message`）へ接続する場合は、`-e SORA_ALLOWED_HOSTS="sora.example.com"` を追加してください（ブラウザ上のクライアントから接続するなら `-e SORA_ALLOWED_ORIGINS="https://sora.example.com"` も）。許可されていない Host や Origin からの接続は 403 になり、応答の `hint` に設定すべき環境変数が示されます。
@@ -301,7 +301,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e API_KEY="...
 
 ## 2. 提供 MCP ツール一覧 (全 33 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `ENABLED_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`ENABLED_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-enabled_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`ENABLED_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-enabled_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`ENABLED_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-enabled_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `SORA_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`SORA_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-sora_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`SORA_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-sora_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`SORA_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-sora_modulesallhts-archive)）。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
@@ -361,7 +361,7 @@ Anthropic の Tool Search / progressive disclosure 設計原則を参考にし�
 └─────────────────┴───────────────────┴──────────────────┴─────────────────┴─────────────┴───────────────┴──────────────┴───────────┘
 ★ = 初期常時有効 (CORE: 13ツール: 機能 12 + search_tools) / ・ = search_tools により動的オンデマンド有効化 (DEFERRED: 20ツール)
 図は 8 列の簡略表示です。貿易の `generate_gcc_certificate`・Media（`inspect_image`）・YouTube（`get_youtube`）・Music・Intel（`research_country_context` / `get_country_context`）・公開 SNS（`search_social_posts` / `fetch_social_post`）の扱いは本文の一覧が正です。
-`browser_action` の JS 実行（`evaluate`）は、環境変数 `ALLOW_BROWSER_EVALUATE=true` のときだけ動きます（既定は拒否）。
+`browser_action` の JS 実行（`evaluate`）は、環境変数 `SORA_BROWSER_ALLOW_EVALUATE=true` のときだけ動きます（既定は拒否）。
 ```
 
 ### v5.0.0 への移行（旧ツール名 → 新ツール名）
@@ -409,13 +409,13 @@ v5.0.0 で、MCP のツールを用途ごとに 53 個から 33 個にまとめ�
 ### 💻 コード実行環境から使う (REST の直接呼び出し)
 `search_tools` は `detail`（`names` / `summary` / `schema`）と `activate:false` で、ツールを有効化せずに名前や入力スキーマだけを調べられます。コードを実行できる LLM には、MCP を直接呼ぶより REST を直接呼ぶ方法を案内します（言語は問いません。`GET /tools` で操作の一覧、`GET /tools/<name>` で入力のスキーマ、あとは一覧の `method` と `path` を呼びます）。結果の絞り込みや連鎖をコードで行い、モデルには必要な分だけ返せます（`search_deep` 上位 3 件で 27,892 → 934 文字）。手順・例・実測は [docs/code-execution.md](docs/code-execution.md)。instructions・`search_tools` の応答・MCP スキル `sora-client`（MCP リソース `sora-skill://sora-client`）から案内します（直接 MCP を呼ぶより優先）。
 
-### 🌐 Module 1: Core Web & Crawling (`ENABLED_MODULES=web`)
+### 🌐 Module 1: Core Web & Crawling (`SORA_MODULES=web`)
 Web 検索と本文スクレイピング、一括並行取得、深層統合検索、動的ツール発見、サイトマップ解析、再帰クロール。
 
 | ツール名 | 状態 | 説明 | 識別プロパティ | 主要引数 |
 |---|:---:|---|---|---|
 | `scrape` | **★ CORE** | 指定 URL の Web ページまたは PDF をスクレイピングし、本文をクリーンな Markdown に変換して返却します。動的・SPA サイトは DOM Quiescence（200ms静止検知）と一時 BrowserContext 分離により、不要アセットを高速遮断しながら安全に完全描画待機。イベント構造化（Schema.org Event/MusicEvent）、パンくず階層パス、テーブル結合セル（colspan/rowspan）の2D正規化、Smart Table Minimizer（空欄・冗長列自動パージ）、重要告知画像（チラシ・タイテ・図表）スコアリング、祖先見出し階層BM25（減衰係数0.6）に回答値の倍率を掛けたハイライト選択（長い節は Dinkelbach 法で情報密度が最大の区間を切り出す）、MMR 多様性選択、Temporal Context Anchor（相対日時の絶対解決）、Block Provenance 出所追跡（`[S1:P4]`）、読了時間、PII 保護に対応。画像・音声・動画のファイル（`Content-Type` が `image/`・`audio/`・`video/`。上限の 30MB を超えるものも）は中身を読まず、種類と大きさだけを返します（`contentStatus: "unavailable"`）。HTTP の状態が 400 以上のページ（ブロックやエラーの画面）は `contentStatus: "unavailable"` で返します（v2.48.0）。TikTok の動画の URL は、ブラウザで開いたページのデータから、説明文・投稿者・投稿日時と、TikTok の自動字幕（字幕のある動画だけ。`### 1m23s` の見出しで段落に分ける）を本文にして返します（約 10〜13 秒。v2.49.0）。 | `source: "web"` | - `url` (string): 対象 URL / PDF。`url` か `urls` のどちらか 1 つ<br>- `urls` (string[]): 複数ページの一括取得 (最大20件)。ドメインスロットリングを維持しながら並行取得し、`{ total, successful, failed, results, errors }` で返す（`results` は入力の順ではなく、取得が終わった順）<br>- `concurrency` (number, 任意, `urls` のときだけ): 並行ワーカー数 (デフォルト: 3, 最大: 5)<br>- `webhookUrl` (string, 任意, `urls` のときだけ): 完了時に、応答と同じ整形後の結果を 1 回だけ POST する URL<br>- `fullPage`・`keepDataImages` (boolean, 任意): `url` のときだけ<br>- `maxChars` (number, 任意): 最大文字数 (デフォルト: 30000。`urls` のときは 1 ページあたりで 50000 まで)<br>- `mode` (string, 任意): `"auto"` (デフォルト), `"fast"`, `"browser"`<br>- `formats` (string[], 任意): `["markdown", "html", "rawHtml", "links", "screenshot", "jsonLd", "images", "tables"]`（`html` は本文の HTML、`rawHtml` は取得したそのままの HTML）<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true)<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`（ハイライトがあれば content をハイライトに置き換える）<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `maskPii` (boolean, 任意): 個人情報自動マスキング<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る）<br>- `verbose` (boolean, 任意): 内部詳細メタデータを含めるか |
-| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。検索元（Yahoo! JAPAN）の順位のまま返します（`SORA_WEB_NATIVE_RANKING=false` のときだけ BM25 で並べ替えます）。ドメイン絞り込み・除外・期間指定に対応。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/web`）は `data` で包みます。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
+| `search_web` | **★ CORE** | **【万能Web検索・候補探索】** Web 検索を実行し、タイトル・概要スニペット・URL を高速取得します（省略時は高速軽量検索）。`formats: ["markdown"]` などを指定した場合は上位ヒット記事をインライン取得・スクレイプし、1回の呼び出しで本文まで返却可能です。検索元（Yahoo! JAPAN）の順位のまま返します。ドメイン絞り込み・除外・期間指定に対応。 MCP は `count`・`items` を最上位で返し、REST（`POST /search/web`）は `data` で包みます。 | `source: "web"` | - `query` (string, 必須): 検索キーワード<br>- `limit` (number, 任意): 取得件数 (最大: 20。formats指定時に省略した場合は5。formats未指定かつlimit省略時は軽量provider searchの既定結果件数を維持)<br>- `includeDomains` (string[], 任意): 絞り込むドメイン<br>- `excludeDomains` (string[], 任意): 除外するドメイン<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`)<br>- `formats` (string[], 任意): 出力形式 (例: `["markdown"]` 指定で上位ページを自動スクレイプして本文インライン返却)<br>- `maxChars` (number, 任意): formats 指定時の最大文字数<br>- `onlyMainContent` (boolean, 任意): 本文のみ抽出 (デフォルト: true) |
 | `search_deep` | **★ CORE** | **【万能深層Web検索・最新事実/スケジュール/イベント調査】** Web 検索＋上位サイト本文自動スクレイプ（Clean Markdown）＋X/Twitterリアルタイム速報を一度にまとめて取得（Firecrawl/Tavily互換）。MMR 多様性選択、Temporal Context Anchor、Smart Table Minimizer、深層エビデンス駆動リランキング（`rerankByDeepEvidence`）対応。返却量は `responseMode` で選択可能。既定は `evidence`（ハイライト中心。局所的事実の確認はこれで足りる）。全文要約・網羅的調査・複数観点の比較・ページ全体の文脈が必要な場合は `full` を指定（MCP・REST 共通）。`evidence` で根拠が不足・曖昧な場合は `full` または `formats: ["markdown"]` で再取得できます。根拠が足りているかは、応答の `contextSufficiency` で確認できます。 | Web: `source: "web"`<br>X: `source: "x"`<br>YouTube: `source: "youtube"` | - `query` (string, 必須): 検索キーワード。http(s) の URL を入れると、検索せずにその URL（最大 `limit` 件）を `scrape` と同じ方法で読んで返す（Web・X・動画の検索はしない。URL 以外の語はハイライトの選択に使う。v2.48.0）<br>- `limit` (number, 任意): 本文取得件数 (デフォルト: 5, 最大: 20)<br>- `responseMode` (string, 任意): `"evidence"` (デフォルト: 局所事実・ハイライト優先) または `"full"` (全文・網羅調査重視)<br>- `formats` (string[], 任意): 出力フォーマット（responseMode と直交して指定可能）<br>- `scrapeContent` (boolean, 任意): 本文を含めるか (デフォルト: true)<br>- `includeRealtime` (boolean, 任意): リアルタイム検索も含めるか (デフォルト: true)<br>- `realtimeFocus` (string, 任意): X 投稿で優先する発信者。`"official"`=本人・公式（予定・告知・事実確認）、`"public"`=本人以外（評判・感想・炎上・現地の様子）。省略時はクエリの語から判定（評判・炎上・口コミなどがあれば public）<br>- `realtimeAnchor` (string, 任意, 100字まで): X 検索で守る固有名詞（クエリ中の人名・グループ名・作品名・会場名など）。クエリの語に対応すれば推定より優先し、緩和検索でこの語を落とさない。対応する語が無ければ無視して推定する<br>- `realtimeLimit` (number, 任意, 1〜100, デフォルト: 20): 返す X 投稿の上限（公式の投稿は別枠）。省いた件数は `realtime.omittedCount`。20 より大きくすると取得も増やす（Yahoo の1回の取得は最大40件）<br>- `officialAccountId` (string, 任意): 公式XアカウントID<br>- `updated` (string, 任意): 期間指定 (`"all"`, `"day"`, `"week"`, `"year"`。`videos` の動画検索にも使う)<br>- `noCache` (boolean, 任意): キャッシュ迂回・強制最新取得<br>- `maxChars` (number, 任意): 各ページの markdown とハイライトの最大文字数 (デフォルト: 30000。`html` には効かない)<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で画像・動画の URL（X 投稿の `media`、各ページの `ogImage` と `media`、本文（Markdown）中の画像）を省く（`formats` の `rawHtml` の `<img>` は消さない。`html` は、記事以外のページでは画像が入らない）。ページを取るときにも false を渡すので、rs-trafilatura が画像を戻す 2 回目の取り出しは走らせない。画像の内容が必要な質問では省かない<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `adaptiveScrape` (boolean, 任意, デフォルト: false): 証拠不足時の追加取得を許可<br>- `scrapeBudget` (number, 任意, デフォルト: 8, 最大: 20): adaptive時の取得上限<br>- `scrapeDeadlineMs` (number, 任意, 0〜120,000, デフォルト: 0=無効): 本文取得の打ち切り上限（opt-in。遅いが本文のあるページも落ちるため、待ち時間を優先する場合のみ指定）。半数のページが揃ってから5秒待っても終わらないページ、または上限に達したページは打ち切り、`deadlineExceeded: true` とスニペット代替で返す（打ち切りを発動した応答はキャッシュせず、補充取得も `adaptiveScrape` の追加取得も行わない。打ち切った取得自体は継続しキャッシュに残る）<br>- `videos` (number, 任意, 0〜5, デフォルト: 0): 動画の中身が要るとき、Yahoo! 動画検索の上位の YouTube 動画の字幕を何本読んで `results` に足すか（`source: "youtube"`。動画検索は YouTube に絞る。Web 検索と並行して取得し、検索語に関係する部分が選ばれる。0 なら動画は検索しない。検索語に URL があるときは使わない）<br>- `maxTotalChars` (number, 任意, 1,000〜500,000): 全結果の本文 Markdown 合計の上限。上位ほど多く配分し、超過分は段落境界で切り詰めて `markdownTruncated: {totalChars, keptChars}` を付与（`highlights` は削らない。切り詰めのとき本文の塊を先に残し、ナビの塊（短いラベルのリンクだけの塊）を先に落とす。未指定なら制限なし） |
 | `search_tools` | **★ CORE** | **【追加ツール検索・動的有効化】** 現在 tools/list に表示されていない Sora の追加/deferred ツール（荷物追跡・音楽メタデータ・国会会議録・フライト運航状況・米国輸出通関詳細等）をキーワード検索し、現在の MCP セッション内で即座に有効化します。すでに tools/list に表示されているツール（天気・乗換・知恵袋・X速報等）は直接呼び出してください。サーバー設定で無効化されたモジュールのツールは search_tools では復活しません。 | - | - `query` (string, 必須): 検索キーワードまたはカテゴリ名 (例: `"荷物追跡"`, `"ヤマト"`, `"音楽"`, `"国会"`, `"trade"`, `"life"`) 任意引数 `detail`（`names` / `summary` / `schema`）で返す詳しさを、`activate:false` で有効化せずに調べるだけにできます。 |
 | `crawl_site` | ・ DEFERRED | 指定した URL 配下のページを再帰的にクロールし、複数ページの本文を一括収集します。`listOnly: true` のときは本文を取らず、sitemap.xml や内部リンクからサイト内の URL 一覧（サイトマップ）だけを高速抽出し、`{ url, links, count, source }` で返します。 | `source: "web"` | - `url` (string, 必須): クロール開始 URL（`listOnly` のときは対象のベース URL）<br>- `listOnly` (boolean, 任意, デフォルト: false): `true` で URL 一覧だけ。`limit`・`since`・`until` は `listOnly` のときだけ、下の巡回の引数は `listOnly` でないときだけ指定できる<br>- `limit` (number, 任意): URL 一覧の取得件数 (デフォルト: 200, 最大: 1000)。`since`・`until` で絞ってから件数で切る<br>- `since` / `until` (string, 任意): サイトマップの `lastmod` で絞る日付・日時。`lastmod` の無い URL は常に残り、サイトマップが無くリンクをたどる切り替えのときは効かない<br>- `maxPages` (number, 任意): 最大取得ページ数 (デフォルト: 10, 最大: 50)<br>- `maxChars` (number, 任意): 1 ページあたりの最大文字数 (デフォルト: 15000, 最大: 50000)<br>- `includePatterns` / `excludePatterns` (string[], 任意): たどる URL のパスを絞る・除くワイルドカード (例: `["/docs/**"]`・`["/tag/**", "*.pdf"]`。起点の URL は常に取る)<br>- `formats` (string[], 任意): 取得する形式 (デフォルト: `["markdown"]`)。`screenshot` を指定すると各ページ（最大 50）に全画面の画像が付き、応答が大きくなります<br>- `query` (string, 任意): ハイライトの検索語<br>- `responseMode` (string, 任意): `"full"` (デフォルト) または `"evidence"`<br>- `annotateTemporal` (boolean, 任意): 相対日時の絶対解決注記 [YYYY-MM-DD]<br>- `highlightMaxCount` (number, 任意, 1〜10): ハイライトの件数。省略時は上位 3 件に、合計約 1,600 字に収まる節を足し (8 件まで)、拾えていない検索語を含む節も 1 つ足す。指定するとその件数まで<br>- `includeMedia` (boolean, 任意, デフォルト: true): `false` で本文（Markdown）の画像を `[画像: alt]` にし、`ogImage` と `media` を省く（`formats` の `images` は残す。`rawHtml` の `<img>` は消さない。`html` は、記事以外のページ（rs-trafilatura の本文を使うページ）では `false` のとき画像を戻さないので画像が入らず、記事（Readability の本文）では残る） |
@@ -427,7 +427,7 @@ Web 検索と本文スクレイピング、一括並行取得、深層統合検�
 
 有効化状態はMCPセッションごとに分離されます。`initialize` の応答で受け取った `Mcp-Session-Id` を後続の要求に付けると、そのセッション内で追加ツールを利用できます。同じAPIキーを使う別接続や、別の匿名接続には引き継がれません。切断・セッション期限切れ・再接続後は `search_tools` で再度有効化してください。セッションIDを持つ要求は、作成時と同じAPIキー（匿名の場合は匿名接続）で送信してください。
 
-セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_DEFER_TOOLS=false` は従来どおり正式名の全33ツールを公開します。
+セッションIDを付けない単発要求では有効化状態を保存せず、`tools/list` は初期公開の13ツールを返します。既知の遅延ツール名と入力スキーマを使った `tools/call` は、その要求内だけで実行できます（`default.` 互換名も対応）。`search_tools` の呼び出しは後続の別要求の一覧を変更しません。どちらの接続方式でも無効モジュールのツールは利用できません。`SORA_MCP_DEFER_TOOLS=false` は従来どおり正式名の全33ツールを公開します。
 
 エージェントや RAG アプリケーションで Web 検索・スクレイピング・クロールを活用する際、取得件数（`limit`）の設定によってレイテンシや回答品質が大きく変化します。
 
@@ -496,16 +496,16 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 🤖 Module 2: Browser Actions & Automation (`ENABLED_MODULES=browser`)
-フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行（`ALLOW_BROWSER_EVALUATE=true` のときだけ）、スクリーンショット撮影、マルチターン対話セッション。
+### 🤖 Module 2: Browser Actions & Automation (`SORA_MODULES=browser`)
+フォーム入力、ボタンクリック、画面スクロール、JavaScript 実行（`SORA_BROWSER_ALLOW_EVALUATE=true` のときだけ）、スクリーンショット撮影、マルチターン対話セッション。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行・ページ遷移）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」や `sessionId` によるマルチターン対話セッション維持に対応。 | `source: "browser"` | - `url` (string, 任意): 開始/遷移 URL<br>- `sessionId` (string, 任意): 既存セッションID<br>- `createSession` (boolean, 任意): セッションを作成・維持するか<br>- `closeSession` (boolean, 任意): セッションを終了するか<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`（`ALLOW_BROWSER_EVALUATE=true` のときだけ）, `navigate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): ページ遷移（最初の URL・`navigate`）の待ち時間 ms。全体の制限時間ではない |
+| `browser_action` | Web ページを開き、指定された一連のアクションシーケンス（クリック・文字入力・キー押下・スクロール・待機・スクショ・JS実行・ページ遷移）を実行して最終画面の Markdown や Base64 スクリーンショットを返却。ボタンの「表示テキスト指定クリック」や `sessionId` によるマルチターン対話セッション維持に対応。 | `source: "browser"` | - `url` (string, 任意): 開始/遷移 URL<br>- `sessionId` (string, 任意): 既存セッションID<br>- `createSession` (boolean, 任意): セッションを作成・維持するか<br>- `closeSession` (boolean, 任意): セッションを終了するか<br>- `actions` (array, 任意): 実行アクション一覧 (`click`, `fill`, `press`, `select`, `scroll`, `wait`, `evaluate`（`SORA_BROWSER_ALLOW_EVALUATE=true` のときだけ）, `navigate`)<br>- `extract` (object, 任意): `{ markdown: true, screenshot: true, html: false }`<br>- `timeout` (number, 任意): ページ遷移（最初の URL・`navigate`）の待ち時間 ms。全体の制限時間ではない |
 
 ---
 
-### 🇯🇵 Module 3: Yahoo! JAPAN Services (`ENABLED_MODULES=yahoo`)
+### 🇯🇵 Module 3: Yahoo! JAPAN Services (`SORA_MODULES=yahoo`)
 日本のメディア・Q&A・トレンド・リアルタイム情報に完全特化した検索群。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -521,7 +521,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 🗾 Module 4: Japan Daily Life & Transit (`ENABLED_MODULES=life`)
+### 🗾 Module 4: Japan Daily Life & Transit (`SORA_MODULES=life`)
 日本の公共交通・気象庁公式オープンデータに直結した生活インフラ機能。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -535,7 +535,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 🚨 Module 5: Disaster, Geo & Address (`ENABLED_MODULES=disaster`)
+### 🚨 Module 5: Disaster, Geo & Address (`SORA_MODULES=disaster`)
 気象庁公式特別警報・気象警報・注意報および気象庁の公式地震情報（使えない間は P2P地震情報）、デジタル庁アドレス・ベース・レジストリ（ABR）/ 日本郵便の一次データを用いた住所正規化・郵便番号・逆ジオコーディング。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -547,7 +547,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 👁️ Module 6: Watch & Diff Monitoring (`ENABLED_MODULES=watch`)
+### 👁️ Module 6: Watch & Diff Monitoring (`SORA_MODULES=watch`)
 汎用 Web ページ監視プリミティブ。URL / セレクタごとの差分検知（`watch` の `action: "check"` を呼んだときに前回と比べる。自動の巡回は無い）、SQLite 履歴永続化、差分があったときの Webhook 通知。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -556,7 +556,7 @@ LLM の待ち時間は「サーバーの取得時間」と「LLM に渡る量（
 
 ---
 
-### 🎵 Module 7: Music Metadata (`ENABLED_MODULES=music`)
+### 🎵 Module 7: Music Metadata (`SORA_MODULES=music`)
 iTunes 公式 Search API と連携した楽曲・アルバム・アーティストのメタデータ検索（法的リスクゼロ）。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -565,7 +565,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 ---
 
-### 🏛️ Module 8: Government & Law Data (`ENABLED_MODULES=gov`)
+### 🏛️ Module 8: Government & Law Data (`SORA_MODULES=gov`)
 デジタル庁・総務省公式 e-Gov 法令 API v2 および 国立国会図書館公式 API と連携した日本の法令条文検索・国会審議発言録全文検索（完全無料・登録不要）。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -575,7 +575,7 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 ---
 
-### 🚢 Module 9: Trade Compliance (`ENABLED_MODULES=trade`)
+### 🚢 Module 9: Trade Compliance (`SORA_MODULES=trade`)
 米国向け輸出入コンプライアンス判定（商品情報からのHTSコード自動推測、2026年7月 CPSC適合証明書eFiling完全義務化 & ACE免責Disclaimer判定、FDA実務PGAフラグFD1〜FD4判定、CPSC一般適合証明書（GCC）の作成、2026 HTS Revision 18・Chapter 99特別関税対応）。いずれも参考情報であり法的助言ではありません。
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
@@ -591,14 +591,14 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 ## 3. REST API 仕様
 
-### 🖼️ Module 10: Media Inspection (`ENABLED_MODULES=media`)
+### 🖼️ Module 10: Media Inspection (`SORA_MODULES=media`)
 画像の取得・解析（チラシ・時刻表・告知・ポスター等の視覚情報抽出）。`web` モジュール有効時も利用可能です。
 
 | ツール名 | 説明 |
 |---|---|
 | `inspect_image` ・ DEFERRED | 画像URLから視覚情報を抽出します。`search_tools` で有効化してください。REST: `POST /media/inspect-image` |
 
-### 🌍 Module 11: Country & Region Intelligence (`ENABLED_MODULES=intel`)
+### 🌍 Module 11: Country & Region Intelligence (`SORA_MODULES=intel`)
 証拠基盤の国・地域コンテキスト調査。評価・推奨は含みません。詳細は「🌍 Country Intelligence」章を参照ください。
 
 | ツール名 | 説明 |
@@ -606,8 +606,8 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `research_country_context` ・ DEFERRED | 指定国・地域の政治・経済・安全・災害・保健・旅行等の分野横断調査。初回は代表証拠、全件はcontextId参照 |
 | `get_country_context` ・ DEFERRED | 保存済みコンテキストの取得。`part` で選ぶ（`report`（既定）: レポート全体、`evidence`: 証拠明細（`evidenceIds`・`limit`）、`updates`: 更新差分。`evidence` と `updates` は `cursor` で続きを読む） |
 
-### 🎤 Module 12: Lyrics (`ENABLED_MODULES=all,lyrics`)
-歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+### 🎤 Module 12: Lyrics (`SORA_MODULES=all,lyrics`)
+歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**自己責任・個人利用向けの機能で、`all` には含まれません。** `SORA_MODULES` に `lyrics` を名前で挙げたときだけ、MCP ツールと REST の `/lyrics` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
 
 - 歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。利用の責任は利用者にあります。応答の `notice` にも同じ注意を入れています。
 - 取得元は 3 つで、効率のよい順に引きます。まず LRCLIB（利用者投稿の歌詞データベース。キー不要。Web 検索を使わず速い）、無ければ AWA の公開の曲ページ（検索 1 回とページ 1〜2 枚で済む）、それでも無ければ TuneCore Japan の LinkCore（複数のリリースページをたどるので遅い）です。AWA と LinkCore は地下アイドル・インディーズ向けです。LinkCore は、権利者が TuneCore に歌詞を登録した曲だけが対象です（著作権管理団体の管理曲は出ません）。AWA の利用規約は、私的利用の範囲を超える複製・公衆送信を禁じているので、個人利用に限ってください。AWA や TuneCore 経由で探すには `artist` が必須です。
@@ -618,14 +618,14 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 | `get_lyrics` ・ DEFERRED | 歌手・曲名から歌詞全文を取得します。見つからないときは `reason`（`no-match` / `no-lyrics-registered` / `search-unavailable`）と `candidates` を返します。 | `source: "lyrics"` | - `title` (string, 必須)<br>- `artist` (string, 任意。AWA・TuneCore 経由では必須)<br>- `noCache` (boolean, 任意) |
 
 ```bash
-docker run -d -p 3016:8000 -e ENABLED_MODULES="all,lyrics" ghcr.io/ikenokazuki/sora:latest
+docker run -d -p 3016:8000 -e SORA_MODULES="all,lyrics" ghcr.io/ikenokazuki/sora:latest
 
 curl -X POST http://localhost:3016/lyrics \
   -H 'content-type: application/json' \
   -d '{"title": "曲名", "artist": "歌手名"}'
 ```
 
-### 🎬 Module 13: YouTube (`ENABLED_MODULES=youtube`)
+### 🎬 Module 13: YouTube (`SORA_MODULES=youtube`)
 YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明文・チャプターと、時刻つきの字幕を返します（API キー不要）。Gemini のように動画を直接読めない AI でも、この字幕から動画の内容を要約・抽出できます。要約は呼び出し側の AI が書きます（Sora は LLM を持ちません）。チャンネルの URL・@ハンドルからは、最新の動画の一覧を返します（同じ `get_youtube` が `url` の形で判別します。字幕は一覧の `videoId` を `url` に渡して読みます）。
 
 - 字幕は手動の字幕を優先し、無ければ YouTube の自動字幕（音声認識）を返します。自動字幕は `transcript.source: "auto"` と `note` で明示します。聞き間違いを含み、固有名詞や句読点が正しくないことがあります。
@@ -640,8 +640,8 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 |---|---|---|
 | `get_youtube` ・ DEFERRED | `url` が動画なら字幕・説明文・チャプター、チャンネルなら最新の動画（題名・公開日・説明文の先頭・視聴回数）を新しい順に取得します。応答の `mode`（`video` / `channel`）でどちらかを示します。どちらでもない `url` は、使い方を示すエラーです。`search_tools` で有効化してください。REST: `POST /youtube/transcript`（動画）・`POST /youtube/channel`（チャンネル） | - `url` (string, 必須。動画の URL か 11 文字の動画 ID、またはチャンネルの URL・@ハンドル・UC… の ID)<br>- `lang` (string, 任意。既定 `ja`。動画のときだけ)<br>- `fromSec` (integer, 任意。読み始める秒。動画のときだけ)<br>- `maxChars` (integer, 任意。動画のときだけ)<br>- `limit` (integer, 任意。1〜15、既定 10。チャンネルのときだけ)<br>- `noCache` (boolean, 任意) |
 
-### 🎧 Module 14: Song Recognition (`ENABLED_MODULES=all,shazam`)
-音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_music` の `items` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
+### 🎧 Module 14: Song Recognition (`SORA_MODULES=all,shazam`)
+音声・動画ファイルの音から、流れている曲を Shazam で特定し、iTunes の曲（`search_music` の `items` と同じ形。trackId・ジャケット・30 秒試聴 URL・Apple Music のリンク）とつないで返します。**`all` には含まれません。** 公開された API ではなく、Shazam の iPhone アプリと同じ窓口を使うため、`SORA_MODULES` に `shazam` を名前で挙げたときだけ、MCP ツールと REST の `/music/recognize` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、ツールは登録されず、REST は 404（`MODULE_DISABLED`）を返します。
 
 - 音は、音声・動画ファイルの URL（mp3・m4a・wav・ogg・webm・flac・mp4 など。20 MB まで）か、REST へのアップロード（multipart の `file`、10 MB まで）で受け取ります。YouTube などの動画のページからは音を取りません。
 - 音は同梱の Chromium の Web Audio で 16 kHz・モノラルにし、12 秒の窓から Shazam の指紋を作って送ります（[omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper) の `sigx.py`、MIT を移植）。`offsetSec` を省略すると、長い音は真ん中、続けて先頭から 12 秒ずつ、最大 3 回試します。
@@ -654,13 +654,13 @@ YouTube の動画 URL から、題名・投稿者・公開日・長さ・説明�
 | `recognize_song` ・ DEFERRED | 音から曲を特定し、iTunes の曲とつなぎます。特定できないときは `reason`（`no-match` / `not-audio` / `too-short` / `too-large` / `download-failed`）を返します。`search_tools` で有効化してください。REST: `POST /music/recognize` | - `url` (string, 必須。音声・動画ファイルの URL)<br>- `offsetSec` (integer, 任意。聞き始める秒)<br>- `country` (string, 任意。既定 `jp`)<br>- `noCache` (boolean, 任意) |
 
 ```bash
-docker run -d -p 3016:8000 -e ENABLED_MODULES="all,shazam" ghcr.io/ikenokazuki/sora:latest
+docker run -d -p 3016:8000 -e SORA_MODULES="all,shazam" ghcr.io/ikenokazuki/sora:latest
 
 curl -X POST http://localhost:3016/music/recognize -F file=@clip.m4a -F offsetSec=0
 ```
 
-### 📦 Module 15: HTS Release Archive (`ENABLED_MODULES=all,hts-archive`)
-米国 USITC の HTS（関税率表）の全件の JSON を、版ごとに保存します。HTS は年に 20〜30 回改訂されますが、USITC の API は現行版の全件しか返さず、過去の版は類ごとの PDF でしか取れません。改訂の前後を比べたいときに使います。**`all` には含まれません。** 1 日 1 回 USITC から全件を取る常駐の処理を伴うため、`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ、確認のタイマーと REST の `/trade/hts/releases` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、起動時の処理・タイマー・取得はなく、REST は 404（`MODULE_DISABLED`）を返します。MCP のツールはありません。
+### 📦 Module 15: HTS Release Archive (`SORA_MODULES=all,hts-archive`)
+米国 USITC の HTS（関税率表）の全件の JSON を、版ごとに保存します。HTS は年に 20〜30 回改訂されますが、USITC の API は現行版の全件しか返さず、過去の版は類ごとの PDF でしか取れません。改訂の前後を比べたいときに使います。**`all` には含まれません。** 1 日 1 回 USITC から全件を取る常駐の処理を伴うため、`SORA_MODULES` に `hts-archive` を名前で挙げたときだけ、確認のタイマーと REST の `/trade/hts/releases` が有効になり、OpenAPI 仕様書にも現れます。挙げなければ、起動時の処理・タイマー・取得はなく、REST は 404（`MODULE_DISABLED`）を返します。MCP のツールはありません。
 
 - 起動から 1 分後に 1 回、そのあと 24 時間ごとに、全件の JSON（`exportList`、gzip の転送で約 640KB）を取ります。
 - 版が変わったかどうかは、中身だけで決めます。`records` をキーを並べ替え、空白を入れない JSON にした SHA-256 が、最後に保存した版と同じなら何もしません。版の一覧（`releaseList`）は、データの更新と同時に書き換わるとは限らないためです（例: Revision 22 は一覧の日付が 10/26、適用の開始が 10/30）。
@@ -668,7 +668,7 @@ curl -X POST http://localhost:3016/music/recognize -F file=@clip.m4a -F offsetSe
 - 保存先は `SORA_HTS_DIR` の `releases/` です。1 版あたり gzip で約 700KB で、保存した版は消しません。取得に失敗したら一覧の `lastError` に残し、次の確認で取り直します。
 
 ```bash
-docker run -d -p 3016:8000 -e ENABLED_MODULES="all,hts-archive" ghcr.io/ikenokazuki/sora:latest
+docker run -d -p 3016:8000 -e SORA_MODULES="all,hts-archive" ghcr.io/ikenokazuki/sora:latest
 
 curl http://localhost:3016/trade/hts/releases
 curl --compressed http://localhost:3016/trade/hts/releases/2026HTSRev23 -o 2026HTSRev23.json
@@ -696,7 +696,7 @@ curl --compressed http://localhost:3016/trade/hts/releases/2026HTSRev23 -o 2026H
 ```
 
 #### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
-SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
+SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
 ```json
 {
   "status": "ok",
@@ -904,7 +904,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 > - MCP の `scrape` の `urls`・`/scrape/batch`: 応答と同じ整形後の結果 `{ total, successful, failed, results: [...], errors: [{ url, error }] }`（`results` の各項目は `/scrape` と同じ整形。`verbose: true` のときは整形しません）。
 > - `/crawl`・`/crawl/stream`: 応答と同じ `{ url, baseUrl, count, totalPages, pages: [...] }`（`pages` の各項目は `/scrape` と同じ整形。`links` は `formats` に `links` を指定したときだけ付きます）。
 > - 差分監視（`watch` の `action: "check"`・`/watch/check`）: `{ event: "watch.diff_detected", targetId, url, title, diffSummary, currentHash, timestamp }`。
-> - 管理者アラート（`ADMIN_ALERT_WEBHOOK_URL`）: `{ event: "sora.alert.health.degraded", service: "sora", level: "warning", timestamp, details }`。
+> - 管理者アラート（`SORA_ALERT_WEBHOOK_URL`）: `{ event: "sora.alert.health.degraded", service: "sora", level: "warning", timestamp, details }`。
 > 
 > **🛡️ PII 自動マスキング (`maskPii: true`)**: メールアドレス、日本の電話番号、クレジットカード番号（Luhn検証）などの機密情報を自動で `[EMAIL]`, `[PHONE]`, `[CREDIT_CARD]` に伏字化して LLM への送信を保護します。本文とハイライトのほか、`title`・`description`・`author`・`siteName`・`html`・`rawHtml`・`tables`・`extracted`・`jsonLd`・`events`・`breadcrumb`・`images` の `alt`/`title`/`caption`・`mailto:`/`tel:` のリンク・（`verbose` の）`evidence`・PDF の `metadata`・動画のチャプターの題にもかけます。`links` と `images` の `url`、`jsonLd`・`events` の中の URL の文字列（`http(s)://` で始まり、空白と `@` を含まないもの）、`socialLinks`・`ogImage`・`twitterHandle` は、数字の並びを電話番号と取り違えて壊さないよう、マスクしません（`extracted` の中の文字列は、URL もほかの文字列と同じくマスクの対象です）。表の見出しが隠したあとにぶつかるときは、2 列目以降に `_2`・`_3` を付けて列を残します。`screenshot` の画像はマスクしません。
 > 
@@ -1296,7 +1296,7 @@ Web ページを開き、クリック・テキスト入力・スクロール・�
   - OR・URL条件・引用符を含む複雑な式は、意味を変える自動relaxを行わず原式の単発取得になります。
   - **固有名詞を守る緩和 (v2.36.0)**: 原式で全語の揃う投稿が無いとき、語を1つ落として再検索します。このとき、Web 検索上位のタイトルと X の総ヒット数から固有名詞（例: `ライブ 予定 =LOVE` の `=LOVE`）を判定し、固有名詞を落とす再検索はしません（語順は問いません）。最後の再検索は固有名詞だけで行います。
     - Yahoo が記号を無視して別物を返す固有名詞（`=LOVE` が「LOVE」一般の投稿になる等）は、公式 X アカウントの投稿のハッシュタグから別名（`イコラブ`）を見つけて検索し、固有名詞も別名も含まない投稿を除きます。
-    - 判定に Web 検索を1回使います（原式で揃った場合は行いません）。評価セットの12クエリ（固有名詞の位置を変えたもの）の実測では、固有名詞か別名を含む投稿の割合が 24% → 100%、X への検索回数が 38 → 30 回になりました。緩和が必要なクエリでは所要時間が約 0.4〜1.3 秒増えます（原式で揃うクエリは変わりません）。`SORA_REALTIME_ANCHOR=off` で従来の動作に戻せます。
+    - 判定に Web 検索を1回使います（原式で揃った場合は行いません）。評価セットの12クエリ（固有名詞の位置を変えたもの）の実測では、固有名詞か別名を含む投稿の割合が 24% → 100%、X への検索回数が 38 → 30 回になりました。緩和が必要なクエリでは所要時間が約 0.4〜1.3 秒増えます（原式で揃うクエリは変わりません）。
     - 呼び出し側が固有名詞を指定できます（`search_realtime` の `anchor`、`search_deep` の `realtimeAnchor`、v2.38.0）。指定がクエリの語に対応すれば推定より優先し、判定のための Web 検索と総ヒット数の取得を省きます。辞書や総ヒット数では見分けにくい語（「出演時間」と「君と見るそら」はどちらも X で約400件）でも守れます。クエリの語に無い指定は無視して推定します。
   - 応答の `missingTerms` は、1件の投稿に揃って現れなかったクエリ語です（空なら省略）。`aliasTerms` は固有名詞の代わりに検索した別名です（使った時のみ）。
   - **誰の投稿を優先するか (`focus`, v2.36.1)**: `official`（本人・公式。予定・告知・事実確認）か `public`（本人以外。評判・感想・炎上・現地の様子）。省略時はクエリに「評判・口コミ・感想・反応・炎上・批判」などがあれば `public`、無ければ `official` です。`public` では、評判系の語（評判・口コミ・感想・反応・炎上・批判など）を必須の語にしません。投稿にほぼ書かれない語（評判・口コミ）は検索語から外し、投稿にも書かれる語（感想・反応・炎上など）は、その語つきの検索と語なしの検索を並行して行い、語つきの投稿を先に並べます。上限を超えるときは同じ投稿者の投稿を後回しにして選び、`search_deep` では本人の投稿を後ろに最大2件へ下げます。適用した方は応答の `focus` に入ります。
@@ -2273,7 +2273,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 - Region links: every evidence carries `regionLink` (`direct`/`related`/`candidate`/`unrelated`/`unknown`) with reasons plus `acquisition` (provider, record id, query, collection scope). `keyEvents` and all counts use only `direct`/`related`. Only region-query prose lands in `domainContext.general.candidateFactors`; unattributed global-feed records stay evidence-only. Empty domains return `factors_missing` instead of falling back to everything.
 - Events keep per-record identity: same provider with different stable event ids never merges on title alone; records more than 72h apart never merge without a shared stable id. Occurrence/publication/update timestamps are stored separately (`timeBasis: structured|published`). Out-of-window finished events drop out; disasters continuing into the window stay.
 - Coverage semantics: per-area `good`/`partial`/`limited`, `missingEvidence` lists areas without evidence, `unavailableProviders` lists failed providers. One provider failure yields a partial report, never 500.
-- Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries) become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
+- Providers: GDELT Events export files (in-memory yauzl unzip, no external `unzip`; DOC excluded from defaults until upstream recovers — return condition: DOC p95 under 8s for three consecutive days via `bun run test:intel:live`), GDACS API (8s) with one RSS fallback incl. timeouts (18s cap; `GDACS_API_FALLBACK_RSS`), USGS, EONET (both with ISO place-name attribution and coordinates preserved), region-matched news RSS (3 global + 10 regional: Al Jazeera/DW/France24/CBC/ABC-AU/NDTV/Yonhap/SCMP/Straits-Times/Nikkei-Asia; globals + country match, max 6 per request; live-verified 2026-09-22), official web search (Yahoo web search with region-dropping fallback disabled; curated official-domain seeds in `official_domains.ts` (37 domains, 20 countries) become verified `manual_seed` sources for pass-2 `site:` queries and `official_evidence`; Yahoo realtime never used, including Japan), Bluesky request search (public AppView `searchPosts`, latest 25, 8s cap; `includeSocial: true` to enable, `SORA_INTEL_BLUESKY_DIDS` to restrict authors; 2026-09-22 observed: searchPosts returns 403 from server networks while other public endpoints return 200, so failures surface as provider errors and authenticated access is future work), World Bank (6 indicators with series), Nager holidays (with scope details), Wikidata (source discovery only), Google News country-edition RSS (q prefers the planned request query, region-name fallback; region-derived gl/hl/ceid, max 15), Wikipedia Current Events region bullets (MediaWiki API, max 10; live-verified), GDELT media-tone metric (AvgTone avg, no new fetch). Pass1 covers up to 16 providers, Baidu realtime hot list (CN-only, rank + hot index + tag; JSON API first, HTML second, TopHub mirror last with per-stage 5s/5s/8s timeouts and a 20s provider cap, keyless; direct verified from alternate egress, currently both direct and mirror are bot-gated from the JP verification network so failures stay honest errors); so360 query search (CN-only, 360 Search SSR with cookie-following redirect, data-mdurl publisher URLs, max 10, 14s cap; live-verified from JP network). Google News evidence uses source publisher URLs. Yahoo web search falls back to direct fetch when the MCP binary is rate-limited (429). Dropped: Google Trends daily (endpoint retired, persistent 404). Local processing failures surface as `PROVIDER_LOCAL_*`, never as fake upstream 5xx.
 - Report v3 (`schemaVersion: "3"`, v2 still readable): first response embeds `evidenceDetails` for everything it cites plus an `enrichment` outcome. Article bodies are fetched by default with the built-in scraper (fast mode, no browser; `SORA_INTEL_SCRAPE=off` disables, falling back to an explicit `article_enrichment_unavailable` limitation). `SORA_INTEL_WEB_SEARCH=off` stops the `official_web` provider's real web search (the provider stays in the run and returns no items); tests use it to stay offline. Enrichment order is region link, then article count, then recency. Scraped headlines for title-less records land in `resolvedTitle` and lead the factor text. Headline-less GDELT rows resolve their `SOURCEURL` the same way. `actualWindows` derives from each provider's declared collection window (24h feeds / latest-15min exports never claim a full 30d). Whole-request deadline defaults to 29s (collection ≤18s worst case, enrichment bounded: 12 items, 3 concurrent, 4s each).
 - MCP (`intel`, `search_tools` keyword country): `research_country_context`, `get_country_context` (`part`: `report` (default), `evidence`, `updates`). Both return text JSON plus validated `structuredContent`. REST mirrors the parts: `GET /intelligence/context/:contextId` and `/evidence|updates`. Evidence by id: REST `ids` (comma separated) is MCP `evidenceIds` (array); ids not in the report come back in `missingIds`, and more ids than `limit` continue through `nextCursor` (pass the same ids with `cursor`).
 - No sentiment, hostility, anti-Japan, safety, or risk scores by design.
@@ -2286,7 +2286,7 @@ Evidence-backed country context via `POST /intelligence/country` and deferred MC
 
 ### 3.28 Retrieval v2 / Security
 
-単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数クエリ統合は `SORA_WEB_QUERY_UNION=true` で有効化し、加重 RRF（original 1.0、fallback/rescue 0.6）で統合します。scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・スクレイプの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
+単一 SERP はプロバイダ順を保持し、全体の BM25 並べ替えを行いません（診断・deep 選択用の局所スコアのみ）。X は recent/popular の意味を保つネイティブ順を維持し、汎用 Web リランカーで置き換えません。複数の候補クエリは順に試し、最初に結果のあったものを使います。最初の結果が弱いときだけ 1 回追加で検索し、加重 RRF（original 1.0、rescue 0.6）で統合します。scrape 失敗時は有効コンテンツ基準で補充します。認証付き scrape は共有キャッシュを使わず、クロスオリジン redirect では認証系ヘッダを除去します。`adaptiveScrape` はリクエスト単位の opt-in（デフォルト off）です。Yahoo 上流の 429 対策として共有ゲート＋ブレーカー＋429 後 fan-out 停止を備え、live 評価は間隔を空けた少量実行としてください。詳細は [docs/retrieval-v2-dod.md](docs/retrieval-v2-dod.md) と [docs/retrieval-v2-rollout.md](docs/retrieval-v2-rollout.md) を参照してください。検索・スクレイプの仕組みは [docs/search-scrape-mechanics.md](docs/search-scrape-mechanics.md) にまとめています。
 
 ### 3.29 Deep Search v2.32.0: 日付と追加取得
 
@@ -2316,7 +2316,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 コード実行環境から、言語を問わず（curl・Python・Node など）REST を直接呼べるように、操作の一覧と 1 つ分の定義を返します。
 
-- `GET /tools`: `{ count, tools: [{ name, method, path, category, summary }] }`。`?q=`（空白で区切った語をすべて含むもの。名前・パス・カテゴリ・概要を、大文字小文字を区別せずに見ます）と `?category=` で絞れます。`ENABLED_MODULES` で無効なモジュールの操作は出ません。`name` は OpenAPI の `operationId` と同じです。
+- `GET /tools`: `{ count, tools: [{ name, method, path, category, summary }] }`。`?q=`（空白で区切った語をすべて含むもの。名前・パス・カテゴリ・概要を、大文字小文字を区別せずに見ます）と `?category=` で絞れます。`SORA_MODULES` で無効なモジュールの操作は出ません。`name` は OpenAPI の `operationId` と同じです。
 - `GET /tools/<name>`: 入力のスキーマ（`request.schema`）、path・query の引数（`parameters`）、文書にあるエラー（`errors`）、別名・GET の形・SSE の形（`alternatives`）を返します。成功時の応答のスキーマは大きいことがある（最大 約 70KB）ので、`?response=true` のときだけ付きます。一覧に無い名前は 404（`NOT_FOUND`）。
 - 認証は他の REST と同じです（`Authorization: Bearer` または `X-API-Key`）。
 - REST の操作の失敗は、HTTP の 4xx / 5xx と、共通の `{ error, code, status, retryable, details? }`（401・403・413・429 も同じ形。HTML の `GET /t/…` のページは除く）。
@@ -2326,7 +2326,7 @@ REST `POST /search`（別名 `/search/deep` / `/search/integrated` / `/deep-sear
 
 ### 3.31 歌詞全文取得 (`POST /lyrics`, v2.42.0, 自己責任・明示オプトイン)
 
-歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**`ENABLED_MODULES` に `lyrics` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 12: Lyrics」を参照してください。歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。
+歌手／グループ名と曲名から歌詞全文を取得します（API キー不要）。**`SORA_MODULES` に `lyrics` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 12: Lyrics」を参照してください。歌詞は著作物です。個人利用の範囲で使い、再配布・公開しないでください。
 
 - **リクエスト** (`POST /lyrics`):
   ```json
@@ -2433,7 +2433,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 
 ### 3.34 音から曲を特定 (`POST /music/recognize`, v2.51.0, 明示オプトイン)
 
-音声・動画ファイルの音から曲を Shazam で特定し、iTunes の曲とつなぎます。**`ENABLED_MODULES` に `shazam` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 14: Song Recognition」を参照してください。
+音声・動画ファイルの音から曲を Shazam で特定し、iTunes の曲とつなぎます。**`SORA_MODULES` に `shazam` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。設定は「Module 14: Song Recognition」を参照してください。
 
 - **リクエスト**: JSON の `{ "url": "https://…/clip.m4a", "offsetSec": 0, "country": "jp" }`、または multipart/form-data の `file`（ほかの引数は同じ名前の欄。10 MB まで）。
 - **レスポンス**（当たったとき）:
@@ -2463,7 +2463,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 
 ### 3.35 HTS の版の保存 (`GET /trade/hts/releases`, `GET /trade/hts/releases/:id`, v5.0.0, 明示オプトイン)
 
-保存した HTS の版の一覧と、1 つの版の全件を返します。**`ENABLED_MODULES` に `hts-archive` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。保存の仕組みは「Module 15: HTS Release Archive」を参照してください。
+保存した HTS の版の一覧と、1 つの版の全件を返します。**`SORA_MODULES` に `hts-archive` を名前で挙げたときだけ有効**です（`all` には含まれません）。挙げなければ 404（`MODULE_DISABLED`）を返し、この仕様書（`/openapi.json`）にも現れません。保存の仕組みは「Module 15: HTS Release Archive」を参照してください。
 
 - **`GET /trade/hts/releases`**: `{ "checkedAt", "lastError", "releases": [...] }`。`checkedAt` は最後に確かめた時刻、`lastError` は最後の確認の失敗（成功なら `null`）です。まだ 1 度も確かめていなければ `{ "checkedAt": null, "lastError": null, "releases": [] }` です。
   - `releases` は新しく保存したものが先頭で、各行は `id`（保存した版の名前）、`release`（取得したときに一覧で current だった版の名前）、`title`、`description`、`date`（一覧の `MM/DD/YYYY` のまま）、`fetchedAt`、`sha256`、`rowCount`（行の数）、`bytes`（保存した gzip の大きさ）です。
@@ -2491,15 +2491,15 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 - **⚡ Single-Flight Cache (In-flight Deduplication)**:
   - 同一 URL への並行リクエスト発生時、Promise を共有して 1 回の外部通信に集約。Thundering Herd（キャッシュスタンピード）を防ぎ、外部サーバーとローカルリソースを保護。
 - **🚦 ブラウザ同時実行制限 (Concurrency Control)**:
-  - `SimpleSemaphore` により Chromium プロセスの同時実行数（`MAX_CONCURRENT_BROWSERS`、デフォルトは利用可能メモリから 1〜5 を自動算出）を安全に制御。サーバーの CPU/メモリ枯渇を防止。
+  - `SimpleSemaphore` により Chromium プロセスの同時実行数（`SORA_BROWSER_MAX_CONCURRENCY`、デフォルトは利用可能メモリから 1〜5 を自動算出）を安全に制御。サーバーの CPU/メモリ枯渇を防止。
 - **🔒 Timing-Safe 認証 & 日次クォータ・レートリミット制御**:
   - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
-  - SQLite 障害で degraded 判定時に、`ADMIN_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
-- **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`ALLOW_BROWSER_EVALUATE`)**:
-  - `evaluate`（任意 JS 実行）は既定で遮断されます。環境変数 `ALLOW_BROWSER_EVALUATE=true` を指定したときだけ、`/browser/action` と MCP `browser_action` で動きます。
+  - SQLite 障害で degraded 判定時に、`SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
+- **🛡️ 任意 JavaScript 実行の安全制御スイッチ (`SORA_BROWSER_ALLOW_EVALUATE`)**:
+  - `evaluate`（任意 JS 実行）は既定で遮断されます。環境変数 `SORA_BROWSER_ALLOW_EVALUATE=true` を指定したときだけ、`/browser/action` と MCP `browser_action` で動きます。
 - **📐 共通 Zod スキーマ & OpenAPI 3.0 自動生成**:
   - REST / MCP 双方で Zod スキーマによる入力検証を統一。
   - `/openapi.json` はコード側の Zod スキーマから OpenAPI 3.0 仕様を **動的に自動生成** し、リクエスト・レスポンスのドキュメントがコードから乖離しないようにしています。
@@ -2513,75 +2513,189 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 
 Sora は 12-Factor App 原則に基づき、環境変数によってすべての動作・ネットワーク・セキュリティポリシーを一元管理します。
 
+起動のとき（待ち受ける前に）、環境変数を検査します。
+
+- **エラー（起動しません）**: 値が正しい形でないとき（変数の名前と正しい形を示します）、v5.0.0 で名前が変わった設定のうち、効かないと困るもの（認証キー・`SORA_MODULES` など）を旧名だけで設定しているとき（新しい名前を示します。旧名と扱いの一覧は `RELEASE_NOTES.md` の v5.0.0）、組で設定する判例の索引の URL と SHA-256 の片方だけのとき。エラーをすべて出してから、件数の行を出して終了コード 1 で止まります。
+- **警告（起動を続けます）**: 知らない `SORA_*` の名前（綴りの誤り）、効かない旧名・廃止した名前、運送会社の ID と秘密の片方だけ、空白だけの `SORA_API_KEY`、同梱の実行ファイルのパス（`SORA_YAHOO_MCP_PATH`・`SORA_RS_TRAFILATURA_PATH`）にファイルが無いとき。
+- 秘密の値（API キー・プロキシの URL・運送会社の鍵など）は表示せず、「設定済み、長さ N」とだけ出します。出力はすべて標準エラーで、行の先頭は `[Sora/Config] エラー:`・`[Sora/Config] 警告:` です（stdio でも標準出力には何も出しません）。
+- 真偽値の設定は、`true`・`false`・`1`・`0`・`on`・`off`・`yes`・`no`（大文字小文字は問いません）を読みます。ほかの値は、読むときは既定に戻り、起動のときの検査がエラーにします。
+- stdio（`bun run stdio`）は待ち受けも認証もしないので、`PORT` と、`SORA_API_KEY`・`SORA_AUTH_DAILY_LIMIT` の旧名（`RELEASE_NOTES.md` の v5.0.0 の表）は検査しません（ほかの検査は同じです）。
+- `SORA_API_KEY` も `SORA_ALLOW_ANONYMOUS` も無いのは、エラーにしません。認証なしで起動します（Fail-Open。公開のパス（`/health` など）以外の最初の要求で、キー無しの警告を 1 回出します）。
+- 公開イメージは、DB を `/data/sora.db` に置きます（`SORA_DB_PATH`。住所データ・HTS は隣の `/data/address`・`/data/hts`）。`-v sora-data:/data` のように名前つきの volume を `/data` に付けると、コンテナを作り直しても残ります（付けなければ匿名の volume ができます）。
+- プロキシ: `SORA_PROXY_URL` はブラウザ（Chromium）と静的取得の両方に効きます。`SORA_PROXY_LIST` は静的取得だけに効き（静的取得では `SORA_PROXY_URL` より優先）、ブラウザには効きません。どちらも無いときは、標準の `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY` を使います。
+
+下の表は、設定の登録簿（`src/config.ts`）から `bun run gen:env` で作ります（表を直すときは登録簿の説明を直します）。
+
+<!-- env-table:start -->
+**全体**
+
 | 環境変数名 | デフォルト値 | 説明 |
 |---|---|---|
-| `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート |
-| `WEB_FETCHER_API_KEY` | *(未設定)* | **サーバー側の API 認証キー（最優先）**。設定時は `Authorization: Bearer <key>` または `X-API-Key` ヘッダーによる認証が必須化されます |
-| `API_KEY` | *(未設定)* | `WEB_FETCHER_API_KEY` が未設定の場合に参照されるフォールバックの認証キー |
-| `NODE_ENV` | *(未設定)* | プロセス環境の表示用。認証キーが未設定の場合は環境を問わず Fail-Open（認証なしで利用可能）。認証判断に NODE_ENV は使わない（bun build がビルド時にインライン化するため） |
-| `ALLOW_LOCAL_NO_AUTH` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接ローカル接続に限り API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `ENABLED_MODULES` | `all` | 有効化するモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。楽曲認識の `shazam` も同じく、`all,shazam` のように名前を挙げたときだけ有効 |
-| `SORA_SCRAPE_DEADLINE_MS` | `0`（無効） | 深層検索の本文取得の既定の打ち切り上限（ms）。リクエストの `scrapeDeadlineMs` が優先されます |
-| `SORA_TOOL_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
-| `SORA_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools`常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード |
-| `SORA_ADDRESS` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
-| `SORA_ADDRESS_DIR` | `(DBと同階層/address)` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。本番コンテナでは `/data/address` |
-| `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
-| `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
-| `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
-| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する範囲。都道府県コードのカンマ区切り（例: `13,14`）または `all`。指定したときだけ、起動の10秒後から、範囲内の市区町村を低優先度で順に取得して残す（予算を超えても破棄しない。再起動で続きから進む。進み具合は保存先の `preload.json`）。未設定なら起動時に何もしない。詳細は運用手引 `docs/operations/address-data.md` の §4 |
-| `SORA_PROXY_URL` | *(未設定)* | Sora 専用プロキシ URL（最優先）。`http://`, `https://`, `socks5://` に対応 |
-| `SORA_PROXY_LIST` | *(未設定)* | 静的fetch用プロキシURLのカンマ区切りリスト。設定時はリクエストごとにランダムでローテーション（`SORA_PROXY_URL`より優先）。SSRF対策のためMCP/RESTのリクエストパラメータからは指定不可 |
-| `SORA_DEFAULT_REFERER` | *(未設定 = 有効)* | `scrape` の静的取得の 1 回目に、検索経由の閲覧に見せる `Referer: https://www.google.com/`（と `Sec-Fetch-Site: cross-site`）を付ける。`off` で無効。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶときは付けない。robots.txt・sitemap・画像・JSON API には付けない。有料記事の「Google 経由は無料」を装う形になり、アクセス解析には検索流入として数えられるため、気になる場合は `off` |
-| `HTTP_PROXY` / `http_proxy` | *(未設定)* | 標準 HTTP プロキシ URL（Bun fetch および Chromium ヘッドレスブラウザに自動適用） |
-| `HTTPS_PROXY` / `https_proxy` | *(未設定)* | 標準 HTTPS プロキシ URL（Chromium および外部 HTTPS 通信に自動適用） |
-| `ALL_PROXY` / `all_proxy` | *(未設定)* | 標準汎用プロキシ URL（SOCKS5 等） |
-| `NO_PROXY` / `no_proxy` | *(未設定)* | プロキシバイパス対象ホスト一覧（カンマ区切り、例: `localhost,127.0.0.1,.local`） |
-| `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
-| `MAX_CONCURRENT_BROWSERS` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数。cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。正の整数を指定した場合はそれが優先されます（上限50。数値でない値は無視して自動算出） |
-| `BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
-| `SORA_BROWSER_LOW_MEMORY` | *(未設定 = 無効)* | `true`（`1`・`on`・`yes` も可）で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
+| `NODE_ENV` | *(未設定)* | プロセス環境の表示用（`bun test` は `test`。`test` のときは、`SORA_DB_PATH` が未設定なら DB をメモリ上に置くなど、テスト用の既定になります）。認証の判断には使いません（bun build がビルド時にインライン化するため）。キーが未設定なら、環境を問わず認証なしで使えます |
+| `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート（1〜65535）。起動のときに読みます |
+| `SORA_ALLOWED_HOSTS` | *(未設定 = `localhost`・`127.0.0.1`・`[::1]` をポート不問)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
+| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` で匿名の利用を認めます。キーが未設定なら、値によらず認証なしで使えます（`true` はキー無しの警告を止めるだけ）。キーを設定していて `true` のときは、キー無しの要求も誤ったキーの要求も匿名として通します（`401` で断るのは `false` のときだけ） |
+| `SORA_API_KEY` | *(未設定 = 認証なし)* | サーバーの API 認証キー。設定すると `Authorization: Bearer <key>` か `X-API-Key` ヘッダーでの認証が要ります。未設定なら認証なしで使えます（Fail-Open。キー無しの警告を 1 回出します） |
+| `SORA_DB_PATH` | `./data/sora.db`（`NODE_ENV=test` なら `:memory:`。公開イメージは `/data/sora.db`） | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します） |
+| `SORA_MODULES` | `all` | 有効にするモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics`・楽曲認識の `shazam`・HTS の版の保存の `hts-archive` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。知らない名前があると起動しません |
+| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。荷物ごとの表示ページの `pageUrl` の組み立てに使います |
+
+**認証**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_AUTH_DAILY_LIMIT` | *(無制限)* | API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます |
+| `SORA_AUTH_LOOPBACK_NO_KEY` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
+| `SORA_AUTH_TRUST_PROXY` | `false` | `true` で `X-Forwarded-For` の先頭のアドレスを接続元として信頼します（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。リバースプロキシ配下でのみ設定してください |
+
+**ログ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_LOG_FORMAT` | `text` | `json` でリクエストログを構造化 JSON で出力します |
+
+**通知**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラートの Webhook URL（Slack・Discord など）。プライベートなネットワークの宛先には送りません |
+
+**MCP**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_MCP_DEFER_TOOLS` | `true` | 包括ツール初期公開ハイブリッドモード（12 コアツール＋`search_tools` 常時露出＋特殊ツール遅延発見）を有効化するか。`false` で全 33 ツール静的一括ロード。stdio では常に無効です |
+| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
+| `SORA_MCP_OUTPUT_SCHEMA` | `false` | `true` で `tools/list` に各ツールの `outputSchema` を含めます。既定では省略してツール定義のサイズを抑えます（`tools/call` の `structuredContent` 検証は変わりません） |
+
+**ブラウザ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `CHROME_BIN` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH` が無いか、そのファイルが無いときに見ます） |
+| `CHROME_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | `CHROME_PATH` と同じ（`CHROME_PATH`・`CHROME_BIN` の次に見ます） |
+| `SORA_BROWSER_ALLOW_EVALUATE` | `false` | `true`（`1`・`on`・`yes` も可）のときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意 JS の実行）が動きます。既定は遮断 |
+| `SORA_BROWSER_IDLE_TTL_MS` | `300000` | 共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません |
+| `SORA_BROWSER_LOW_MEMORY` | `false` | `true` で、Chromium を低メモリ端末のモード（`--enable-low-end-device-mode`）で起動します。ブラウザ描画中のピークが下がります（同梱の Chromium 156 で実測、Chromium 全プロセスの PSS 合計・3 回の平均: ページを 1 つずつ開いて 約910MB → 約740MB（−18%）、3 ページ同時で 約1,210MB → 約1,040MB（−14%））。待機中の常駐量と、取得にかかる時間（25 サイトの通ったものの中央値 5.5 秒と 5.3 秒）は変わりません。副作用は `navigator.deviceMemory` が 8 から 2 になることで、ほかの指紋の項目と、検出サイト 5 つの判定は変わりませんでした。起動のたびに読みます（変えたら次の Chromium の起動から効きます）。`SORA_BROWSER_IDLE_TTL_MS` を短くして使わない間の常駐を減らす設定とも併用できます |
+| `SORA_BROWSER_MAX_CONCURRENCY` | *(メモリから自動: 1〜5)* | 同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1 以上。50 を超える値は 50 にします）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます |
 | `SORA_BROWSER_PIPE` | *(未設定 = Bun 1.4.4 以上ならパイプ、それ未満はポート)* | Chromium を操作する口（CDP）の繋ぎ方です。パイプなら、TCP のデバッグポートを開きません（127.0.0.1 で待ち受けず、同じコンテナのほかのプロセスから届きません）。`false`（`0`・`off`・`no` も可）でポートに戻し、`true`（`1`・`on`・`yes` も可）でパイプにします。大文字小文字・前後の空白は問いません。Bun 1.3.x は、起動と終了を繰り返したあとに、パイプの接続が閉じる・応答が返らなくなることがあるため、既定はポートです（1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで確かめました）。 |
-| `SORA_BROWSER_UID` | *(未設定 = auto)* | root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。 |
 | `SORA_BROWSER_SANDBOX` | *(未設定 = auto)* | Chromium 自身のサンドボックスです。`auto`（未設定）は、有効にして起動を試し、起動できなければ `--no-sandbox` に戻して警告します（Docker の既定の seccomp・AppArmor など、ユーザー名前空間を作れない環境。Docker の既定のままでは、こちらになります。README 4.5 の seccomp プロファイルを渡すと、使えます）。そのときも、uid の分離（`SORA_BROWSER_UID`）は効きます。結果は、プロセスで 1 回だけ決めます。`on` は、有効にできなければ起動を失敗させます。`off` は常に `--no-sandbox` です。root のまま（`SORA_BROWSER_UID=off` や、起動用バイナリがない）では、有効にできません。`NODE_ENV=test` の既定は `off` です。 |
-| `SORA_EGRESS_GATEWAY` | *(未設定 = off)* | ブラウザ（Chromium）と静的取得（wreq-js）の外向きの通信を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。認識できない値は、警告を出して off にします。`ALLOW_LOCAL_FETCH=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。ゲートウェイの上流は 1 つなので、リクエストごとに替える `SORA_PROXY_LIST` とは一緒に使えません（エラー）。いまは、ブラウザと静的取得の通信が対象です（Bun の `fetch` を使う取得と、子プロセスは、まだ通りません）。 |
-| `SORA_EGRESS_PORTS` | `80,443` | 出口のゲートウェイが通す、宛先のポートです（カンマ区切り、1〜65535）。これ以外のポートへの接続は、403 で断ります。書き方の誤りは、ゲートウェイを起動するときのエラーです。`SORA_EGRESS_GATEWAY` が有効なときだけ効きます。 |
+| `SORA_BROWSER_UID` | *(未設定 = auto)* | root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。 |
+
+**静的取得**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_FETCH_ALLOW_PRIVATE_NETWORK` | `false` | `true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**） |
+| `SORA_FETCH_DEFAULT_REFERER` | `true` | `scrape` の静的取得の 1 回目に、検索経由の閲覧に見せる `Referer: https://www.google.com/`（と `Sec-Fetch-Site: cross-site`）を付ける。`off` で無効。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶときは付けない。robots.txt・sitemap・画像・JSON API には付けない。有料記事の「Google 経由は無料」を装う形になり、アクセス解析には検索流入として数えられるため、気になる場合は `off` |
 | `SORA_FETCH_MAX_CHROME_PROFILE` | `149`（公開イメージは `154`） | 静的取得が使う Chrome プロファイル（`chrome_<版>`）の上限。ブラウザも、この版までしか名乗りません（UA・TLS・ヘッダを、静的取得と同じにするため）。実際の Chromium がこれより新しければ、この版になります。3 桁の Chrome の版（136 以上）で、未設定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、Containerfile で自前にビルドした native（上流の wreq-util の Chrome 150〜154 のプロファイルを持つ）に合わせて 154 にしています。**値を下げれば、UA・TLS・ヘッダがその版のものに戻ります**（例: `149`。イメージの作り直しは要りません）。native が持たない版を指定すると、最初の静的取得で、native が持つ最大まで下げて警告を出します。起動のときに読みます |
-| `DAILY_REQUEST_LIMIT` | *(無制限)* | API キー別の日次最大リクエスト数（レートリミット制御） |
-| `ALLOW_BROWSER_EVALUATE` | *(未設定 = 遮断)* | `true` を指定したときだけ、`/browser/action` と MCP `browser_action` の `evaluate`（任意JS実行）が動きます。未設定やそれ以外の値は遮断 |
-| `ADMIN_ALERT_WEBHOOK_URL` | *(未設定)* | `GET /health?detailed=true` が degraded（SQLite 障害）の場合に送信する管理者アラート Webhook URL |
-| `RS_TRAFILATURA_PATH` | *(未設定。イメージでは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
-| `CHROME_PATH` / `CHROME_BIN` / `PUPPETEER_EXECUTABLE_PATH` | *(自動検出)* | Chromium 実行バイナリのパスを明示指定します（未指定時は標準パスと `PATH` を自動探索） |
+| `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
+| `SORA_RS_TRAFILATURA_PATH` | *(未設定。公開イメージは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
+
+**プロキシ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `ALL_PROXY` | *(未設定)* | 標準の汎用プロキシ URL（SOCKS5 など。`HTTP_PROXY` が無いときに見ます） |
+| `all_proxy` | *(未設定)* | `ALL_PROXY` の小文字の綴り（`ALL_PROXY` が無いときに見ます） |
+| `HTTPS_PROXY` | *(未設定)* | 標準の HTTPS プロキシ URL。`SORA_PROXY_URL` が無いとき、ブラウザ（Chromium）と静的取得に使います（優先順は `HTTPS_PROXY`・`HTTP_PROXY`・`ALL_PROXY`）。外部 API を呼ぶ Bun の fetch には、Bun が自動で適用します |
+| `https_proxy` | *(未設定)* | `HTTPS_PROXY` の小文字の綴り（`HTTPS_PROXY` が無いときに見ます） |
+| `HTTP_PROXY` | *(未設定)* | 標準の HTTP プロキシ URL（`HTTPS_PROXY` が無いときに見ます。Bun の fetch には、Bun が自動で適用します） |
+| `http_proxy` | *(未設定)* | `HTTP_PROXY` の小文字の綴り（`HTTP_PROXY` が無いときに見ます） |
+| `NO_PROXY` | *(未設定)* | プロキシを通さないホストのカンマ区切り（例: `localhost,127.0.0.1,.local`）。ブラウザと静的取得に効きます |
+| `no_proxy` | *(未設定)* | `NO_PROXY` の小文字の綴り（`NO_PROXY` が無いときに見ます） |
+| `SORA_PROXY_LIST` | *(未設定)* | 静的取得だけに使うプロキシ URL のカンマ区切りリスト。設定時はリクエストごとにランダムでローテーションします（`SORA_PROXY_URL` より優先。ブラウザには効きません）。SSRF 対策のため、MCP・REST のリクエストの引数からは指定できません |
+| `SORA_PROXY_URL` | *(未設定)* | Sora 専用のプロキシ URL（`http://`・`https://`・`socks5://`）。ブラウザ（Chromium）と静的取得の両方に効き、標準の `HTTPS_PROXY` などより優先します（静的取得では `SORA_PROXY_LIST` がさらに優先） |
+
+**出口のゲートウェイ**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_EGRESS_GATEWAY` | *(未設定 = off)* | ブラウザ（Chromium）と静的取得（wreq-js）の外向きの通信を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。書き方の誤りは、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。ゲートウェイの上流は 1 つなので、リクエストごとに替える `SORA_PROXY_LIST` とは一緒に使えません（エラー）。いまは、ブラウザと静的取得の通信が対象です（Bun の `fetch` を使う取得と、子プロセスは、まだ通りません）。 |
+| `SORA_EGRESS_PORTS` | `80,443` | 出口のゲートウェイが通す、宛先のポートです（カンマ区切り、1〜65535）。これ以外のポートへの接続は、403 で断ります。書き方の誤りは、起動のときにエラーにして止めます。`SORA_EGRESS_GATEWAY` が有効なときだけ効きます。 |
+
+**検索**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_SEARCH_SCRAPE_DEADLINE_MS` | `0`（打ち切り無し） | 深層検索（`search_deep`）の本文取得の既定の打ち切り上限（ms）。`0` で打ち切り無し。リクエストの `scrapeDeadlineMs` が優先されます。`scrape` ツールには効きません |
+
+**Yahoo**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
+| `SORA_YAHOO_MCP_PATH` | *(自動検出。公開イメージは `/app/yahoo-search-mcp`)* | 同梱の Yahoo 検索の実行ファイル（`yahoo-search-mcp`）のパス。未設定か、そのファイルが無いとき（起動時に警告します）は、`/usr/local/bin/yahoo-search-mcp`・リポジトリの `bin/yahoo-search-mcp`・`PATH` の順に探します。起動のときに読みます |
+| `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
+
+**X**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_X_DETAIL_BASE_URL` | `https://api.fxtwitter.com` | X の投稿の詳細を取る FxTwitter 互換の API（自前の FxEmbed など）の URL。起動のときに読みます |
+| `SORA_X_DETAIL_PROVIDER` | `true` | `off` で FxTwitter/FxEmbed による X の投稿の詳細の補完を無効化します（失敗しても検索は続きます）。起動のときに読みます |
+| `SORA_X_DETAIL_TIMEOUT_MS` | `1500` | X の投稿の詳細の取得 1 件の待ち時間の上限（ms）。起動のときに読みます |
+
+**OpenPOI**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | `search_poi` が呼ぶ OpenPOI API の URL |
+
+**住所**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_ADDRESS_BUILD_CONCURRENCY` | `1` | 住所データ構築子プロセスの並行実行数（1〜4） |
+| `SORA_ADDRESS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/address` | 住所データ（ABR/郵便番号/索引）の保存先ディレクトリ。`SORA_DB_PATH` が `:memory:` のときは一時ディレクトリ |
+| `SORA_ADDRESS_MAX_MB` | `2048` | 住所データのディスク容量予算（MB）。上限超過時は古い市区町村データから自動 evict |
+| `SORA_ADDRESS_MODE` | `lazy` | 住所データ機能の動作モード。`lazy`: `lookup_address`（REST は `/geo/postal-code` / `/geo/address/normalize` / `/geo/reverse`）が呼ばれたときだけ必要な市区町村を取得する（`get_place_info` / `search_poi` の座標解決は、取得済みのデータだけをローカル優先で使い、取得は頼まない）。`eager`: `lazy` に加えて、座標解決でデータが無い地域を見つけたとき、待たずに裏で取得を始める。`off`: `lookup_address` を登録せず、REST は 404 `ADDRESS_DISABLED`（取得も子プロセスも起こさない） |
+| `SORA_ADDRESS_PRELOAD` | *(未設定)* | 事前取得する範囲。都道府県コードのカンマ区切り（例: `13,14`）または `all`。指定したときだけ、起動の10秒後から、範囲内の市区町村を低優先度で順に取得して残す（予算を超えても破棄しない。再起動で続きから進む。進み具合は保存先の `preload.json`）。未設定なら起動時に何もしない。詳細は運用手引 `docs/operations/address-data.md` の §4 |
+| `SORA_ADDRESS_WAIT_MS` | `20000` | 初回データ構築の待機上限（ms）。超過時は暫定結果（`incomplete: true`）を返し裏で継続 |
+
+**HTS**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_HTS_CROSS_INDEX_SHA256` | *(リリースの索引の値)* | `SORA_HTS_CROSS_INDEX_URL` の索引のファイルの SHA-256（16 進 64 字）。URL と両方を指定します |
+| `SORA_HTS_CROSS_INDEX_URL` | *(リリースの索引)* | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`https://` か `file://`）。`SORA_HTS_CROSS_INDEX_SHA256` と両方を指定します |
+| `SORA_HTS_CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
 | `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます。`hts-archive` モジュールを有効にすると、保存した HTS の版も `releases/` に置きます（Module 15） |
-| `CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
-| `SORA_CROSS_INDEX_URL` / `SORA_CROSS_INDEX_SHA256` | （リリースの索引） | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`file://` も可）と SHA-256。両方を指定します |
+
+**GCC**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
 | `SORA_GCC_CERTIFIER` | *(未設定)* | `generate_gcc_certificate`・`POST /trade/gcc-generate` の証明者の既定。JSON のオブジェクト `{"name","street","city","state","country","email","phone"}`。呼び出しに `certifier` が無い（中身が空の）ときだけ丸ごと使い、呼び出し側の値と項目ごとに混ぜることはありません。**共有のサーバーでは設定しないでください**（`certifier` を省いたすべての呼び出しの証明書に、この値が入ります）。読めない値は、GCC を作る品があるときだけエラーになります。見本・仮置きの確かめはしません |
 | `SORA_GCC_CUSTODIAN` | *(未設定)* | 同じ形で、試験の記録を持つ人（16 CFR 1110.11(a)(4)）の既定。`recordCustodian` が無いときだけ使います。共有のサーバーでは設定しないでください |
-| `SORA_DB_PATH` | `./data/sora.db` | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します。v2.49.1・v2.49.2） |
-| `LOG_FORMAT` | *(未設定)* | `json` を指定するとリクエストログを構造化 JSON で出力します |
-| `ALLOW_LOCAL_FETCH` | `false` | `true` の場合、`localhost` / プライベート IP へのスクレイピングを許可します（SSRF 対策の緩和。**テスト用途のみ**） |
-| `SORA_WEB_NATIVE_RANKING` | `true` | 単一 SERP をプロバイダ順で保持します。`false` で従来の BM25 全体並べ替え（`providerRank` は記録継続） |
-| `SORA_RRF_ENABLED` | `true` | 複数クエリ統合に RRF を使用します。`false` で first-wins dedup |
-| `SORA_WEB_QUERY_UNION` | `false` | `true` で Web 複数クエリ統合を有効化（opt-in）。デフォルトは逐次 first-nonempty |
-| `SORA_X_SOURCE_ISOLATION` | `false` | `true` で X ソース分離を有効化（opt-in） |
-| `SORA_REALTIME_ANCHOR` | *(有効)* | `off` で X 検索の固有名詞を守る緩和・別名検索・無関係な投稿の除外を止め、従来の緩和に戻します |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` でキー無し警告を抑止します。キー未設定時は値によらず Fail-Open（匿名アクセス可能。認証なしで公開する運用は意図した方針で、その場合は `true` を指定して警告を止めます）。キー設定時は無効なキーでのアクセスを `401` で拒否します |
-| `TRUST_PROXY` | *(未設定)* | `true` で `X-Forwarded-For` を信頼します。リバースプロキシ配下でのみ設定してください |
-| `SORA_ALLOWED_HOSTS` | *(未設定)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
-| `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
+
+**追跡**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_TRACKING_DHL_API_KEY` | *(未設定)* | DHL の統合の追跡 API（Shipment Tracking - Unified）の API キー。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_FEDEX_CLIENT_ID` | *(未設定)* | FedEx の追跡 API（OAuth）のクライアント ID（API キー）。`SORA_TRACKING_FEDEX_CLIENT_SECRET` と組で設定します。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_FEDEX_CLIENT_SECRET` | *(未設定)* | FedEx の追跡 API（OAuth）のクライアントシークレット。`SORA_TRACKING_FEDEX_CLIENT_ID` と組で設定します |
 | `SORA_TRACKING_PAGE_SECRET` | *(未設定)* | 荷物ごとの表示ページ（照会結果の `pageUrl`、`GET /t/:carrier/:number`）の署名に使う秘密鍵。`SORA_PUBLIC_URL` と両方を設定したときだけ表示ページが有効になり、照会結果に `pageUrl` が付きます。未設定なら表示ページは `404` で、起動時の処理もありません。値を変えると、発行済みの URL はすべて無効になります |
-| `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。`pageUrl` の組み立てに使います |
-| `SORA_MCP_MAX_SESSIONS` | `100` | 同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます |
-| `SORA_OPENPOI_BASE_URL` | `https://api.openpoiapi.com` | search_poi endpoint |
-| `SORA_X_DETAIL_PROVIDER` | *(有効)* | `off` で FxTwitter/FxEmbed による X 詳細補完を無効化します（fail-soft） |
-| `SORA_YAHOO_MIN_INTERVAL_MS` | `500` | Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します |
-| `SORA_YAHOO_BREAKER_COOLDOWN_MS` | `120000` | 429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します |
-| `SORA_YAHOO_THROTTLE` | *(有効)* | `off` でスロットル規律を無効化します（**テスト用途のみ**） |
-| `SORA_WEB_RETRY_WAIT_MS` | *(deprecated)* | 初期spacingのoverrideとしてのみ使用。通常はProvider pressure controllerが制御します |
+| `SORA_TRACKING_UPS_CLIENT_ID` | *(未設定)* | UPS の追跡 API（OAuth）のクライアント ID。`SORA_TRACKING_UPS_CLIENT_SECRET` と組で設定します。無いときは API を使わずにブラウザで照会します |
+| `SORA_TRACKING_UPS_CLIENT_SECRET` | *(未設定)* | UPS の追跡 API（OAuth）のクライアントシークレット。`SORA_TRACKING_UPS_CLIENT_ID` と組で設定します |
+
+**国・地域の情報**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_INTEL_BLUESKY_DIDS` | *(未設定 = 全員)* | 設定すると、Bluesky の取得先は、この DID のアカウントの投稿だけを残します（カンマ区切り） |
+| `SORA_INTEL_DISABLED` | *(未設定)* | 国・地域の情報（`research_country_context`）で止める取得先の ID のカンマ区切り（例: `usgs,eonet`） |
+| `SORA_INTEL_SCRAPE` | `true` | `off` で、国・地域の情報の記事の本文の取得（内蔵のスクレイパ、ブラウザなし）を止めます |
+| `SORA_INTEL_WEB_SEARCH` | `true` | `off` で、国・地域の情報の公式の Web 検索（Yahoo）を止めます（取得先は残り、結果が空になります） |
+
+<!-- env-table:end -->
 
 ### 4.4 低メモリ環境での運用
 
-- **ブラウザ描画の同時数は自動で絞られます**。`MAX_CONCURRENT_BROWSERS` を指定しない場合、cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます。
+- **ブラウザ描画の同時数は自動で絞られます**。`SORA_BROWSER_MAX_CONCURRENCY` を指定しない場合、cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます。
 
   | 利用可能メモリ | 同時数の既定 |
   |---|---|
@@ -2590,11 +2704,11 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   | 4GB 以上 | 5 |
 
   1 ページあたり約 300MB は目安です。明示した値が優先されます。
-- **Chromium は無操作で閉じます**（`BROWSER_IDLE_TTL_MS`、既定 5 分、`0` で無効）。次にブラウザが必要になったとき自動で再起動します（実測: 再起動後の最初のブラウザ描画も、起動済みの場合と同等の約 3.6 秒）。ブラウザセッション（`sessionId`）や追跡・SNS 取得でコンテキストが開いている間は閉じません。
+- **Chromium は無操作で閉じます**（`SORA_BROWSER_IDLE_TTL_MS`、既定 5 分、`0` で無効）。次にブラウザが必要になったとき自動で再起動します（実測: 再起動後の最初のブラウザ描画も、起動済みの場合と同等の約 3.6 秒）。ブラウザセッション（`sessionId`）や追跡・SNS 取得でコンテキストが開いている間は閉じません。
 - **実測の目安**: 起動直後 約 160MB、静的取得後 約 195MB、ブラウザ描画中 約 950MB（bun 約 250MB + Chromium 約 700MB）、解放後 約 200MB。
 - **ブラウザ描画中のピークを下げたい**ときは `SORA_BROWSER_LOW_MEMORY=true`（既定は無効）。Chromium を低メモリ端末のモードで起動し、ページを 1 つずつ開いたときのピークが約 18%、3 ページ同時で約 14% 下がります。副作用は `navigator.deviceMemory` が 8 から 2 になることだけです（詳細は §4.3 の表）。
 - **ブラウザを使わせたくないリクエスト**には `scrape` の `mode: "fast"`（静的取得のみ）を指定します。
-- **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_TOOL_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_DEFER_TOOLS=true`（既定）で初期公開を 13 ツールに絞れます。
+- **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_MCP_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_MCP_DEFER_TOOLS=true`（既定）で初期公開を 13 ツールに絞れます。
 
 ### 4.5 ブラウザの隔離を強める（Docker・Podman）
 

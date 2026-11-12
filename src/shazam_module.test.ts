@@ -11,10 +11,10 @@ import { DATA_URI_PREFIX, signatureUri } from './services/shazam_signature.js';
 import { toneBursts } from './test_fixtures/audio.js';
 import { generateOpenApiDocument } from './types.js';
 
-const savedModules = process.env.ENABLED_MODULES;
+const savedModules = process.env.SORA_MODULES;
 afterEach(() => {
-  if (savedModules === undefined) delete process.env.ENABLED_MODULES;
-  else process.env.ENABLED_MODULES = savedModules;
+  if (savedModules === undefined) delete process.env.SORA_MODULES;
+  else process.env.SORA_MODULES = savedModules;
 });
 
 // 作り物の結果だけを使う
@@ -28,14 +28,14 @@ const postJson = (a: { request: Hono['request'] }, body: unknown) =>
 
 describe('shazam module is explicit opt-in', () => {
   test('all, wildcard and unset do not enable it; naming it does', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(isModuleActive('shazam')).toBe(false);
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     expect(isModuleActive('shazam')).toBe(false);
-    process.env.ENABLED_MODULES = '*';
+    process.env.SORA_MODULES = '*';
     expect(isModuleActive('shazam')).toBe(false);
     expect(isModuleActive('shazam', ['all'])).toBe(false);
-    process.env.ENABLED_MODULES = ' All , Lyrics , Shazam ';
+    process.env.SORA_MODULES = ' All , Lyrics , Shazam ';
     expect(isModuleActive('shazam')).toBe(true);
     expect(isModuleActive('lyrics')).toBe(true);
     expect(isModuleActive('music')).toBe(true);
@@ -45,7 +45,7 @@ describe('shazam module is explicit opt-in', () => {
 
 describe('MCP tool', () => {
   test('is absent by default and under all, present and deferred when the module is named', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(toolCatalogOf(createMcpServer({ deferTools: false })).has('recognize_song')).toBe(false);
     expect(toolCatalogOf(createMcpServer({ modules: ['all'], deferTools: false })).has('recognize_song')).toBe(false);
     const named = toolCatalogOf(createMcpServer({ modules: ['all', 'shazam'], deferTools: false }));
@@ -84,19 +84,19 @@ describe('MCP tool', () => {
 
 describe('REST /music/recognize', () => {
   test('is a 404 MODULE_DISABLED that says how to enable it, by default and under all', async () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     for (const value of [undefined, 'all']) {
-      if (value) process.env.ENABLED_MODULES = value;
+      if (value) process.env.SORA_MODULES = value;
       const res = await postJson(app, { url: 'https://example.com/a.mp3' });
       expect(res.status).toBe(404);
       const json = await res.json() as any;
       expect(json.code).toBe('MODULE_DISABLED');
-      expect(json.error).toContain('ENABLED_MODULES');
+      expect(json.error).toContain('SORA_MODULES');
     }
   });
 
   test('when enabled it takes JSON or a multipart upload, validates, and maps failures', async () => {
-    process.env.ENABLED_MODULES = 'all,shazam';
+    process.env.SORA_MODULES = 'all,shazam';
     let seen: SongRecognitionOptions | undefined;
     const ok = new Hono().route('/', createSongRecognitionRoutes(async (input) => { seen = input; return fakeResult; }));
     expect(await (await postJson(ok, { url: 'https://example.com/a.mp3', offsetSec: 8 })).json()).toMatchObject({ found: true, itunes: { id: '1700000001' } });
@@ -136,9 +136,9 @@ const upstream = (status: number) => (async () => new Response('no', { status })
 
 describe('REST /music/recognize/signature', () => {
   test('is a 404 MODULE_DISABLED by default and under all', async () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     for (const value of [undefined, 'all']) {
-      if (value) process.env.ENABLED_MODULES = value;
+      if (value) process.env.SORA_MODULES = value;
       const res = await postSig(app, sigBody());
       expect(res.status).toBe(404);
       expect(((await res.json()) as any).code).toBe('MODULE_DISABLED');
@@ -146,7 +146,7 @@ describe('REST /music/recognize/signature', () => {
   });
 
   test('when enabled it validates the body and passes it on', async () => {
-    process.env.ENABLED_MODULES = 'all,shazam';
+    process.env.SORA_MODULES = 'all,shazam';
     let seen: unknown;
     const ok = new Hono().route('/', createSongRecognitionRoutes(undefined, async (input) => { seen = input; return fakeResult; }));
     const body = sigBody();
@@ -162,7 +162,7 @@ describe('REST /music/recognize/signature', () => {
   });
 
   test('a broken signature is 400 INVALID_INPUT without asking Shazam; Shazam refusals and outages are 502', async () => {
-    process.env.ENABLED_MODULES = 'all,shazam';
+    process.env.SORA_MODULES = 'all,shazam';
     let sent = 0;
     const counting = (async () => { sent++; return Response.json({ matches: [] }); }) as unknown as typeof fetch;
     const real = new Hono().route('/', createSongRecognitionRoutes(undefined, (input) => recognizeSignature(input, { fetchFn: counting })));
@@ -184,7 +184,7 @@ describe('REST /music/recognize/signature', () => {
   });
 
   test('a match whose iTunes lookup is refused is 502 too, so the caller can retry it', async () => {
-    process.env.ENABLED_MODULES = 'all,shazam';
+    process.env.SORA_MODULES = 'all,shazam';
     const hit = { matches: [{ offset: 1 }], track: { key: '900001', title: 'テスト曲', subtitle: 'テスト歌手', trackadamid: '1700000001' } };
     const itunesRefused = (async (url: string) => (url.startsWith('https://amp.shazam.com/') ? Response.json(hit) : new Response('no', { status: 403 }))) as unknown as typeof fetch;
     const real = new Hono().route('/', createSongRecognitionRoutes(undefined, (input) => recognizeSignature(input, { fetchFn: itunesRefused })));
@@ -196,11 +196,11 @@ describe('REST /music/recognize/signature', () => {
 
 describe('documentation follows the module', () => {
   test('OpenAPI and the endpoint list include /music/recognize only when it is enabled', async () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect((generateOpenApiDocument() as any).paths['/music/recognize']).toBeUndefined();
     expect((generateOpenApiDocument() as any).paths['/music/recognize/signature']).toBeUndefined();
     expect(JSON.stringify(await (await app.request('/')).json())).not.toContain('/music/recognize');
-    process.env.ENABLED_MODULES = 'all,shazam';
+    process.env.SORA_MODULES = 'all,shazam';
     const doc = generateOpenApiDocument() as any;
     expect(doc.paths['/music/recognize'].post.requestBody.content['application/json'].schema.required).toEqual(['url']);
     expect(doc.paths['/music/recognize'].post.requestBody.content['multipart/form-data'].schema.required).toEqual(['file']);

@@ -16,25 +16,33 @@ describe('slimToolsListMessage', () => {
 
 describe('stdio transport', () => {
   test('tools/list over stdio omits outputSchema and stays small', async () => {
-    const proc = Bun.spawn(['bun', 'src/stdio.ts'], { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore', env: { ...process.env, SORA_DB_PATH: ':memory:' } });
-    const send = (m: object) => proc.stdin.write(JSON.stringify(m) + '\n');
-    send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
-    send({ jsonrpc: '2.0', method: 'notifications/initialized' });
-    send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
-    proc.stdin.flush();
-    const reader = proc.stdout.getReader();
-    const decoder = new TextDecoder();
-    let buf = '';
+    // stdio も起動時に環境変数を検査する。親のシェルの環境（旧い名前の設定など）を持ち込まず、止まったときの理由は標準エラーから見る
+    const env: Record<string, string> = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NODE_ENV: 'test', SORA_DB_PATH: ':memory:' };
+    if (process.env.LD_LIBRARY_PATH) env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH;
+    const proc = Bun.spawn([process.execPath, '--no-env-file', 'src/stdio.ts'], { cwd: new URL('..', import.meta.url).pathname, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', env });
+    const stderrText = new Response(proc.stderr).text();
     let listLine = '';
-    const deadline = Date.now() + 20000;
-    while (!listLine && Date.now() < deadline) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value);
-      listLine = buf.split('\n').find((l) => l.includes('"id":2')) ?? '';
+    try {
+      const send = (m: object) => proc.stdin.write(JSON.stringify(m) + '\n');
+      send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
+      send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+      send({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} });
+      proc.stdin.flush();
+      const reader = proc.stdout.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      const deadline = Date.now() + 20000;
+      while (!listLine && Date.now() < deadline) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value);
+        listLine = buf.split('\n').find((l) => l.includes('"id":2')) ?? '';
+      }
+    } finally {
+      proc.kill();
+      await proc.exited;
     }
-    proc.kill();
-    expect(listLine).not.toBe('');
+    expect(listLine, await stderrText).not.toBe('');
     const msg = JSON.parse(listLine);
     expect(msg.result.tools.length).toBe(33);
     expect(listLine).not.toContain('outputSchema');

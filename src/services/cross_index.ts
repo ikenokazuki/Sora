@@ -5,6 +5,7 @@ import { Database } from 'bun:sqlite';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { envError, envStr, envUrl } from '../config.js';
 import { errorMessage } from '../errors.js';
 import type { CrossRuling } from './cbp_cross.js';
 import { htsDirectory, queryTerms } from './hts_data.js';
@@ -28,11 +29,14 @@ export interface CrossIndexLine {
   c: string[];
 }
 
+/** 索引の取り先。運用者の索引（URL と SHA-256 の組）が読めないときは、リリースの索引に黙って戻さず、初回の利用で失敗する。 */
 function source(): { url: string; sha256: string } {
-  const url = process.env.SORA_CROSS_INDEX_URL;
+  const invalidUrl = envError('SORA_HTS_CROSS_INDEX_URL');
+  if (invalidUrl) throw new Error(invalidUrl);
+  const url = envUrl('SORA_HTS_CROSS_INDEX_URL');
   if (!url) return { url: CROSS_INDEX_URL, sha256: CROSS_INDEX_SHA256 };
-  const sha256 = process.env.SORA_CROSS_INDEX_SHA256 ?? '';
-  if (!/^[0-9a-f]{64}$/.test(sha256)) throw new Error('SORA_CROSS_INDEX_URL を使うときは SORA_CROSS_INDEX_SHA256（16 進 64 字）も指定してください');
+  const sha256 = envStr('SORA_HTS_CROSS_INDEX_SHA256');
+  if (!sha256) throw new Error(envError('SORA_HTS_CROSS_INDEX_SHA256') ?? 'SORA_HTS_CROSS_INDEX_URL を使うときは SORA_HTS_CROSS_INDEX_SHA256（16 進 64 字の小文字）も指定してください');
   return { url, sha256 };
 }
 

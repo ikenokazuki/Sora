@@ -3,11 +3,9 @@ import { childEnv } from './child_env.js';
 
 const SECRETS = {
   SORA_API_KEY: 'sk-sora',
-  WEB_FETCHER_API_KEY: 'sk-legacy',
-  API_KEY: 'sk-generic',
-  UPS_CLIENT_SECRET: 'ups-secret',
+  SORA_TRACKING_UPS_CLIENT_SECRET: 'ups-secret',
   SORA_TRACKING_PAGE_SECRET: 'page-secret',
-  ADMIN_ALERT_WEBHOOK_URL: 'https://hooks.example/T000/B000/xxxx',
+  SORA_ALERT_WEBHOOK_URL: 'https://hooks.example/T000/B000/xxxx',
   GITHUB_TOKEN: 'ghp_xxx',
   DATABASE_PASSWORD: 'hunter2',
 };

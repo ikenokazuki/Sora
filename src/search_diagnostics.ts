@@ -82,9 +82,6 @@ export function buildSearchDiagnostics(input: SearchDiagnosticsInput): Record<st
     ...(item.twitterHandle ? { twitterHandle: item.twitterHandle } : {}),
     isSnippetFallback: item.isSnippetFallback === true,
     hasScrapeError: Boolean(item.scrapeError),
-    ...(item.xSourceIsolation
-      ? { sourceIsolation: item.xSourceIsolation }
-      : {}),
   }));
 
   const selectedHighlights = input.results

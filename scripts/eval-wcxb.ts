@@ -6,7 +6,7 @@
 // --bevendorff <dir> のときは、Bevendorff ら（SIGIR 2023）の評価集（https://github.com/chatnoir-eu/web-content-extraction-benchmark の
 // datasets/combined.tar.xz を展開した combined/）を読み、評価集ごとの語の F1（WCXB と同じ式）を出す。
 //   bun scripts/eval-wcxb.ts --bevendorff data/wceb/combined
-// RS_TRAFILATURA_PATH に rs-trafilatura のコマンドを渡すと、本番と同じく rs-trafilatura の本文で振り分ける（未設定なら Readability だけ）。
+// SORA_RS_TRAFILATURA_PATH に rs-trafilatura のコマンドを渡すと、本番と同じく rs-trafilatura の本文で振り分ける（未設定なら Readability だけ）。
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { extractMainContentWithRs } from '../src/extractor/rs_trafilatura.js';

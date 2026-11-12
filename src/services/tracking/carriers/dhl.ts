@@ -7,6 +7,7 @@ import type {
   TrackingContext,
   TrackingEvent,
 } from '../types.js';
+import { type Env, envStr } from '../../../config.js';
 import { cleanTrackingNumber } from '../normalization.js';
 import { evaluateTrackingVerification } from '../verification.js';
 
@@ -19,6 +20,11 @@ function determineStatus(text: string): TrackingResult['status'] {
   if (lower.includes('exception') || lower.includes('delay') || lower.includes('held') || lower.includes('clearance') || text.includes('保留')) return 'in_transit';
   if (lower.includes('return') || text.includes('返送')) return 'returned';
   return 'in_transit';
+}
+
+/** DHL の統合の追跡 API の鍵（無ければ API を使わずにブラウザで照会する）。 */
+export function dhlApiKey(env: Env = process.env): string | undefined {
+  return envStr('SORA_TRACKING_DHL_API_KEY', env);
 }
 
 export const dhlAdapter: TrackingCarrierAdapter = {
@@ -62,7 +68,7 @@ export const dhlAdapter: TrackingCarrierAdapter = {
     const carrier = 'dhl';
     const trackingUrl = dhlAdapter.trackingUrl(num);
 
-    const apiKey = process.env.DHL_EXPRESS_API_KEY || process.env.DHL_API_KEY;
+    const apiKey = dhlApiKey();
 
     if (apiKey) {
       try {

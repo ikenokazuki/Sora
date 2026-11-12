@@ -14,12 +14,12 @@ import { generateOpenApiDocument } from './types.js';
 
 /** 名前を挙げたときだけ有効になるモジュール（lyrics・shazam・hts-archive）も含めて、全部の経路を OpenAPI に出す */
 function withAllModules<T>(fn: () => T): T {
-  const prev = process.env.ENABLED_MODULES;
-  process.env.ENABLED_MODULES = 'all,lyrics,shazam,hts-archive';
+  const prev = process.env.SORA_MODULES;
+  process.env.SORA_MODULES = 'all,lyrics,shazam,hts-archive';
   try {
     return fn();
   } finally {
-    if (prev === undefined) delete process.env.ENABLED_MODULES; else process.env.ENABLED_MODULES = prev;
+    if (prev === undefined) delete process.env.SORA_MODULES; else process.env.SORA_MODULES = prev;
   }
 }
 

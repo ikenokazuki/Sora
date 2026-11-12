@@ -7,6 +7,7 @@
  * - 運用者のプロキシ（SORA_PROXY_URL・HTTPS_PROXY など。net/proxy_config.ts）は、ゲートウェイの上流にする。NO_PROXY の宛先は、上流を使わず、
  *   ゲートウェイが直接つなぐ（検査は、同じに受ける）
  */
+import { envBool, envError, envList, type Env } from '../config.js';
 import { EgressGateway, type EgressGatewayOptions, parseUpstreamProxyUrl } from './egress_gateway.js';
 import { isProxyBypassed } from './no_proxy.js';
 import { getProxyConfig } from './proxy_config.js';
@@ -19,45 +20,43 @@ function warnOnce(message: string): void {
 }
 
 /**
- * 外向きの通信を、出口のゲートウェイに通すか。SORA_EGRESS_GATEWAY が on（true・1・yes）のとき。
- * 認識できない値は、使わず、警告を出す（打ち間違いに気づけるように）。ALLOW_LOCAL_FETCH=true（内部への取得を許す、開発・テスト用）のときは、使わない。
+ * 起動の検査（checkEnv）を通らない経路（組み込み・テスト）でも、この設定の不正な値を、黙って既定にしない
+ * （打ち間違いで、ゲートウェイが off になる・ポートが既定になる・運用者のプロキシを迂回して直接つなぐ、を防ぐ）。
+ * 登録簿と同じ文（変数名と正しい形。秘密の値は出さない）で、エラーにする。
  */
-export function isEgressGatewayEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = (env.SORA_EGRESS_GATEWAY ?? '').trim().toLowerCase();
-  if (['', 'off', 'false', '0', 'no'].includes(raw)) return false;
-  if (!['on', 'true', '1', 'yes'].includes(raw)) {
-    warnOnce(`SORA_EGRESS_GATEWAY=${JSON.stringify(env.SORA_EGRESS_GATEWAY)} は、on・off のどちらでもないので、使わない（off として扱う）`);
-    return false;
+function rejectInvalid(env: Env | undefined, ...names: ('SORA_EGRESS_GATEWAY' | 'SORA_EGRESS_PORTS' | 'SORA_PROXY_URL' | 'SORA_PROXY_LIST')[]): void {
+  for (const name of names) {
+    const problem = envError(name, env);
+    if (problem) throw new Error(problem);
   }
-  if (env.ALLOW_LOCAL_FETCH === 'true') {
-    warnOnce('ALLOW_LOCAL_FETCH=true（内部への取得を許す設定）なので、SORA_EGRESS_GATEWAY=on でも、出口のゲートウェイは使わない');
+}
+
+/**
+ * 外向きの通信を、出口のゲートウェイに通すか。SORA_EGRESS_GATEWAY が on（true・1・yes）のとき。
+ * 書き方の誤りは、使わないことにせず、エラーにする。SORA_FETCH_ALLOW_PRIVATE_NETWORK=true（内部への取得を許す、開発・テスト用）のときは、使わない。
+ * env を省略すると、プロセスの環境を読む。
+ */
+export function isEgressGatewayEnabled(env?: Env): boolean {
+  rejectInvalid(env, 'SORA_EGRESS_GATEWAY');
+  if (!envBool('SORA_EGRESS_GATEWAY', env)) return false;
+  if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK', env)) {
+    warnOnce('SORA_FETCH_ALLOW_PRIVATE_NETWORK=true（内部への取得を許す設定）なので、SORA_EGRESS_GATEWAY=on でも、出口のゲートウェイは使わない');
     return false;
   }
   return true;
 }
 
-/** SORA_EGRESS_PORTS（カンマ区切りの 1〜65535）を読む。未設定・空は undefined（ゲートウェイの既定: 80・443）。誤りは、起動のときに気づけるよう、エラー */
-export function parseAllowedPorts(raw: string | undefined): number[] | undefined {
-  const text = raw?.trim();
-  if (!text) return undefined;
-  return text.split(',').map((item) => {
-    const entry = item.trim();
-    const port = /^\d{1,5}$/.test(entry) ? Number(entry) : 0;
-    if (port < 1 || port > 65535) throw new Error(`SORA_EGRESS_PORTS=${JSON.stringify(raw)} の ${JSON.stringify(entry)} は、1〜65535 のポートではない（カンマ区切り。例: 80,443）`);
-    return port;
-  });
-}
-
 /**
  * 環境変数から、ゲートウェイの設定を作る。運用者のプロキシは、上流にする（http・https・socks5 に対応。ほかは、エラー: 黙って、上流なしにしない）。
- * NO_PROXY の宛先は、上流を使わない。
+ * NO_PROXY の宛先は、上流を使わない。SORA_EGRESS_PORTS が未設定なら、ポートはゲートウェイの既定（80・443）。env を省略すると、プロセスの環境を読む。
  */
-export function egressGatewayOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): EgressGatewayOptions {
+export function egressGatewayOptionsFromEnv(env?: Env): EgressGatewayOptions {
+  rejectInvalid(env, 'SORA_EGRESS_PORTS', 'SORA_PROXY_URL', 'SORA_PROXY_LIST');
   // SORA_PROXY_LIST は、静的取得が、リクエストごとに替える一覧。ゲートウェイの上流は 1 つなので、黙って無視すると、替えているつもりで 1 つに偏る
-  if (env.SORA_PROXY_LIST?.trim()) throw new Error('SORA_PROXY_LIST（リクエストごとに替えるプロキシの一覧）は、SORA_EGRESS_GATEWAY=on のときは使えない（ゲートウェイの上流は、SORA_PROXY_URL などの 1 つ）');
+  if (envList('SORA_PROXY_LIST', env).length > 0) throw new Error('SORA_PROXY_LIST（リクエストごとに替えるプロキシの一覧）は、SORA_EGRESS_GATEWAY=on のときは使えない（ゲートウェイの上流は、SORA_PROXY_URL などの 1 つ）');
   const options: EgressGatewayOptions = {};
-  const allowedPorts = parseAllowedPorts(env.SORA_EGRESS_PORTS);
-  if (allowedPorts) options.allowedPorts = allowedPorts;
+  const allowedPorts = envList('SORA_EGRESS_PORTS', env).map(Number);
+  if (allowedPorts.length > 0) options.allowedPorts = allowedPorts;
   const { proxyServer, proxyBypassList } = getProxyConfig(env);
   if (proxyServer) {
     options.upstream = parseUpstreamProxyUrl(proxyServer);

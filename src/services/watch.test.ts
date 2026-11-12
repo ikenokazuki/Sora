@@ -81,7 +81,7 @@ describe('F7 selector presence', () => {
 });
 
 describe('webhookSent は送信の成否を表す', () => {
-  const previousLocal = process.env.ALLOW_LOCAL_FETCH;
+  const previousLocal = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   // 失敗の経路は想定どおり console.warn を出す。テストの出力に混ぜず、ここで受けて確かめる
   let warn: ReturnType<typeof spyOn<Console, 'warn'>>;
   const warned = () => warn.mock.calls.map((c) => c.map(String).join(' '));
@@ -90,8 +90,8 @@ describe('webhookSent は送信の成否を表す', () => {
   });
   afterEach(() => {
     warn.mockRestore();
-    if (previousLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previousLocal;
+    if (previousLocal === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previousLocal;
   });
 
   // 手元の受け口。status で応答し、受け取った本文を残す
@@ -115,7 +115,7 @@ describe('webhookSent は送信の成否を表す', () => {
   };
 
   test('2xx で受け取られたときだけ true', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     const hook = receiver(200);
     try {
       const res = await changeOnce(hook.url);
@@ -130,7 +130,7 @@ describe('webhookSent は送信の成否を表す', () => {
   });
 
   test('受け口が 5xx を返したら false', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     const hook = receiver(500);
     try {
       const res = await changeOnce(hook.url);
@@ -144,7 +144,7 @@ describe('webhookSent は送信の成否を表す', () => {
   });
 
   test('つながらない先は false', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     const res = await changeOnce('http://127.0.0.1:1/hook');
     expect(res.changed).toBe(true);
     expect(res.webhookSent).toBe(false);
@@ -152,7 +152,7 @@ describe('webhookSent は送信の成否を表す', () => {
   });
 
   test('SSRF の判定で止められた先は false（送っていない）', async () => {
-    delete process.env.ALLOW_LOCAL_FETCH;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     const hook = receiver(200);
     try {
       const res = await changeOnce(hook.url);
@@ -174,7 +174,7 @@ describe('webhookSent は送信の成否を表す', () => {
   });
 
   test('checkAllWatchTargets（全件の check）は変化のあった対象の Webhook をまとめて送り、結果は対象ごと', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     // 受け口は、3 件の通知がそろうまでどれにも応答しない。時間に頼らず、同時に来た数で確かめる（1 件ずつ送る作りは止まり、テストの時間切れで落ちる）
     let inFlight = 0;
     let maxInFlight = 0;
@@ -202,7 +202,7 @@ describe('webhookSent は送信の成否を表す', () => {
       await checkAllWatchTargets(matchScrape('version one text here') as never);
       const results = await checkAllWatchTargets(matchScrape('version two text here') as never);
       expect(maxInFlight).toBe(3);
-      // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）
+      // ログには、ホスト名とポートだけを出す（URL のパス・クエリに、通知先のトークンが入りやすいため）。どの対象が失敗したかは結果の webhookSent で分かる
       expect(warned()).toEqual([expect.stringContaining(`${new URL(base).host}: HTTP 500`)]);
       expect(warned().join('\n')).not.toContain('/bad');
       expect(storedBeforeSend).toEqual([true, true, true]);
@@ -259,7 +259,7 @@ describe('webhookSent は送信の成否を表す', () => {
   });
 
   test('送信が例外を投げても、全件の結果は返り、その対象だけ webhookSent が false', async () => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     const targets = [] as string[];
     for (const name of ['a', 'b', 'c']) {
       const { target } = await registerWatchTarget({ url: `https://example.com/${name}`, webhookUrl: `http://127.0.0.1:1/${name}`, initialFetch: false });
@@ -267,7 +267,8 @@ describe('webhookSent は送信の成否を表す', () => {
     }
     await checkAllWatchTargets(matchScrape('version one text here') as never);
     const deliver = spyOn(enrichment, 'deliverWebhook').mockImplementation(async (url?: string) => {
-      if (url?.endsWith('/b')) throw new Error('boom');
+      // 例外の文は宛先の URL（秘密を含みうる）を含む。警告には code だけを出す
+      if (url?.endsWith('/b')) throw Object.assign(new Error(`UnexpectedRedirect fetching "${url}?token=secret-token-w"`), { code: 'UnexpectedRedirect' });
       return true;
     });
     try {
@@ -275,7 +276,7 @@ describe('webhookSent は送信の成否を表す', () => {
       expect(results).toHaveLength(3);
       expect(new Map(results.map((r) => [r.url.slice(-1), r.webhookSent]))).toEqual(new Map([['a', true], ['b', false], ['c', true]]));
       expect(results.every((r) => r.changed)).toBe(true);
-      expect(warned()).toEqual([expect.stringContaining('boom')]);
+      expect(warned()).toEqual([`[Sora/Watch] Webhook delivery for watch target ${targets[1]} threw: UnexpectedRedirect`]);
     } finally {
       deliver.mockRestore();
     }

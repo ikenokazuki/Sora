@@ -9,12 +9,15 @@ let server: ReturnType<typeof Bun.serve> | undefined;
 let baseUrl = '';
 let origin = '';
 let previousPort: string | undefined;
+let previousDbPath: string | undefined;
+let previousApiKey: string | undefined;
 
 beforeAll(async () => {
   directory = mkdtempSync(join(tmpdir(), 'transport-smoke-'));
+  previousDbPath = process.env.SORA_DB_PATH;
+  previousApiKey = process.env.SORA_API_KEY;
   process.env.SORA_DB_PATH = join(directory, 'test.db');
-  delete process.env.WEB_FETCHER_API_KEY;
-  delete process.env.API_KEY;
+  delete process.env.SORA_API_KEY;
   // Claim a free port first so the MCP allowlist covers this exact origin.
   const probe = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('ok') });
   const port = probe.port;
@@ -33,9 +36,10 @@ afterAll(async () => {
   try { server?.stop(true); } catch {}
   const { closeDb } = await import('./db.js');
   closeDb();
-  delete process.env.SORA_DB_PATH;
-  if (previousPort === undefined) delete process.env.PORT;
-  else process.env.PORT = previousPort;
+  for (const [key, value] of [['SORA_DB_PATH', previousDbPath], ['SORA_API_KEY', previousApiKey], ['PORT', previousPort]] as const) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   rmSync(directory, { recursive: true, force: true });
 });
 

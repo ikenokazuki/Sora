@@ -5,8 +5,8 @@ import { fetchWithSafeRedirects } from './http_fetcher.js';
 
 let prevAllow: string | undefined;
 function allowLocal(on: boolean) {
-  if (on) { prevAllow = process.env.ALLOW_LOCAL_FETCH; process.env.ALLOW_LOCAL_FETCH = 'true'; }
-  else { if (prevAllow !== undefined) process.env.ALLOW_LOCAL_FETCH = prevAllow; else delete process.env.ALLOW_LOCAL_FETCH; }
+  if (on) { prevAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK; process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true'; }
+  else { if (prevAllow !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllow; else delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK; }
 }
 function listen(): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
@@ -54,14 +54,14 @@ describe('redirect validation block metric', () => {
   test('blocked redirect target throws and counts', async () => {
     const { fetchWithSafeRedirects } = await import('./http_fetcher.js');
     const { getSecurityMetrics, resetSecurityMetrics } = await import('./security/metrics.js');
-    const prev = process.env.ALLOW_LOCAL_FETCH;
-    delete process.env.ALLOW_LOCAL_FETCH;
+    const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     resetSecurityMetrics();
     try {
       await expect(fetchWithSafeRedirects('http://169.254.169.254/', 3000, 2)).rejects.toThrow();
       expect(getSecurityMetrics()['sora_redirect_block_total'] ?? 0).toBeGreaterThanOrEqual(1);
     } finally {
-      if (prev !== undefined) process.env.ALLOW_LOCAL_FETCH = prev;
+      if (prev !== undefined) process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
   });
 });

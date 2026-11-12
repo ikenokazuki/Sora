@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { envUrl } from '../config.js';
 import { PoiSearchRequestSchema } from '../types.js';
 import { addressAttribution } from './address_attribution.js';
 import type { UnavailableItem } from './address_gaps.js';
@@ -43,7 +44,7 @@ export const OPENPOI_ATTRIBUTION = '出典: OpenPOI API (https://openpoiapi.com/
 export type PoiFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 export function openPoiBaseUrl(): string {
-  return (process.env.SORA_OPENPOI_BASE_URL ?? 'https://api.openpoiapi.com').replace(/\/$/, '');
+  return envUrl('SORA_OPENPOI_BASE_URL');
 }
 
 function toNumber(value: unknown): number | undefined {

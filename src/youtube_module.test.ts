@@ -9,21 +9,21 @@ import { createYoutubeRoutes } from './routes/youtube.js';
 import { YoutubeInputError } from './services/youtube.js';
 import { generateOpenApiDocument } from './types.js';
 
-const savedModules = process.env.ENABLED_MODULES;
+const savedModules = process.env.SORA_MODULES;
 afterEach(() => {
-  if (savedModules === undefined) delete process.env.ENABLED_MODULES;
-  else process.env.ENABLED_MODULES = savedModules;
+  if (savedModules === undefined) delete process.env.SORA_MODULES;
+  else process.env.SORA_MODULES = savedModules;
 });
 
 describe('youtube module is on by default', () => {
   test('unset, all and naming it enable it, and a list without it does not', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(isModuleActive('youtube')).toBe(true);
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     expect(isModuleActive('youtube')).toBe(true);
-    process.env.ENABLED_MODULES = 'web,youtube';
+    process.env.SORA_MODULES = 'web,youtube';
     expect(isModuleActive('youtube')).toBe(true);
-    process.env.ENABLED_MODULES = 'web';
+    process.env.SORA_MODULES = 'web';
     expect(isModuleActive('youtube')).toBe(false);
   });
 });
@@ -43,7 +43,7 @@ const fakeResult = {
 
 describe('MCP tool get_youtube', () => {
   test('is registered by default as a deferred youtube tool, and absent when the module is left out', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     const entry = toolCatalogOf(createMcpServer()).get('get_youtube');
     expect(entry?.category).toBe('youtube');
     expect(entry?.handle.enabled).toBe(false);

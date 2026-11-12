@@ -251,11 +251,11 @@ export function installExternalApiFixtures(): () => void {
   }) as typeof fetch;
   globalThis.fetch = wrapped;
   // 判例の写しは CBP の API の応答なので、照会先を API にする（手元の索引の経路は cross_index.test.ts で確かめる）
-  const originalSource = process.env.CROSS_SOURCE;
-  process.env.CROSS_SOURCE = 'api';
+  const originalSource = process.env.SORA_HTS_CROSS_SOURCE;
+  process.env.SORA_HTS_CROSS_SOURCE = 'api';
   return () => {
     if (globalThis.fetch === wrapped) globalThis.fetch = original;
-    if (originalSource === undefined) delete process.env.CROSS_SOURCE;
-    else process.env.CROSS_SOURCE = originalSource;
+    if (originalSource === undefined) delete process.env.SORA_HTS_CROSS_SOURCE;
+    else process.env.SORA_HTS_CROSS_SOURCE = originalSource;
   };
 }

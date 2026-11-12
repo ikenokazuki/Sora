@@ -4,6 +4,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { envBool, envInt } from './config.js';
 import { isModuleActive, type McpServerOptions, type McpSessionState, type ToolCatalogEntry, type ToolRegistrationContext } from './mcp/registry.js';
 import { buildSoraMcpInstructions } from './mcp/instructions.js';
 import { registerSkillResources } from './mcp/resources.js';
@@ -61,7 +62,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     options.sessionState.activatedTools = sessionActivated;
   }
   const serverTenantId = options?.sessionState?.tenantId ?? 'legacy';
-  const isDeferEnabled = options?.deferTools ?? (process.env.SORA_DEFER_TOOLS !== 'false');
+  const isDeferEnabled = options?.deferTools ?? envBool('SORA_MCP_DEFER_TOOLS');
   const deferredDefault = !isDeferEnabled;
 
   const shouldEnableWeb = isModuleActive('web', options?.modules);
@@ -127,16 +128,8 @@ export function mcpTenantFromRequest(req: Request): string {
   return 'legacy';
 }
 
-/** 同時に保持する MCP セッション数の既定上限。1 セッションは JS ヒープ約 3〜4MB を保持する（ツールの定義を持つため。53 ツールだった v4 の見積もり） */
-export const DEFAULT_MAX_MCP_SESSIONS = 100;
 /** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
 export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
-
-/** SORA_MCP_MAX_SESSIONS の解釈。正の整数ならそれ、未設定や不正な値は既定値。 */
-export function resolveMaxMcpSessions(raw: string | undefined): number {
-  const n = raw && /^\d+$/.test(raw.trim()) ? parseInt(raw.trim(), 10) : NaN;
-  return n > 0 ? n : DEFAULT_MAX_MCP_SESSIONS;
-}
 
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
@@ -152,7 +145,7 @@ export class McpSessionManager {
     this.maxSessions =
       options?.maxSessions !== undefined && Number.isInteger(options.maxSessions) && options.maxSessions > 0
         ? options.maxSessions
-        : resolveMaxMcpSessions(process.env.SORA_MCP_MAX_SESSIONS);
+        : envInt('SORA_MCP_MAX_SESSIONS');
     this.minIdleBeforeEvictMs = options?.minIdleBeforeEvictMs ?? DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS;
     this.cleanupInterval = setInterval(() => this.cleanupStaleSessions(), 5 * 60 * 1000);
     if (typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
@@ -304,13 +297,13 @@ export class McpSessionManager {
  * tools/list の1ツールを整形する。inputSchema は Gemini 互換化、outputSchema は既定で除外。
  * outputSchema は国別インテリジェンス（research_country_context）だけで約74KBあり、ホストがモデルへ丸ごと渡すと
  * プロンプト長とレイテンシを押し上げる。tools/call 側の structuredContent 検証は影響を受けない。
- * 旧挙動が必要なクライアント向けに SORA_TOOL_OUTPUT_SCHEMA=true で復活できる。
+ * 旧挙動が必要なクライアント向けに SORA_MCP_OUTPUT_SCHEMA=true で復活できる。
  */
 function slimListedTool(t: any) {
   const { outputSchema, ...rest } = t;
   return {
     ...rest,
-    ...(process.env.SORA_TOOL_OUTPUT_SCHEMA === 'true' && outputSchema ? { outputSchema } : {}),
+    ...(envBool('SORA_MCP_OUTPUT_SCHEMA') && outputSchema ? { outputSchema } : {}),
     inputSchema: sanitizeJsonSchemaForGemini(t.inputSchema),
   };
 }

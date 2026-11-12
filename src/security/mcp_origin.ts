@@ -1,4 +1,8 @@
 import type { MiddlewareHandler } from 'hono';
+import { envInt, envList } from '../config.js';
+import { normalizeHost, normalizeOrigin } from './host_origin.js';
+
+export { normalizeHost, normalizeOrigin };
 
 export interface McpOriginOptions {
   allowedHosts?: readonly string[];
@@ -8,9 +12,7 @@ export interface McpOriginOptions {
 
 export function resolveMcpPort(explicit?: number): number {
   if (explicit !== undefined && Number.isInteger(explicit) && explicit > 0) return explicit;
-  const fromEnv = parseInt(process.env.PORT || '', 10);
-  if (Number.isInteger(fromEnv) && fromEnv > 0) return fromEnv;
-  return 8000;
+  return envInt('PORT');
 }
 
 export function defaultAllowedHosts(port: number): string[] {
@@ -22,46 +24,6 @@ export function defaultAllowedOrigins(port: number): string[] {
     'http://localhost', 'http://127.0.0.1', 'http://[::1]',
     'http://localhost:' + port, 'http://127.0.0.1:' + port, 'http://[::1]:' + port,
   ];
-}
-
-function parseList(raw: string | undefined): string[] {
-  if (!raw) return [];
-  return raw.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-}
-
-export function normalizeHost(value: string): string | undefined {
-  const v = value.trim();
-  if (!v) return undefined;
-  if (v.indexOf('/') >= 0 || v.indexOf('?') >= 0 || v.indexOf('#') >= 0 || v.indexOf('@') >= 0) return undefined;
-  if (/\s/.test(v)) return undefined;
-  const lower = v.toLowerCase();
-  if (lower.charAt(0) === '[') {
-    const close = lower.indexOf(']');
-    if (close < 0) return undefined;
-    const rest = lower.slice(close + 1);
-    if (rest !== '' && !/^:[0-9]+$/.test(rest)) return undefined;
-    return lower;
-  }
-  const colon = lower.lastIndexOf(':');
-  if (colon >= 0) {
-    const portPart = lower.slice(colon + 1);
-    if (!/^[0-9]+$/.test(portPart)) return undefined;
-  }
-  return lower;
-}
-
-export function normalizeOrigin(value: string): string | undefined {
-  const v = value.trim();
-  if (!v || v === 'null') return undefined;
-  let url: URL;
-  try {
-    url = new URL(v);
-  } catch {
-    return undefined;
-  }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined;
-  if (url.pathname !== '/' || url.search !== '' || url.hash !== '' || url.username !== '' || url.password !== '') return undefined;
-  return url.origin;
 }
 
 export interface ResolvedMcpOriginConfig {
@@ -111,8 +73,9 @@ export function isLoopbackAuthority(authority: string): boolean {
 
 export function resolveMcpOriginConfig(options: McpOriginOptions = {}): ResolvedMcpOriginConfig {
   const port = resolveMcpPort(options.port);
-  const hostRaw = options.allowedHosts !== undefined ? options.allowedHosts : parseList(process.env.SORA_ALLOWED_HOSTS);
-  const originRaw = options.allowedOrigins !== undefined ? options.allowedOrigins : parseList(process.env.SORA_ALLOWED_ORIGINS);
+  // 環境変数の列は、正しい要素だけを正規化して返す（不正な要素は起動時の検査が止める）。引数の不正な要素は下で例外にする
+  const hostRaw = options.allowedHosts !== undefined ? options.allowedHosts : envList('SORA_ALLOWED_HOSTS');
+  const originRaw = options.allowedOrigins !== undefined ? options.allowedOrigins : envList('SORA_ALLOWED_ORIGINS');
   const hostList = hostRaw.length > 0 ? hostRaw : defaultAllowedHosts(port);
   const originList = originRaw.length > 0 ? originRaw : defaultAllowedOrigins(port);
   const allowedHosts = new Set<string>();

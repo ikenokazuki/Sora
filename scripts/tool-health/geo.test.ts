@@ -156,7 +156,7 @@ describe('live address checks', () => {
     await expect(check.run(failing('Reverse geocode error: city:131016 の構築が 120 秒以内に終わりませんでした'))).rejects.toBeInstanceOf(LiveUnavailable);
     await expect(check.run(failing('Reverse geocode error: index を取得できませんでした'))).rejects.toBeInstanceOf(LiveUnavailable);
     // 機能の無効化や入力の誤りは、こちら側の契約違反
-    await expect(check.run(failing('Reverse geocode error: 住所機能は SORA_ADDRESS=off で無効化されています'))).rejects.toBeInstanceOf(LiveFail);
+    await expect(check.run(failing('Reverse geocode error: 住所機能は SORA_ADDRESS_MODE=off で無効化されています'))).rejects.toBeInstanceOf(LiveFail);
     await expect(check.run(failing('Reverse geocode error: lat は -90〜90 の数値で指定してください'))).rejects.toBeInstanceOf(LiveFail);
   });
 });

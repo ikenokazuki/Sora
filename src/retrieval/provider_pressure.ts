@@ -1,8 +1,8 @@
 /**
  * Yahoo provider pressure controller (Retrieval v2, spec section 3-15).
  *
- * Replaces the fixed `SORA_WEB_RETRY_WAIT_MS` wait plus request-local
- * `waitedOnce` flag with a provider-wide AIMD controller:
+ * Replaces a fixed retry wait plus a request-local `waitedOnce` flag
+ * with a provider-wide AIMD controller:
  * successes shrink the spacing, 429s grow it, and a sliding-window
  * circuit stops all Yahoo Web traffic while the provider is hot.
  * X Realtime has its own discipline and never shares this instance.
@@ -39,14 +39,9 @@ interface ProviderEvent {
 }
 
 export function defaultYahooPressureOptions(): ProviderPressureOptions {
-  // SORA_WEB_RETRY_WAIT_MS is deprecated: honored only as the initial
-  // spacing override during migration, then removed.
-  const legacy = Number(process.env.SORA_WEB_RETRY_WAIT_MS ?? '');
-  const initialSpacingMs =
-    Number.isFinite(legacy) && legacy >= 0 ? legacy : 400;
   return {
     minSpacingMs: 150,
-    initialSpacingMs,
+    initialSpacingMs: 400,
     maxSpacingMs: 5000,
     increaseStepMs: 50,
     decreaseMultiplier: 2,
@@ -155,7 +150,7 @@ export class ProviderPressureController {
   }
 }
 
-/** Pressure-aware Yahoo Web query budget: provider health wins over flags. */
+/** Pressure-aware Yahoo Web query budget: the more loaded the provider, the fewer queries (high 1, medium 2, low 3). */
 export function getYahooQueryBudget(pressure: ProviderPressureLevel): number {
   switch (pressure) {
     case 'high':

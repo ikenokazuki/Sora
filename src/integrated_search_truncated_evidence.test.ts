@@ -23,8 +23,8 @@ const pages: Record<string, string> = {
 };
 
 async function search(paths: string[], extra: Record<string, unknown>) {
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   const server = Bun.serve({ port: 0, fetch: (req) => new Response(pages[new URL(req.url).pathname], { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
   const items = paths.map((p) => ({ title: p, url: `http://127.0.0.1:${server.port}${p}`, snippet: p, source: 'web' }));
   const spies = [
@@ -34,8 +34,8 @@ async function search(paths: string[], extra: Record<string, unknown>) {
   cleanups.push(() => {
     for (const spy of spies) spy.mockRestore();
     server.stop(true);
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
   });
   return integratedSearch({ query: '開場時間 料金', limit: 1, maxChars: 2000, includeRealtime: false, noCache: true, ...extra });
 }

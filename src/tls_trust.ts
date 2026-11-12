@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { envEnum, envError, SETTINGS } from './config.js';
 
 /**
  * 静的取得（wreq-js）が信頼しない root（証明書の SHA-256 の指紋。コロン無し・小文字）と、その理由。
@@ -15,20 +16,21 @@ export const DISTRUSTED_ROOTS: ReadonlyMap<string, string> = new Map([
   ],
 ]);
 
-export const TRUST_STORE_MODES = ['combined', 'mozilla', 'defaultPaths'] as const;
+/** 値の一覧は登録簿（src/config.ts）が持つ。 */
+export const TRUST_STORE_MODES = SETTINGS.SORA_FETCH_TRUST_STORE.values;
 export type TrustStoreMode = (typeof TRUST_STORE_MODES)[number];
 
 /**
- * SORA_FETCH_TRUST_STORE（静的取得の trustStore。未設定なら wreq-js の既定のまま）。
+ * SORA_FETCH_TRUST_STORE（静的取得の trustStore。未設定なら wreq-js の既定のまま。値は登録簿の列挙で、大文字小文字は問わない）。
  * 公開イメージは、同梱の root を使わず、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、
- * DISTRUSTED_ROOTS を除いたもの）だけを使うよう defaultPaths にしている。不正な値は無視する（既定のまま）。
+ * DISTRUSTED_ROOTS を除いたもの）だけを使うよう defaultPaths にしている。不正な値は無視して（既定のまま）、警告を出す。
  */
 export function parseTrustStoreMode(raw: string | undefined): TrustStoreMode | undefined {
-  const value = raw?.trim();
-  if (!value) return undefined;
-  const mode = TRUST_STORE_MODES.find((m) => m.toLowerCase() === value.toLowerCase());
-  if (!mode) console.warn(`[tls_trust] SORA_FETCH_TRUST_STORE=${JSON.stringify(value)} is not one of ${TRUST_STORE_MODES.join(', ')}; using the wreq-js default`);
-  return mode;
+  const env = { SORA_FETCH_TRUST_STORE: raw };
+  if (envError('SORA_FETCH_TRUST_STORE', env)) {
+    console.warn(`[tls_trust] SORA_FETCH_TRUST_STORE=${JSON.stringify(raw?.trim())} is not one of ${TRUST_STORE_MODES.join(', ')}; using the wreq-js default`);
+  }
+  return envEnum('SORA_FETCH_TRUST_STORE', env);
 }
 
 /** PEM の束（ca-certificates.crt など）を、証明書ごとに分ける */

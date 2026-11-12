@@ -4,11 +4,12 @@
  * Provides bounded, fail-soft detail enrichment for selected X posts.
  * - Single status ID only (^\d+$)
  * - Cached (5-min TTL) & Single-flight deduplication
- * - 1500ms timeout with zero-retry fail-soft fallback
+ * - 1500ms timeout (SORA_X_DETAIL_TIMEOUT_MS) with zero-retry fail-soft fallback
  * - Disabled if SORA_X_DETAIL_PROVIDER=off
  */
 
 import { getFromCache, setToCache, runWithSingleFlight } from '../cache.js';
+import { envBool, envInt, envUrl } from '../config.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { tokenizeAndSelectTerms, type ParsedSection } from '../extractor/markdown_sections.js';
 import { parseXDiscoverySeed } from '../x_source_isolation.js';
@@ -30,8 +31,6 @@ export interface XPostDetailProvider {
   fetchStatus(statusId: string): Promise<XPostDetail | null>;
 }
 
-const DEFAULT_FXTWITTER_BASE = 'https://api.fxtwitter.com';
-const DEFAULT_TIMEOUT_MS = 1500;
 const DETAIL_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 export const X_DETAIL_INSPECT_LIMIT = 10;
@@ -48,10 +47,11 @@ export class FxTwitterDetailProvider implements XPostDetailProvider {
   private timeoutMs: number;
   private enabled: boolean;
 
+  /** 環境変数は構築時に読む（defaultXDetailProvider は読み込み時に 1 回だけ作る）。 */
   constructor() {
-    this.base = (process.env.FXTWITTER_API_BASE || DEFAULT_FXTWITTER_BASE).replace(/\/+$/, '');
-    this.timeoutMs = parseInt(process.env.FXTWITTER_TIMEOUT_MS || '', 10) || DEFAULT_TIMEOUT_MS;
-    this.enabled = process.env.SORA_X_DETAIL_PROVIDER !== 'off';
+    this.base = envUrl('SORA_X_DETAIL_BASE_URL');
+    this.timeoutMs = envInt('SORA_X_DETAIL_TIMEOUT_MS');
+    this.enabled = envBool('SORA_X_DETAIL_PROVIDER');
   }
 
   async fetchStatus(rawStatusId: string): Promise<XPostDetail | null> {

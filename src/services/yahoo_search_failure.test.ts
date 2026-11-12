@@ -36,19 +36,6 @@ describe('web search distinguishes upstream failure from empty results', () => {
     expect(r.items).toEqual([]);
     expect(r.providerErrors).toEqual([]);
   });
-  test('union path also records upstream failure', async () => {
-    process.env.SORA_WEB_QUERY_UNION = 'true';
-    try {
-      const r = await searchYahooWeb(
-        { query: 'x' },
-        { callYahooMcp: async () => err429, fetchYahooWebDirect: directDown } as any,
-      );
-      expect(r.queryUnion).toBe(true);
-      expect(r.providerErrors.length).toBeGreaterThan(0);
-    } finally {
-      delete process.env.SORA_WEB_QUERY_UNION;
-    }
-  });
   test('direct fetch is the primary route and skips the binary', async () => {
     let mcpCalls = 0;
     const r = await searchYahooWeb(
@@ -75,49 +62,22 @@ describe('web search distinguishes upstream failure from empty results', () => {
     expect(r.providerErrors.map((e: any) => e.message).join('\n')).toContain('direct down');
   });
   test('rate-limit stops fan-out instead of waiting then retrying', async () => {
-    process.env.SORA_WEB_QUERY_UNION = 'true';
     let calls = 0;
-    try {
-      const r = await searchYahooWeb(
-        { query: 'ｘ' },
-        {
-          callYahooMcp: async () => {
-            calls++;
-            return err429;
-          },
-          fetchYahooWebDirect: directEmpty,
-        } as any,
-      );
-      expect(calls).toBe(1);
-      expect(r.items).toEqual([]);
-      expect(r.throttled).toBe(true);
-      expect(r.stopReason).toBe('provider_rate_limited');
-      expect(r.providerErrors).toHaveLength(1);
-    } finally {
-      delete process.env.SORA_WEB_QUERY_UNION;
-    }
-  });
-  test('deprecated retry-wait env does not re-enable fan-out after 429', async () => {
-    process.env.SORA_WEB_QUERY_UNION = 'true';
-    process.env.SORA_WEB_RETRY_WAIT_MS = '0';
-    let calls = 0;
-    try {
-      const r = await searchYahooWeb(
-        { query: 'ｘ' },
-        {
-          callYahooMcp: async () => {
-            calls++;
-            return err429;
-          },
-          fetchYahooWebDirect: directEmpty,
-        } as any,
-      );
-      expect(calls).toBe(1);
-      expect(r.throttled).toBe(true);
-    } finally {
-      delete process.env.SORA_WEB_QUERY_UNION;
-      delete process.env.SORA_WEB_RETRY_WAIT_MS;
-    }
+    const r = await searchYahooWeb(
+      { query: 'ｘ' },
+      {
+        callYahooMcp: async () => {
+          calls++;
+          return err429;
+        },
+        fetchYahooWebDirect: directEmpty,
+      } as any,
+    );
+    expect(calls).toBe(1);
+    expect(r.items).toEqual([]);
+    expect(r.throttled).toBe(true);
+    expect(r.stopReason).toBe('provider_rate_limited');
+    expect(r.providerErrors).toHaveLength(1);
   });
 
   test('fresh cache hit skips the provider', async () => {
@@ -160,32 +120,5 @@ describe('web search distinguishes upstream failure from empty results', () => {
     );
     expect(calls).toBe(1);
     expect(results.every((r) => r.items.length === 1)).toBe(true);
-  });
-  test('Q0 success survives Q1 rate-limit as partial results', async () => {
-    process.env.SORA_WEB_QUERY_UNION = 'true';
-    const rateErr: any = new Error('Yahoo provider rate limited');
-    rateErr.code = 'YAHOO_RATE_LIMITED';
-    const ten = Array.from({ length: 10 }, (_, i) => ({ title: `t${i}`, url: `https://e/${i}` }));
-    let calls = 0;
-    try {
-      const r = await searchYahooWeb(
-        { query: 'ｘ' },
-        {
-          callYahooMcp: async () => {
-            calls++;
-            if (calls === 1) return { content: [{ text: JSON.stringify({ items: ten }) }], isError: false };
-            throw rateErr;
-          },
-          fetchYahooWebDirect: directEmpty,
-        } as any,
-      );
-      expect(calls).toBe(2);
-      expect(r.items.length).toBeGreaterThan(0);
-      expect(r.partial).toBe(true);
-      expect(r.throttled).toBe(true);
-      expect(r.stopReason).toBe('provider_rate_limited');
-    } finally {
-      delete process.env.SORA_WEB_QUERY_UNION;
-    }
   });
 });

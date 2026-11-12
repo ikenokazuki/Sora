@@ -6,22 +6,22 @@ import { app } from './index.js';
 import { isModuleActive } from './mcp/registry.js';
 import { generateOpenApiDocument } from './types.js';
 
-const savedModules = process.env.ENABLED_MODULES;
+const savedModules = process.env.SORA_MODULES;
 afterEach(() => {
-  if (savedModules === undefined) delete process.env.ENABLED_MODULES;
-  else process.env.ENABLED_MODULES = savedModules;
+  if (savedModules === undefined) delete process.env.SORA_MODULES;
+  else process.env.SORA_MODULES = savedModules;
 });
 
 describe('hts-archive module is explicit opt-in', () => {
   test('all, wildcard and unset do not enable it; naming it does', () => {
-    delete process.env.ENABLED_MODULES;
+    delete process.env.SORA_MODULES;
     expect(isModuleActive('hts-archive')).toBe(false);
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     expect(isModuleActive('hts-archive')).toBe(false);
-    process.env.ENABLED_MODULES = '*';
+    process.env.SORA_MODULES = '*';
     expect(isModuleActive('hts-archive')).toBe(false);
     expect(isModuleActive('hts-archive', ['all'])).toBe(false);
-    process.env.ENABLED_MODULES = 'all,hts-archive';
+    process.env.SORA_MODULES = 'all,hts-archive';
     expect(isModuleActive('hts-archive')).toBe(true);
   });
 });
@@ -55,7 +55,7 @@ describe('hts-archive REST', () => {
   });
 
   test('answers 404 MODULE_DISABLED and stays out of the docs unless named', async () => {
-    process.env.ENABLED_MODULES = 'all';
+    process.env.SORA_MODULES = 'all';
     for (const path of ['/trade/hts/releases', '/trade/hts/releases/2026HTSRev22']) {
       const res = await app.request(path);
       expect(res.status).toBe(404);
@@ -66,7 +66,7 @@ describe('hts-archive REST', () => {
   });
 
   test('lists saved releases and returns one release, gzip or plain', async () => {
-    process.env.ENABLED_MODULES = 'all,hts-archive';
+    process.env.SORA_MODULES = 'all,hts-archive';
     const list = await app.request('/trade/hts/releases');
     expect(await list.json()).toEqual({ checkedAt: '2026-11-12T04:00:00.000Z', lastError: null, releases: [entry] });
     const plain = await app.request('/trade/hts/releases/2026HTSRev22');
@@ -81,7 +81,7 @@ describe('hts-archive REST', () => {
   });
 
   test('rejects a malformed id with 400 and an unknown one with 404', async () => {
-    process.env.ENABLED_MODULES = 'all,hts-archive';
+    process.env.SORA_MODULES = 'all,hts-archive';
     expect((await app.request('/trade/hts/releases/bad.name')).status).toBe(400);
     const missing = await app.request('/trade/hts/releases/2026HTSRev21');
     expect(missing.status).toBe(404);

@@ -2,10 +2,11 @@ import { existsSync } from 'fs';
 import { getCacheSize } from '../cache.js';
 import { getDb } from '../db.js';
 import { sendWebhookNotification } from '../enrichment.js';
-import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_PATH } from '../scraper.js';
+import { CHROME_EXECUTABLE_PATH, YAHOO_MCP_EXECUTABLE_PATH } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
-import { errorMessage } from '../errors.js';
+import { errorKind, errorMessage } from '../errors.js';
+import { envUrl } from '../config.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -76,8 +77,8 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
   // Yahoo MCP チェック
   const yahooStatus: DependencyStatus = {
-    status: existsSync(YAHOO_MCP_PATH) ? 'ok' : 'unavailable',
-    message: existsSync(YAHOO_MCP_PATH) ? undefined : 'Yahoo MCP binary not found',
+    status: existsSync(YAHOO_MCP_EXECUTABLE_PATH) ? 'ok' : 'unavailable',
+    message: existsSync(YAHOO_MCP_EXECUTABLE_PATH) ? undefined : 'Yahoo MCP binary not found',
   };
 
   // 外部依存先並行プローブ
@@ -118,7 +119,7 @@ export async function checkDetailedHealth(): Promise<DetailedHealthReport> {
 
 /** 管理者アラート通知 (Slack / Discord Webhook) */
 export function sendAdminAlert(event: string, details: Record<string, any>): void {
-  const alertWebhookUrl = process.env.ADMIN_ALERT_WEBHOOK_URL;
+  const alertWebhookUrl = envUrl('SORA_ALERT_WEBHOOK_URL');
   if (!alertWebhookUrl) return;
 
   const payload = {
@@ -130,6 +131,7 @@ export function sendAdminAlert(event: string, details: Record<string, any>): voi
   };
 
   sendWebhookNotification(alertWebhookUrl, payload).catch((err) => {
-    console.warn('[Sora/Alert] Failed to send admin alert:', errorMessage(err) || err);
+    // 宛先の URL は秘密を含み、例外の文にも入るので、例外の種類だけを出す
+    console.warn('[Sora/Alert] Failed to send admin alert:', errorKind(err));
   });
 }

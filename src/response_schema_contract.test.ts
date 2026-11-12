@@ -47,15 +47,15 @@ beforeAll(() => {
     + '<p><a href="/next">次のページ</a></p></body></html>';
   page = Bun.serve({ port: 0, fetch: () => new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
   pageUrl = `http://127.0.0.1:${page.port}/`;
-  prevAllowLocal = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  prevAllowLocal = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
 });
 
 afterAll(() => {
   restoreFetch?.();
   page?.stop(true);
-  if (prevAllowLocal === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-  else process.env.ALLOW_LOCAL_FETCH = prevAllowLocal;
+  if (prevAllowLocal === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllowLocal;
 });
 
 describe('REST responses only contain keys declared in the OpenAPI 200 schema', () => {

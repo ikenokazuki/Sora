@@ -38,6 +38,7 @@ export class ChildProcessBuilder implements AddressBuilder {
   async run(job: BuildJob): Promise<void> {
     const id = jobArtifactId(job);
     const timeoutMs = this.options.timeoutMs?.(job) ?? DEFAULT_TIMEOUT_MS[job.kind];
+    // 構築は普通の fetch（標準のプロキシの変数だけを使う）なので、許可リストの環境変数だけを渡す（Sora の秘密は渡さない）
     const proc = Bun.spawn(this.command(job), { stdin: 'ignore', stdout: 'ignore', stderr: 'pipe', env: childEnv() });
     let timedOut = false;
     const timer = setTimeout(() => {

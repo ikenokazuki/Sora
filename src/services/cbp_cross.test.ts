@@ -20,15 +20,15 @@ describe('CBP CROSS ruling lookup', () => {
   // term ごとの応答。未登録の語は 0 件
   let responses: Record<string, { totalHits?: number; rulings: Raw[] } | 'fail'> = {};
 
-  const originalSource = process.env.CROSS_SOURCE;
+  const originalSource = process.env.SORA_HTS_CROSS_SOURCE;
   afterAll(() => {
-    if (originalSource === undefined) delete process.env.CROSS_SOURCE;
-    else process.env.CROSS_SOURCE = originalSource;
+    if (originalSource === undefined) delete process.env.SORA_HTS_CROSS_SOURCE;
+    else process.env.SORA_HTS_CROSS_SOURCE = originalSource;
   });
 
   beforeEach(() => {
     // このファイルは CBP の API の経路を確かめる
-    process.env.CROSS_SOURCE = 'api';
+    process.env.SORA_HTS_CROSS_SOURCE = 'api';
     clearCache();
     resetCrossBreakerForTest();
     terms = [];

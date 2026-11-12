@@ -82,7 +82,6 @@ function webUnionFixture() {
     retrievalQueries: ['SPARK 出演 辞退', 'SPARK 出演'],
     effectiveQuery: 'SPARK 出演 辞退',
     isFallback: true,
-    queryUnion: true,
   };
 }
 

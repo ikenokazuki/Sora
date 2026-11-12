@@ -253,7 +253,7 @@ describe('annotatePoiAddresses', () => {
     const built = createTestAddressData(dir, { mode: 'off' });
     const { results, gaps } = await annotatePoiAddresses(createAddressContext(built.data), [{ address: '東京都千代田区永田町1-7-1', lat: 35.675912, lng: 139.745512 }]);
     expect(results).toEqual([{ info: null }]);
-    expect(gaps).toMatchObject({ incomplete: true, unavailable: [{ artifact: 'address', message: expect.stringContaining('SORA_ADDRESS=off') }] });
+    expect(gaps).toMatchObject({ incomplete: true, unavailable: [{ artifact: 'address', message: expect.stringContaining('SORA_ADDRESS_MODE=off') }] });
   });
 });
 

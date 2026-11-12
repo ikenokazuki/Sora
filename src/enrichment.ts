@@ -1,5 +1,6 @@
 import { promises as dnsPromises } from 'dns';
 import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
+import { envBool } from './config.js';
 import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalWindow, type HeadingBlock } from './extractor/hierarchical_bm25.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms } from './extractor/markdown_sections.js';
 import {
@@ -41,7 +42,7 @@ import type {
 import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 
 import { estimateTokens } from './text_tokens.js';
-import { errorMessage } from './errors.js';
+import { errorKind } from './errors.js';
 export { estimateTokens };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
@@ -213,7 +214,7 @@ export function webhookLabel(webhookUrl: string): string {
 
 /** Webhook URL の SSRF 安全性検証 (ホスト名 & DNS 解決後 IP の二重チェック) */
 async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
-  if (process.env.ALLOW_LOCAL_FETCH === 'true') return true;
+  if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) return true;
   try {
     const u = new URL(urlStr);
     if (!['http:', 'https:'].includes(u.protocol)) return false;
@@ -240,6 +241,7 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
 
   const isSafe = await isSafeWebhookUrl(webhookUrl);
   if (!isSafe) {
+    // URL は出さない（Webhook の URL は秘密を含む。管理者のアラートの宛先など）。ホスト名（とポート）だけを出す。下の 2 つも同じ
     console.warn(`[web-fetcher/webhook] Blocked SSRF attempt to private/internal webhook destination: ${webhookLabel(webhookUrl)}`);
     return false;
   }
@@ -265,7 +267,8 @@ export async function deliverWebhook(webhookUrl?: string, payload?: any): Promis
     }
     return res.ok;
   } catch (err) {
-    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookLabel(webhookUrl)}:`, errorMessage(err));
+    // 例外の文にも宛先の URL が入る（Bun の UnexpectedRedirect など）ので、例外の種類だけを出す
+    console.warn(`[web-fetcher/webhook] Error sending webhook to ${webhookLabel(webhookUrl)}:`, errorKind(err));
     return false;
   }
 }

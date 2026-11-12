@@ -15,8 +15,7 @@ import {
   searchYahooRealtime,
 } from './yahoo.js';
 const SAVED_ENV: Record<string, string | undefined> = {
-  YAHOO_MCP_PATH: process.env.YAHOO_MCP_PATH,
-  SORA_YAHOO_THROTTLE: process.env.SORA_YAHOO_THROTTLE,
+  SORA_YAHOO_MCP_PATH: process.env.SORA_YAHOO_MCP_PATH,
   SORA_YAHOO_MIN_INTERVAL_MS: process.env.SORA_YAHOO_MIN_INTERVAL_MS,
   SORA_YAHOO_BREAKER_COOLDOWN_MS: process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS,
 };
@@ -33,7 +32,6 @@ beforeEach(() => {
   resetYahooBreaker();
   resetYahooCallGate();
   resetYahooWebPressure();
-  delete process.env.SORA_YAHOO_THROTTLE;
   delete process.env.SORA_YAHOO_BREAKER_COOLDOWN_MS;
   process.env.SORA_YAHOO_MIN_INTERVAL_MS = '0';
 });
@@ -50,6 +48,11 @@ describe('yahoo throttle discipline (hermetic)', () => {
     expect(isYahooRateLimitText('住所は東京都港区1-4-29です')).toBe(false);
     expect(isYahooRateLimitText('cursorWf66Dt429gJBJhVN3r')).toBe(false);
     expect(isYahooRateLimitText('status code 429')).toBe(true);
+  });
+  // 以前は環境変数が未設定だと初期の間隔が 0 だった。provider_pressure の既定値が、この単一のインスタンスまで届くことを固定する
+  test('web pressure singleton starts at 400 ms after a reset', () => {
+    resetYahooWebPressure();
+    expect(yahooWebPressure.snapshot().spacingMs).toBe(400);
   });
   test('data payloads win over incidental matches', () => {
     expect(yahooResultHasData(JSON.stringify({ items: [{ title: 'a' }] }))).toBe(true);
@@ -72,7 +75,7 @@ describe('yahoo throttle discipline (hermetic)', () => {
     expect(isYahooBreakerOpen()).toBe(false);
   });
   test('open breaker fails fast with throttled marker and no spawn', async () => {
-    process.env.YAHOO_MCP_PATH = '/nonexistent/yahoo-search-mcp-for-throttle-test';
+    process.env.SORA_YAHOO_MCP_PATH = '/nonexistent/yahoo-search-mcp-for-throttle-test';
     tripYahooBreaker();
     const res = await searchYahooWeb({ query: 'throttle probe', disableFallback: true });
     expect(res.items).toEqual([]);

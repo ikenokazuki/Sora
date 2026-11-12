@@ -1,5 +1,6 @@
 import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
+import { envBool, envInt, envStr } from './config.js';
 import { dbIncrementApiUsage } from './db.js';
 import { isPublicPath } from './security/public_paths.js';
 import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
@@ -62,7 +63,7 @@ export function resolvePeerLocal(c: any): boolean {
   const realIp = c.req.header('x-real-ip');
   const directConnection = !forwardedFor && !realIp;
   const peer = getPeerAddress(c);
-  if (process.env.TRUST_PROXY === 'true') {
+  if (envBool('SORA_AUTH_TRUST_PROXY')) {
     const clientIp = (forwardedFor || '').split(',')[0].trim() || peer;
     if (!clientIp) return false;
     return isLoopbackAddress(clientIp);
@@ -79,7 +80,7 @@ export function warnOnceNoKey(): void {
   if (warnedNoKeyMode) return;
   warnedNoKeyMode = true;
   try {
-    console.warn('[Sora] No API key configured: anonymous access is open (set WEB_FETCHER_API_KEY, or SORA_ALLOW_ANONYMOUS=true to silence).');
+    console.warn('[Sora] No API key configured: anonymous access is open (set SORA_API_KEY, or SORA_ALLOW_ANONYMOUS=true to silence).');
   } catch {}
 }
 
@@ -99,18 +100,18 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
     // 意図せず常時開放になっていた実績がある。
     // 本サーバーはキー未設定でも利用可能とする方針のため、
     // キー未設定時は警告ログのみで全リクエストを許可する。
-    const apiKey = expectedApiKey ?? process.env.WEB_FETCHER_API_KEY ?? process.env.API_KEY;
+    const apiKey = expectedApiKey ?? envStr('SORA_API_KEY');
     if (!apiKey) {
       // Fail-open without a configured key (v2.30.2): do not gate on
       // NODE_ENV here — bun build inlines it and the branch vanishes
       // from the production bundle. Warn once; silence the notice with
       // SORA_ALLOW_ANONYMOUS=true.
-      if (process.env.SORA_ALLOW_ANONYMOUS !== 'true') warnOnceNoKey();
+      if (!envBool('SORA_ALLOW_ANONYMOUS')) warnOnceNoKey();
     } else {
       // 3. API キーの照合 (定数時間比較)
       const providedToken = extractAuthToken(c);
-      const isDirectLocal = resolvePeerLocal(c) && process.env.ALLOW_LOCAL_NO_AUTH === 'true';
-      const allowAnonymous = process.env.SORA_ALLOW_ANONYMOUS === 'true';
+      const isDirectLocal = resolvePeerLocal(c) && envBool('SORA_AUTH_LOOPBACK_NO_KEY');
+      const allowAnonymous = envBool('SORA_ALLOW_ANONYMOUS');
 
       if (providedToken && isSecureEqual(providedToken, apiKey)) {
         tokenHash = hashApiKey(providedToken);
@@ -133,7 +134,7 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
             code: 'UNAUTHORIZED',
             status: 401,
             retryable: false,
-            message: 'Please provide a valid API key via Authorization: Bearer <API_KEY> or X-API-Key header.',
+            message: 'Please provide a valid API key via Authorization: Bearer <key> or X-API-Key header.',
           },
           401,
         );
@@ -149,8 +150,9 @@ export function createAuthMiddleware(expectedApiKey?: string): MiddlewareHandler
     const todayStr = new Date().toISOString().slice(0, 10);
     const usageCount = dbIncrementApiUsage(tokenHash, todayStr);
 
-    const dailyLimit = process.env.DAILY_REQUEST_LIMIT ? parseInt(process.env.DAILY_REQUEST_LIMIT, 10) : undefined;
-    if (dailyLimit && dailyLimit > 0) {
+    // 1 以上の整数。未設定・不正な値は無制限（不正な値は起動時の検査が止める）
+    const dailyLimit = envInt('SORA_AUTH_DAILY_LIMIT');
+    if (dailyLimit !== undefined) {
       c.header('X-RateLimit-Limit', String(dailyLimit));
       c.header('X-RateLimit-Remaining', String(Math.max(0, dailyLimit - usageCount)));
 

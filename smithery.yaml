@@ -8,5 +8,3 @@ startCommand:
     args:
       - run
       - src/stdio.ts
-    env:
-      ALLOW_LOCAL_NO_AUTH: "true"

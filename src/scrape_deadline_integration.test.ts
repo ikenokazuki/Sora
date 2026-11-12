@@ -14,8 +14,8 @@ test('scrapeDeadlineMs also stops adaptive extra waves once the deadline fired',
   const items = ['/fast1', '/fast2', '/slow1', '/slow2', '/slow3'].map((p) => ({ title: p, url: base + p, snippet: `${p} snippet` }));
   const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items, count: items.length } as any);
   const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockResolvedValue({ items: [] } as any);
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
     const started = Date.now();
     const result = await integratedSearch({ query: '存在しない語ほげ 料金', limit: 3, includeRealtime: false, noCache: true, scrapeDeadlineMs: 1500, adaptiveScrape: true, scrapeBudget: 5 });
@@ -26,8 +26,8 @@ test('scrapeDeadlineMs also stops adaptive extra waves once the deadline fired',
   } finally {
     webSpy.mockRestore();
     realtimeSpy.mockRestore();
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
     server.stop(true);
   }
 }, 30000);
@@ -41,8 +41,8 @@ test('contextSufficiency is omitted when neither markdown nor highlights were re
   const items = ['/a', '/b', '/c'].map((p) => ({ title: p, url: `http://127.0.0.1:${server.port}${p}`, snippet: `${p}` }));
   const webSpy = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items, count: items.length } as any);
   const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockResolvedValue({ items: [] } as any);
-  const previous = process.env.ALLOW_LOCAL_FETCH;
-  process.env.ALLOW_LOCAL_FETCH = 'true';
+  const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+  process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
     const htmlOnly = await integratedSearch({ query: `http://127.0.0.1:${server.port}/a`, limit: 3, includeRealtime: false, noCache: true, formats: ['html'] });
     expect(htmlOnly.count).toBe(1);
@@ -52,8 +52,8 @@ test('contextSufficiency is omitted when neither markdown nor highlights were re
   } finally {
     webSpy.mockRestore();
     realtimeSpy.mockRestore();
-    if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-    else process.env.ALLOW_LOCAL_FETCH = previous;
+    if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
     server.stop(true);
   }
 }, 30000);

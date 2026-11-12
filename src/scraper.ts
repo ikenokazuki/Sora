@@ -45,12 +45,6 @@ import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import {
-  buildXIsolatedEvidence,
-  buildXIsolatedEvidenceFromDirectStatus,
-  buildXRetrievalPlan,
-  stripXWebDiscoveryText,
-} from './x_source_isolation.js';
-import {
   defaultXDetailProvider,
   enrichRealtimeItemsWithXDetail,
   cleanRealtimeItem,
@@ -129,6 +123,7 @@ import {
   splitQueryUrls,
   uniqueTableHeaders,
 } from './html_parser.js';
+import { envInt } from './config.js';
 import { isModuleActive } from './mcp/registry.js';
 import { getTiktokPage, parseTikTokVideoUrl } from './services/tiktok.js';
 import { getYoutubePage } from './services/youtube.js';
@@ -1708,12 +1703,6 @@ export function assessEvidenceSufficiency(items: any[], query: string): { suffic
   }
   return { sufficient: reasons.length === 0, reasons };
 }
-/**
- * 本文取得の既定の打ち切り上限。0 = 無効（既定）。
- * ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。
- * 有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
- */
-const DEFAULT_SCRAPE_DEADLINE_MS = 0;
 /** 半数のページが揃ってから残りを待つ猶予。 */
 const SCRAPE_DEADLINE_GRACE_MS = 5_000;
 
@@ -1787,8 +1776,6 @@ export async function integratedSearch(options: {
   const includeMedia = options.includeMedia !== false;
   const mediaOption = includeMedia ? {} : { includeMedia: false };
   const highlightMaxCount = options.highlightMaxCount;
-  const xSourceIsolation = process.env.SORA_X_SOURCE_ISOLATION === 'true';
-  const webQueryUnion = process.env.SORA_WEB_QUERY_UNION === 'true';
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const videos = isModuleActive('youtube') && !readQueryUrls ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
@@ -1821,7 +1808,7 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v13:${query}:${digest}:${xSourceIsolation ? 'xiso-on' : 'xiso-off'}:${webQueryUnion ? 'wqu-on' : 'wqu-off'}:${process.env.SORA_REALTIME_ANCHOR === 'off' ? 'rta-off' : 'rta-on'}`;
+  const cacheKey = `search:integrated:v13:${query}:${digest}`;
   if (!noCache) {
     const cached = getFromCache<any>(cacheKey);
     if (cached) return cached;
@@ -1909,15 +1896,9 @@ export async function integratedSearch(options: {
   // 上位3件はRRF/provider順保証、残り枠はcoverage/diversityで選択する
   const candidatePoolSize = adaptiveScrape ? Math.max(scrapeBudget, limit * 2, 10) : Math.max(limit * 2, 10);
   const candidatePool = searchResults.slice(0, candidatePoolSize);
-  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.queryUnion || webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
+  const selected = selectScrapeTargets(candidatePool, limit, query, webParsedRes?.adaptiveUnion ? 'rrf_top_rank' : 'provider_top_rank');
   const topItems = selected.targets;
   const sparePool = selected.spares;
-  const xRetrievalPlan = xSourceIsolation ? buildXRetrievalPlan(topItems, 2) : [];
-  const xPlanByIndex = new Map<number, (typeof xRetrievalPlan)[number]>();
-  for (const plan of xRetrievalPlan) {
-    for (const index of plan.itemIndexes) xPlanByIndex.set(index, plan);
-  }
-  const xRetrievalCache = new Map<string, Promise<any>>();
 
   // 公式Xアカウントの特定 (明示指定 or Web検索結果URLからの自動抽出)
   let targetOfficialHandle = officialAccountId;
@@ -1931,100 +1912,18 @@ export async function integratedSearch(options: {
     officialRealtimePromise = fetchOfficialPosts(targetOfficialHandle);
   }
 
-  const envDeadline = Number(process.env.SORA_SCRAPE_DEADLINE_MS);
-  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? (Number.isFinite(envDeadline) && process.env.SORA_SCRAPE_DEADLINE_MS ? envDeadline : DEFAULT_SCRAPE_DEADLINE_MS);
+  // 既定の締切は SORA_SEARCH_SCRAPE_DEADLINE_MS（既定 0 = 打ち切り無し）。
+  // ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
+  const scrapeDeadlineMs = options.scrapeDeadlineMs ?? envInt('SORA_SEARCH_SCRAPE_DEADLINE_MS');
   let scrapeDeadlineHit = false;
   const videoDeadlineAt = Date.now() + scrapeDeadlineMs;
   let enrichedResults = topItems;
   if (scrapeContent) {
     const settled = await settleWithDeadline(
-      topItems.map(async (item: any, itemIndex: number) => {
+      topItems.map(async (item: any) => {
         const itemUrl = item.url || item.link;
         if (!itemUrl) return item;
         const itemSnippet = item.snippet || item.description || '';
-
-        if (xSourceIsolation && !readQueryUrls) {
-          const plan = xPlanByIndex.get(itemIndex);
-          if (plan) {
-            const isolatedBase = stripXWebDiscoveryText(item);
-
-            // 指示書 第13条: Direct X status URL の場合、既知の statusId に対してまず FxTwitter detail 1回を試行
-            let directEvidence: any = null;
-            if (plan.seed.kind === 'status' && plan.seed.statusId) {
-              try {
-                const detail = await defaultXDetailProvider.fetchStatus(plan.seed.statusId);
-                if (detail?.text) {
-                  directEvidence = buildXIsolatedEvidenceFromDirectStatus(plan.seed, detail);
-                }
-              } catch {}
-            }
-
-            let retrievalPromise = xRetrievalCache.get(plan.key);
-            if (!directEvidence && !retrievalPromise) {
-              retrievalPromise = searchYahooRealtime({
-                query,
-                ...(plan.seed.handle ? { accountId: plan.seed.handle } : {}),
-                sort: 'recent',
-                limit: 5,
-                disableFallback: true,
-                detailEnrichment: false,
-              }).catch(() => null);
-              xRetrievalCache.set(plan.key, retrievalPromise);
-            }
-
-            const realtimeForSeed = directEvidence ? null : await retrievalPromise;
-            const isolatedEvidence = directEvidence || buildXIsolatedEvidence(
-              plan.seed,
-              Array.isArray(realtimeForSeed?.items)
-                ? realtimeForSeed.items
-                : [],
-            );
-
-            const picked =
-              isolatedEvidence.eligibleForPrimaryEvidence &&
-              isolatedEvidence.markdown
-                ? extractQueryHighlightDetails(isolatedEvidence.markdown, query, { maxHighlights: highlightMaxCount })
-                : null;
-
-            const isolatedItem: Record<string, any> = {
-              ...isolatedBase,
-              source: 'x',
-              xSourceIsolation: {
-                mode: 'bounded_discovery_seed',
-                kind: plan.seed.kind,
-                ...(plan.seed.handle
-                  ? { handle: plan.seed.handle }
-                  : {}),
-                ...(plan.seed.statusId
-                  ? { statusId: plan.seed.statusId }
-                  : {}),
-                evidenceRelation: isolatedEvidence.relation,
-                exactStatusMatched:
-                  isolatedEvidence.exactStatusMatched,
-                eligibleForPrimaryEvidence:
-                  isolatedEvidence.eligibleForPrimaryEvidence,
-                webSnippetUsedAsBody: false,
-                retrievedPrimaryCount:
-                  isolatedEvidence.selectedItems.length,
-                relatedDiagnosticCount:
-                  isolatedEvidence.relatedItems.length,
-                retrievalKey: plan.key,
-              },
-              highlights: picked?.highlights,
-              highlightItems: picked?.highlightItems,
-              highlightDiagnostics: picked?.diagnostics,
-            };
-
-            if (
-              formats.includes('markdown') &&
-              isolatedEvidence.markdown
-            ) {
-              isolatedItem.markdown = isolatedEvidence.markdown;
-            }
-
-            return isolatedItem;
-          }
-        }
 
         try {
           const scrape = await scrapeUrl({

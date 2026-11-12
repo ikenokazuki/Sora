@@ -1,4 +1,4 @@
-// USITC の HTS の版の保存（モジュール 'hts-archive'。ENABLED_MODULES に名前を挙げたときだけ）。
+// USITC の HTS の版の保存（モジュール 'hts-archive'。SORA_MODULES に名前を挙げたときだけ）。
 // 全件の JSON（exportList）を 1 日 1 回取り、中身が最後に保存した版と違うときだけ、版の一覧（releaseList）の現行版の名前を付けて保存する。
 // 一覧はデータの更新と同時に書き換わるとは限らないので、変わったかどうかは中身だけで決める。保存した版は消さない。
 import { createHash } from 'node:crypto';

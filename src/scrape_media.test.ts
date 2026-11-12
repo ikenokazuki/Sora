@@ -6,10 +6,10 @@ import { scrapeUrl } from './scraper.js';
 
 describe('scrape の includeMedia と rs-trafilatura への引数（手元のサーバー）', () => {
   let server: ReturnType<typeof Bun.serve>;
-  const prev = { allow: process.env.ALLOW_LOCAL_FETCH, rs: process.env.RS_TRAFILATURA_PATH };
+  const prev = { allow: process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK, rs: process.env.SORA_RS_TRAFILATURA_PATH };
   beforeAll(() => {
-    process.env.ALLOW_LOCAL_FETCH = 'true';
-    delete process.env.RS_TRAFILATURA_PATH;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
+    delete process.env.SORA_RS_TRAFILATURA_PATH;
     server = Bun.serve({
       port: 0,
       hostname: '127.0.0.1',
@@ -21,7 +21,7 @@ describe('scrape の includeMedia と rs-trafilatura への引数（手元のサ
   });
   afterAll(() => {
     server.stop(true);
-    for (const [key, value] of [['ALLOW_LOCAL_FETCH', prev.allow], ['RS_TRAFILATURA_PATH', prev.rs]] as const) {
+    for (const [key, value] of [['SORA_FETCH_ALLOW_PRIVATE_NETWORK', prev.allow], ['SORA_RS_TRAFILATURA_PATH', prev.rs]] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
@@ -43,12 +43,12 @@ describe('scrape の includeMedia と rs-trafilatura への引数（手元のサ
     const bin = join(dir, 'rs');
     writeFileSync(bin, `#!/bin/sh\ncat > "${bin}.stdin"\nprintf '%s' '{"page_type":"listing","content_html":"<p>一覧</p>"}'\n`);
     chmodSync(bin, 0o755);
-    process.env.RS_TRAFILATURA_PATH = bin;
+    process.env.SORA_RS_TRAFILATURA_PATH = bin;
     try {
       await scrapeUrl({ url: `http://127.0.0.1:${server.port}/rs-wire`, mode: 'fast', removeSelectors: ['h1'], noCache: true });
       expect(readFileSync(`${bin}.stdin`, 'utf8')).not.toContain('<h1>');
     } finally {
-      delete process.env.RS_TRAFILATURA_PATH;
+      delete process.env.SORA_RS_TRAFILATURA_PATH;
       rmSync(dir, { recursive: true, force: true });
     }
   });

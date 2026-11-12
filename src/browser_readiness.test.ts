@@ -40,8 +40,8 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
       navigations++;
       return new Response('<html><head><title>Calendar</title></head><body><main>Loading…</main><script>setTimeout(() => document.querySelector("main").innerHTML = "<h1>Concert schedule</h1><p>2026-10-07 Concert at 15:00. Meet and greet at 15:35.</p>", 3500)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }});
-    const previous = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/calendar`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.contentStatus).toBe('body');
@@ -49,8 +49,8 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
       expect(result.content).toContain('15:35');
       expect(navigations).toBe(1);
     } finally {
-      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = previous;
+      if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
       server.stop(true);
     }
   }, 16000);
@@ -61,16 +61,16 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
       if (pathname === '/hang') return new Promise<Response>(() => {});
       return new Response('<html><head><title>Event</title></head><body><main><h1>Live schedule</h1><p>2026-10-17 Doors 15:00. Meet and greet at 15:35.</p></main><script>for (let i = 0; i < 3; i++) fetch("/hang?" + i)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }});
-    const previous = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const started = Date.now();
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
       expect(result.content).toContain('15:35');
       expect(Date.now() - started).toBeLessThan(9000);
     } finally {
-      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = previous;
+      if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
       server.stop(true);
     }
   }, 20000);
@@ -79,16 +79,16 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     const server = Bun.serve({ port: 0, fetch() {
       return new Response('<html><head><title>Event</title></head><body><main><h1>Live schedule</h1><p>2026-10-17 Doors 15:00. Meet and greet at 15:35.</p><p>' + 'detail '.repeat(80) + '</p></main><img id="i" alt="a" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="><script>let n = 0; setInterval(() => { n++; const i = document.getElementById("i"); i.setAttribute("alt", "a" + n); i.setAttribute("data-x", String(n)); }, 30)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }});
-    const previous = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const started = Date.now();
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
       expect(result.content).toContain('15:35');
       expect(Date.now() - started).toBeLessThan(3500);
     } finally {
-      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = previous;
+      if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
       server.stop(true);
     }
   }, 20000);
@@ -100,16 +100,16 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
       navigations++;
       return new Response('<html><head><title>Challenge</title></head><body><main>Just a moment...</main><script>setTimeout(() => document.querySelector("main").innerHTML = "<h1>Concert schedule</h1><p>2026-10-07 Concert at 15:00. Meet and greet at 15:35.</p>", 2800)</script></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }});
-    const previous = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/challenge`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.contentStatus).toBe('body');
       expect(result.content).toContain('15:35');
       expect(navigations).toBe(1);
     } finally {
-      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = previous;
+      if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
       server.stop(true);
     }
   }, 16000);
@@ -127,16 +127,16 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
           document.querySelector('#schedule').remove();
         }, 2800)</script></body></html>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }});
-    const previous = process.env.ALLOW_LOCAL_FETCH;
-    process.env.ALLOW_LOCAL_FETCH = 'true';
+    const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+    process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/hidden`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.content).toContain('15:35');
       expect(result.content).not.toContain('Hidden placeholder');
       expect(navigations).toBe(1);
     } finally {
-      if (previous === undefined) delete process.env.ALLOW_LOCAL_FETCH;
-      else process.env.ALLOW_LOCAL_FETCH = previous;
+      if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
+      else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
       server.stop(true);
     }
   }, 16000);

@@ -1,22 +1,31 @@
 # Retrieval v2 / Security rollout
 
-## Rollback flags (default: v2 behavior)
+## Rollback flags (removed in v5.0.0)
 
-| Flag | Default | Legacy when `false` |
+The rollout shipped with two rollback flags and two opt-in experiments.
+v5.0.0 removed all four and fixed the behavior below (setting a removed
+name only prints a startup warning; see RELEASE_NOTES.md, v5.0.0).
+
+| Was | Fixed behavior since v5.0.0 |
+|---|---|
+| Native-ranking rollback flag (default on) | Provider order kept for a single SERP; the BM25 global reorder was removed (providerRank still recorded) |
+| RRF rollback flag (default on) | Web results merged from two queries are always ordered by weighted RRF |
+| Query-union experiment (opt-in, default off) | Removed with its code: candidate queries are tried in order and the first non-empty result wins, plus at most one adaptive rescue |
+| X source-isolation experiment (opt-in, default off) | Removed with its code: direct discovery text |
+
+Related settings:
+
+| Setting | Default | Effect |
 |---|---|---|
-| `SORA_WEB_NATIVE_RANKING` | true | Single-SERP BM25 global reorder (providerRank still recorded for shadow compare) |
-| `SORA_RRF_ENABLED` | true | First-wins dedup without RRF ordering |
-| `SORA_WEB_QUERY_UNION` | false (opt-in) | Sequential first-nonempty fallback |
-| `SORA_X_SOURCE_ISOLATION` | false (opt-in) | Direct discovery text |
 | `SORA_ALLOW_ANONYMOUS` | false (closed) | Anonymous requests rejected on keyed deployments |
-| `TRUST_PROXY` | unset | X-Forwarded-For ignored for local checks |
+| `SORA_AUTH_TRUST_PROXY` | unset | X-Forwarded-For ignored for local checks |
 
 Adaptive scrape is a per-request option
 (`adaptiveScrape`, `scrapeBudget`), default off. PRF retrieval (`enablePrf`) was removed in v4.0.0.
 
 ## Suggested stages
 
-1. Ship with flags at defaults; watch `sora_*` counters and latency.
+1. Shipped with the flags at their defaults (the flags are gone since v5.0.0); watch `sora_*` counters and latency.
 2. Compare shadow fields (`providerRank` vs reranked order) on live traffic.
 3. Expand the golden set (`eval/search_retrieval_cases.json`) toward 100 with human labels.
 4. Flip the adaptive default only after A/B evidence (arms A-E in `scripts/eval-search-retrieval.ts`).
