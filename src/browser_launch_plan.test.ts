@@ -197,6 +197,7 @@ describe('SandboxFallback（サンドボックスを試して、起動できな�
     const error = await fallback.launch('require', launch, () => {}).catch((e: unknown) => e);
     // 元の文も、SORA_BROWSER_SANDBOX=on のせいだという説明も、読める
     expect((error as Error).message).toContain('SORA_BROWSER_SANDBOX=on');
+    expect((error as Error).message).toContain('deploy/seccomp-sora.json');
     expect((error as Error).message).toContain('No usable sandbox');
     expect(((error as Error).cause as Error).message).toBe('No usable sandbox!');
     expect(calls).toEqual([true]);
@@ -229,6 +230,7 @@ describe('SandboxFallback（サンドボックスを試して、起動できな�
     expect(calls).toEqual([true, false, false]);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('No usable sandbox');
+    expect(warnings[0]).toContain('deploy/seccomp-sora.json');
     expect(fallback.status()).toBe('off');
   });
 
