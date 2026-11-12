@@ -40,8 +40,8 @@ export const YAHOO_MCP_EXECUTABLE_PATH =
    'yahoo-search-mcp');
 
 /** Upstream rate discipline for Yahoo MCP calls.
- * Sequential eval and multi-query union can burst against provider
- * limits (observed HTTP 429). A shared gate enforces a minimum
+ * Sequential candidate queries and the single rescue query can burst
+ * against provider limits (observed HTTP 429). A shared gate enforces a minimum
  * interval; rate-limit responses trip a breaker instead of fanning
  * out into fallback and rescue queries.
  */
@@ -633,7 +633,6 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
                     retrievalQueries: [q, rescueQ],
                     effectiveQuery: options.query,
                     isFallback: true,
-                    queryUnion: false,
                     adaptiveUnion: true,
                     confidenceReasons: conf.reasons,
                     ...(verboseDiag ? { pressure: yahooWebPressure.getLevel(), queryBudget: yahooQueryBudget } : {}),
