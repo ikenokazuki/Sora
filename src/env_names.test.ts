@@ -42,8 +42,13 @@ import { withEnv } from './test_fixtures/env.js';
 async function loadTimeResult(code: string, names: string[], vars: Record<string, string>): Promise<string> {
   const base = Object.fromEntries(Object.entries(process.env).filter(([k]) => !names.includes(k)));
   const proc = Bun.spawn([process.execPath, '--no-env-file', '-e', code], { cwd: new URL('..', import.meta.url).pathname, env: { ...base, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...vars }, stdout: 'pipe', stderr: 'pipe' });
-  const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-  return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
+  const timer = setTimeout(() => proc.kill(), 25_000);
+  try {
+    const [out] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+    return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out}`;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 describe('SORA_MODULES', () => {

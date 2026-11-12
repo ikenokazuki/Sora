@@ -46,14 +46,19 @@ function expectStripped(dumped: string): void {
  * （Bun.spawn は env を渡さないと、起動時の環境を渡す。実行中に process.env へ書いた値は渡らない）。
  */
 async function runSora(code: string, env: Record<string, string>): Promise<string> {
-  const proc = Bun.spawn([process.execPath, '-e', code], {
+  const proc = Bun.spawn([process.execPath, '--no-env-file', '-e', code], {
     cwd: new URL('..', import.meta.url).pathname,
     env: { ...process.env, NODE_ENV: 'test', SORA_DB_PATH: ':memory:', ...SECRETS, ...KEPT, ...env },
     stdout: 'pipe',
     stderr: 'pipe',
   });
-  const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
-  return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out} ${err}`;
+  const timer = setTimeout(() => proc.kill(), 25_000);
+  try {
+    const [out, err] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+    return out.split('\n').find((line) => line.startsWith('RESULT ')) ?? `no RESULT: ${out} ${err}`;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 describe('子プロセスに秘密を渡さない', () => {
