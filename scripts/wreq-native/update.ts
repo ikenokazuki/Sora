@@ -7,10 +7,13 @@
  * wreq・btls の rev は、wreq-util の Cargo.toml の [patch.crates-io] が使っているものに合わせる（wreq-util がその組み合わせでテストしているため。
  * btls を main にすると、wreq の rev と API が食い違ってビルドできなかった）。wreq-js のタグは、Containerfile の WREQ_JS_VERSION・WREQ_JS_REV から読む。
  *
- * 使い方: bun scripts/wreq-native/update.ts [--wreq-util <rev か ブランチ。既定は main>]
- * 要るもの: git・podman か docker（rust のイメージで cargo を動かす）・ネットワーク。
+ * 使い方: bun scripts/wreq-native/update.ts [--wreq-util <rev か ブランチ。既定は main>] [--max-chrome-profile <版>]
+ *   --max-chrome-profile: Containerfile の ARG WREQ_MAX_CHROME_PROFILE（名乗る Chrome の版の上限）も、その版に書き換える。
+ *   bun scripts/wreq-native/update.ts --check [--wreq-util …]: 何も書かず、上流の最新の Chrome のプロファイルが、いまの上限より新しいかを表示する
+ *   （key=value の行。scripts/wreq-native/trial.sh が使う）。
+ * 要るもの: git・podman か docker（rust のイメージで cargo を動かす。環境変数 CONTAINER_RUNTIME で選べる）・ネットワーク。
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -78,6 +81,28 @@ export function readContainerfilePins(containerfile: string): { version: string;
   return { version, rev, rustImage };
 }
 
+/** wreq-util の src/emulate.rs の Profile の一覧（`Chrome154 => ("chrome_154", v154::emulation),`）から、Chrome の最大の版を読む。 */
+export function parseMaxChromeProfile(emulateRs: string): number {
+  const versions = [...emulateRs.matchAll(/\("chrome_(\d{3})",/g)].map((m) => Number(m[1]));
+  if (versions.length === 0) throw new Error('wreq-util の src/emulate.rs から、("chrome_<3 桁>", …) のプロファイルを読めない（上流の書き方が変わった）');
+  return Math.max(...versions);
+}
+
+/** Containerfile の ARG WREQ_MAX_CHROME_PROFILE（静的取得とブラウザが名乗る Chrome の版の上限）を読む。1 個だけあることを求める。 */
+export function readMaxChromeProfile(containerfile: string): number {
+  const found = [...containerfile.matchAll(/^ARG WREQ_MAX_CHROME_PROFILE=(\S+)$/gm)];
+  if (found.length !== 1) throw new Error(`Containerfile の ARG WREQ_MAX_CHROME_PROFILE が ${found.length} 個ある（1 個のはず）`);
+  return Number(found[0][1]);
+}
+
+/** ARG WREQ_MAX_CHROME_PROFILE の値を書き換える（その 1 行だけ）。 */
+export function setMaxChromeProfile(containerfile: string, max: number): string {
+  // 136 は、src/http_fetcher.ts の MIN_CHROME_PROFILE_VERSION（静的取得が使う Chrome の版の下限）と同じ
+  if (!Number.isInteger(max) || max < 136 || max > 999) throw new Error(`Chrome の版が、136 以上 999 以下の整数ではない: ${max}`);
+  readMaxChromeProfile(containerfile);
+  return containerfile.replace(/^ARG WREQ_MAX_CHROME_PROFILE=\S+$/m, `ARG WREQ_MAX_CHROME_PROFILE=${max}`);
+}
+
 async function run(cmd: string[], options: { cwd?: string } = {}): Promise<string> {
   const proc = Bun.spawn(cmd, { cwd: options.cwd, stdout: 'pipe', stderr: 'pipe' });
   const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
@@ -102,12 +127,27 @@ async function resolveRev(repo: string, ref: string): Promise<string> {
 
 if (import.meta.main) {
   const argv = process.argv.slice(2);
-  const refIndex = argv.indexOf('--wreq-util');
-  const wreqUtilRef = refIndex >= 0 ? argv[refIndex + 1] : 'main';
+  const option = (name: string): string | undefined => {
+    const i = argv.indexOf(name);
+    if (i >= 0 && !argv[i + 1]) throw new Error(`${name} に値が要る`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
   const root = resolve(import.meta.dir, '..', '..');
-  const { version, rev, rustImage } = readContainerfilePins(readFileSync(join(root, 'Containerfile'), 'utf8'));
+  const containerfilePath = join(root, 'Containerfile');
+  const containerfile = readFileSync(containerfilePath, 'utf8');
+  const wreqUtilRev = await resolveRev(WREQ_UTIL_REPO, option('--wreq-util') ?? 'main');
 
-  const wreqUtilRev = await resolveRev(WREQ_UTIL_REPO, wreqUtilRef);
+  if (argv.includes('--check')) {
+    // 書かない。上流の最新の Chrome のプロファイルが、いまの上限より新しいかだけ見る（ビルドの前の、安い判定）
+    const upstreamMax = parseMaxChromeProfile(await rawFile(WREQ_UTIL_REPO, wreqUtilRev, 'src/emulate.rs'));
+    const currentMax = readMaxChromeProfile(containerfile);
+    console.log(`wreq_util_rev=${wreqUtilRev}\nupstream_max=${upstreamMax}\ncurrent_max=${currentMax}\nnewer=${upstreamMax > currentMax}`);
+    process.exit(0);
+  }
+
+  const maxChrome = option('--max-chrome-profile');
+  const newContainerfile = maxChrome === undefined ? undefined : setMaxChromeProfile(containerfile, Number(maxChrome)); // 値の誤りは、長い処理の前に分かるように、先に作る
+  const { version, rev, rustImage } = readContainerfilePins(containerfile);
   const { wreqRev, btlsRev } = parseWreqUtilPatchRevs(await rawFile(WREQ_UTIL_REPO, wreqUtilRev, 'Cargo.toml'));
   const wreqVersion = readPackageVersion(await rawFile(WREQ_REPO, wreqRev, 'Cargo.toml'));
   const pins: Pins = { wreqUtilRev, wreqRev, wreqVersion, btlsRev };
@@ -121,9 +161,13 @@ if (import.meta.main) {
   const manifest = join(work, 'rust', 'Cargo.toml');
   writeFileSync(manifest, patchCargoToml(readFileSync(manifest, 'utf8'), pins));
 
-  // 上流の Cargo.lock から出発して、変わった依存だけを解決し直す（cargo metadata が、必要な分だけ Cargo.lock を更新する）
-  const runtime = Bun.which('podman') ?? Bun.which('docker');
-  if (!runtime) throw new Error('podman か docker が要る');
+  // 前回の Cargo.lock（vendor/wreq-js）から出発して、変わった依存だけを解決し直す（cargo metadata が、必要な分だけ Cargo.lock を更新する）。
+  // 上流のタグの Cargo.lock から出発すると、rev が同じでも、推移的な依存が、その時点の最新に動いてしまう。最初の 1 回だけ、タグの Cargo.lock から出発する
+  const vendoredLock = join(root, 'vendor', 'wreq-js', 'Cargo.lock');
+  if (existsSync(vendoredLock)) copyFileSync(vendoredLock, join(work, 'rust', 'Cargo.lock'));
+  const preferred = process.env.CONTAINER_RUNTIME;
+  const runtime = preferred ? Bun.which(preferred) : (Bun.which('podman') ?? Bun.which('docker'));
+  if (!runtime) throw new Error(preferred ? `${preferred} が見つからない（CONTAINER_RUNTIME）` : 'podman か docker が要る');
   const isPodman = runtime.endsWith('podman');
   const user = isPodman ? [] : ['--user', `${process.getuid?.() ?? 1000}:${process.getgid?.() ?? 1000}`];
   await run([runtime, 'run', '--rm', ...(isPodman ? ['--http-proxy=false'] : []), ...user, '-e', 'CARGO_HOME=/tmp/cargo', '-v', `${work}:/src`, '-w', '/src/rust', rustImage, 'cargo', 'metadata', '--format-version', '1', '--quiet']);
@@ -135,4 +179,9 @@ if (import.meta.main) {
   if (!existsSync(join(out, 'Cargo.lock'))) throw new Error('Cargo.lock を書けなかった');
   rmSync(work, { recursive: true, force: true });
   console.log(`書いた: ${out}/{Cargo.toml.patch,Cargo.lock,pins.json}`);
+
+  if (newContainerfile !== undefined) {
+    writeFileSync(containerfilePath, newContainerfile);
+    console.log(`書いた: Containerfile の WREQ_MAX_CHROME_PROFILE を ${maxChrome} に`);
+  }
 }
