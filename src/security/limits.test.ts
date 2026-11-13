@@ -1,0 +1,71 @@
+import { describe, expect, test } from 'bun:test';
+import { checkEnv } from '../config.js';
+import { isolationLevel, limits, STANDARD_LIMITS, STRICT_LIMITS } from './limits.js';
+
+/**
+ * 増幅の上限（設計 6。穴 11・21・23・24・26）の値。水準（SORA_ISOLATION）で 2 組の組み込みの値を切り替える。
+ * standard（既定）: ユーザーが 1 人か、互いに信頼できる少数。今までの使い方を止めない緩い値（異常な入力だけを止める）。
+ * strict: 互いに信頼できない利用者に公開する共有のサービス。設計書の値。
+ */
+
+describe('isolationLevel', () => {
+  test('未設定は standard。strict を設定すると strict（大文字小文字は問わない）', () => {
+    expect(isolationLevel({})).toBe('standard');
+    expect(isolationLevel({ SORA_ISOLATION: 'strict' })).toBe('strict');
+    expect(isolationLevel({ SORA_ISOLATION: 'STRICT' })).toBe('strict');
+    expect(isolationLevel({ SORA_ISOLATION: 'standard' })).toBe('standard');
+  });
+
+  test('空・空白だけは、未設定と同じ standard。前後の空白は取り除く（strict の前後の空白は strict）', () => {
+    expect(isolationLevel({ SORA_ISOLATION: '' })).toBe('standard');
+    expect(isolationLevel({ SORA_ISOLATION: '   ' })).toBe('standard');
+    expect(isolationLevel({ SORA_ISOLATION: ' strict ' })).toBe('strict');
+  });
+
+  test('書き方の誤り（strcit などの打ち間違い）は、緩い側の standard にせず、エラーにする（起動の検査を通らない経路でも）', () => {
+    for (const typo of ['strcit', 'paranoid', 'stricter', 'on', '1']) {
+      expect(() => isolationLevel({ SORA_ISOLATION: typo }), typo).toThrow(/SORA_ISOLATION の値/);
+      expect(() => limits({ SORA_ISOLATION: typo }), typo).toThrow(/正しい形: standard・strict/);
+    }
+  });
+
+  test('起動の検査（checkEnv）も、同じ文で errors にする（起動を止める）。正しい値・未設定では出さない', () => {
+    const { errors } = checkEnv({ SORA_ISOLATION: 'strcit' });
+    expect(errors).toContain('SORA_ISOLATION の値（"strcit"）は不正です。正しい形: standard・strict のどれか');
+    expect(checkEnv({ SORA_ISOLATION: 'strict' }).errors.filter((e) => e.includes('SORA_ISOLATION'))).toEqual([]);
+    expect(checkEnv({}).errors.filter((e) => e.includes('SORA_ISOLATION'))).toEqual([]);
+  });
+});
+
+describe('limits', () => {
+  test('水準に応じた値の組を返す', () => {
+    expect(limits({})).toBe(STANDARD_LIMITS);
+    expect(limits({ SORA_ISOLATION: 'strict' })).toBe(STRICT_LIMITS);
+  });
+
+  test('strict の値は、設計書の値（未決 7）', () => {
+    expect(STRICT_LIMITS).toMatchObject({
+      sitemapRobotsLines: 5,
+      sitemapChildren: 20,
+      sitemapBytes: 10 * 1024 * 1024,
+      mapDeadlineMs: 30_000,
+      patternCount: 20,
+      selectorCount: 20,
+    });
+  });
+
+  test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
+    const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
+    expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());
+    for (const key of keys) {
+      expect(Number.isInteger(STRICT_LIMITS[key]) && STRICT_LIMITS[key] > 0, `strict.${key}`).toBe(true);
+      expect(Number.isInteger(STANDARD_LIMITS[key]) && STANDARD_LIMITS[key] > 0, `standard.${key}`).toBe(true);
+      expect(STANDARD_LIMITS[key], key).toBeGreaterThanOrEqual(STRICT_LIMITS[key]);
+    }
+  });
+
+  test('値の組は書き換えられない（呼び出し側が、共有の値を壊さない）', () => {
+    expect(Object.isFrozen(STANDARD_LIMITS)).toBe(true);
+    expect(Object.isFrozen(STRICT_LIMITS)).toBe(true);
+  });
+});

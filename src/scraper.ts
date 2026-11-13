@@ -35,6 +35,7 @@ import {
   extractQueryHighlightDetails,
 } from './enrichment.js';
 import { bypassesSharedCache, isSensitiveHeaderName } from './security/credential_scope.js';
+import { type Limits, limits as currentLimits } from './security/limits.js';
 import { getFromTenantCache, setToTenantCache } from './security/tenant_cache.js';
 import { tenantCacheKey, trackTenantState } from './security/tenant_state.js';
 import { incrementSecurityCounter } from './security/metrics.js';
@@ -125,6 +126,7 @@ import {
   splitQueryUrls,
   uniqueTableHeaders,
 } from './html_parser.js';
+import { GlobBudgetError } from './url_glob.js';
 import { envInt } from './config.js';
 import { isModuleActive } from './mcp/registry.js';
 import { getTiktokPage, parseTikTokVideoUrl } from './services/tiktok.js';
@@ -656,11 +658,33 @@ export function buildScrapeCacheKey(
   return `scrape:v11:${options.url}:${digest}`;
 }
 
-/** 入力の誤りは、取得の前に断る（REST では 400。/scrape/stream はストリームを開く前にここで確かめる） */
-export function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boolean; removeSelectors?: string[] }): void {
+/**
+ * 入力の誤りは、取得の前に断る（REST では 400。/scrape/stream はストリームを開く前にここで確かめる）。
+ * セレクタの個数と長さの上限は、水準（SORA_ISOLATION）で決まる（設計 6・穴 21）。上限の検査は、セレクタを読む検査より先にする
+ * （長すぎるセレクタを、読む前に断る）
+ */
+export function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boolean; removeSelectors?: string[]; selectors?: Record<string, string>; clipSelector?: string }): void {
   if (options.fastOnly && options.renderJs) throw new ScrapeInputError('fastOnly と renderJs は同時に指定できません');
+  const lim = currentLimits();
+  const removeSelectors = options.removeSelectors ?? [];
+  if (removeSelectors.length > lim.selectorCount) throw new ScrapeInputError(`removeSelectors は ${lim.selectorCount} 個までです（${removeSelectors.length} 個）`);
+  if (removeSelectors.some((selector) => selector.length > lim.selectorLength)) throw new ScrapeInputError(`removeSelectors の 1 つは ${lim.selectorLength} 文字までです`);
+  const selectorValues = Object.values(options.selectors ?? {});
+  if (selectorValues.length > lim.selectorCount) throw new ScrapeInputError(`selectors は ${lim.selectorCount} 個までです（${selectorValues.length} 個）`);
+  if (selectorValues.some((selector) => String(selector).length > lim.selectorLength)) throw new ScrapeInputError(`selectors の 1 つは ${lim.selectorLength} 文字までです`);
+  if (options.clipSelector !== undefined && options.clipSelector.length > lim.selectorLength) throw new ScrapeInputError(`clipSelector は ${lim.selectorLength} 文字までです`);
   const invalid = findInvalidCssSelector(options.removeSelectors ?? []);
   if (invalid) throw new ScrapeInputError(`removeSelectors の "${invalid.selector}" は CSS セレクタとして読めません: ${invalid.reason}`);
+}
+
+/** crawl のパターンの個数と長さを確かめる（設計 6・穴 21）。入力の誤りは、取得の前に断る（REST では 400） */
+export function assertCrawlInputs(options: { includePatterns?: string[]; excludePatterns?: string[] }): void {
+  const lim = currentLimits();
+  for (const name of ['includePatterns', 'excludePatterns'] as const) {
+    const patterns = options[name] ?? [];
+    if (patterns.length > lim.patternCount) throw new ScrapeInputError(`${name} は ${lim.patternCount} 個までです（${patterns.length} 個）`);
+    if (patterns.some((pattern) => pattern.length > lim.patternLength)) throw new ScrapeInputError(`${name} の 1 つは ${lim.patternLength} 文字までです`);
+  }
 }
 
 export async function scrapeUrl(options: {
@@ -1163,20 +1187,52 @@ export async function scrapeBatchUrls(options: {
 /** サイトマップインデックスの子を、同時に取る数 */
 const SITEMAP_CHILD_CONCURRENCY = 3;
 
+/** robots.txt の本文の大きさの上限（Google の規格と同じ 500KiB 超は、読めなかったことにする） */
+const ROBOTS_MAX_BYTES = 512 * 1024;
+
+/**
+ * 1 回の map_site でサイトマップを取るあいだの共有の状態。上限（SORA_ISOLATION の水準）と、止める合図を持つ
+ * （設計 6・穴 11: 1 回の呼び出しで、多数の第三者へ通信させない）
+ */
+export interface SitemapContext {
+  tenantId: string;
+  limits: Readonly<Limits>;
+  /** 全体の時間（mapDeadlineMs）の期限か、クライアントの切断で中止される */
+  signal: AbortSignal;
+  /** これまでに取ったサイトマップの数（robots.txt の行・索引の子・入れ子の全部。limits.sitemapFetches まで） */
+  fetched: number;
+}
+
+const noteAmplificationLimit = () => incrementSecurityCounter('sora_amplification_limit_hit_total');
+
 export async function fetchSitemapEntries(
   sitemapUrl: string,
-  tenantId: string,
+  ctx: SitemapContext,
   limit = 200,
   maxDepth = 2,
   currentDepth = 0,
 ): Promise<SitemapEntry[]> {
   if (currentDepth > maxDepth || limit <= 0) return [];
+  if (ctx.signal.aborted) return [];
+  if (ctx.fetched >= ctx.limits.sitemapFetches) {
+    noteAmplificationLimit();
+    return [];
+  }
+  ctx.fetched += 1;
 
   try {
-    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000, 5, undefined, undefined, undefined, tenantId);
+    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000, 5, undefined, undefined, undefined, ctx.tenantId, ctx.signal);
     if (!response.ok) return [];
 
-    const xml = await response.text();
+    // 本文は上限まで（超えたら、このサイトマップは読めなかったことにする）
+    let body: Uint8Array;
+    try {
+      body = await readBodyWithLimit(response, ctx.limits.sitemapBytes);
+    } catch {
+      noteAmplificationLimit();
+      return [];
+    }
+    const xml = new TextDecoder().decode(body);
     const parser = new XMLParser({
       ignoreAttributes: false,
       attributeNamePrefix: '@_',
@@ -1206,10 +1262,14 @@ export async function fetchSitemapEntries(
       // 先頭の子を 1 つだけ先に取る（limit が小さければ、それで足りて残りは取らない）。まだ足りなければ、残りを SITEMAP_CHILD_CONCURRENCY 個ずつ並べて取る。
       // 結果は子の並びのまま足し、limit 件で切る（1 つずつ取るときと同じ結果）
       const childUrls = sitemaps.filter((sm: { loc?: unknown }) => sm.loc).map((sm: { loc?: unknown }) => String(sm.loc).trim());
+      if (childUrls.length > ctx.limits.sitemapChildren) {
+        noteAmplificationLimit();
+        childUrls.length = ctx.limits.sitemapChildren;
+      }
       for (let i = 0, size = 1; i < childUrls.length; i += size, size = SITEMAP_CHILD_CONCURRENCY) {
         const remaining = limit - entries.length;
         const batch = await Promise.all(
-          childUrls.slice(i, i + size).map((loc: string) => fetchSitemapEntries(loc, tenantId, remaining, maxDepth, currentDepth + 1)),
+          childUrls.slice(i, i + size).map((loc: string) => fetchSitemapEntries(loc, ctx, remaining, maxDepth, currentDepth + 1)),
         );
         for (const subEntries of batch) entries.push(...subEntries);
         if (entries.length >= limit) return entries.slice(0, limit);
@@ -1271,6 +1331,10 @@ type MapSiteOptions = {
   noCache?: boolean;
   /** 呼んだ利用者（認証が決めた tenant）。robots.txt・サイトマップ・ページの取得は、この tenant の保存済みのセッションで行う */
   tenantId: string;
+  /** クライアントの切断（REST の req.signal）。中止されたら、そのあとのサイトマップを取らず、中止で終わる */
+  signal?: AbortSignal;
+  /** 上限の値。省くと、SORA_ISOLATION の水準の値（テスト用に差し替えられる） */
+  limits?: Readonly<Limits>;
 };
 type MapSiteResult = {
   url: string;
@@ -1288,6 +1352,7 @@ export async function mapSiteUrl(options: MapSiteOptions): Promise<MapSiteResult
 async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   const { tenantId } = options;
   const url = options.url;
+  options.signal?.throwIfAborted();
   const limit = Math.min(options.limit ?? 200, 1000);
   // v2: 日付で絞ってから件数で切るようにした（v1 は先に切っていたので、limit と since を併用した結果が違う）
   // v3: tenant の保存済みの状態で見えた内容を、tenant のキーに置くようにした（v2 の、状態で見える内容が入っているかもしれない共有のキーは、読まない）
@@ -1307,11 +1372,18 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
     `${origin}/sitemap/sitemap.xml`,
   ];
 
+  // 上限（水準）と、止める合図（全体の時間の期限と、クライアントの切断）
+  const lim = options.limits ?? currentLimits();
+  const deadline = AbortSignal.timeout(lim.mapDeadlineMs);
+  const ctx: SitemapContext = { tenantId, limits: lim, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline, fetched: 0 };
+
   try {
-    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000, 5, undefined, undefined, undefined, tenantId);
+    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000, 5, undefined, undefined, undefined, tenantId, ctx.signal);
     if (robotsRes.response.ok) {
-      const robotsText = await robotsRes.response.text();
-      const sitemapMatches = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
+      const robotsText = new TextDecoder().decode(await readBodyWithLimit(robotsRes.response, ROBOTS_MAX_BYTES));
+      const found: string[] | null = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
+      if (found && found.length > lim.sitemapRobotsLines) noteAmplificationLimit();
+      const sitemapMatches = found?.slice(0, lim.sitemapRobotsLines);
       if (sitemapMatches) {
         for (const match of sitemapMatches) {
           const smUrl = match.replace(/^Sitemap:\s*/i, '').trim();
@@ -1327,7 +1399,8 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   // 読むのは先頭 MAP_DATE_SCAN_LIMIT 件まで。それより後ろの URL は、日付を指定しても拾えない
   const scanLimit = options.since || options.until ? MAP_DATE_SCAN_LIMIT : limit;
   for (const sitemapUrl of candidateSitemaps) {
-    const entries = await fetchSitemapEntries(sitemapUrl, tenantId, scanLimit);
+    const entries = await fetchSitemapEntries(sitemapUrl, ctx, scanLimit);
+    options.signal?.throwIfAborted();
     if (entries.length > 0) {
       const filteredEntries = filterSitemapEntriesByDate(entries, options.since, options.until);
       const links = filteredEntries.map((e) => e.url).slice(0, limit);
@@ -1341,6 +1414,9 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
       return result;
     }
   }
+
+  // 全体の時間を超えて、サイトマップを取るのをやめた（クライアントの切断は、上で中止として終わっている）
+  if (ctx.signal.aborted) noteAmplificationLimit();
 
   const scraped = await scrapeUrl({
     url,
@@ -1381,6 +1457,9 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
 /** crawl の pages の 1 項目。scrape の応答と同じ整形（formatCompactScrapeResult） */
 type CrawledPage = Record<string, any> & { url: string };
 
+/** crawl でたどるリンクの URL の長さの上限（これより長いリンクは、たどらない） */
+const MAX_CRAWL_URL_LENGTH = 8192;
+
 export async function crawlSiteUrl(options: {
   url: string;
   maxPages?: number;
@@ -1401,6 +1480,8 @@ export async function crawlSiteUrl(options: {
   webhookUrl?: string;
   /** 呼んだ利用者（認証が決めた tenant）。ページの取得は、この tenant の保存済みのセッションで行う */
   tenantId: string;
+  /** 上限の値。省くと、SORA_ISOLATION の水準の値（テスト用に差し替えられる） */
+  limits?: Readonly<Limits>;
   onPageScraped?: (page: ScrapeResult) => void;
   /** 応答の pages と同じ整形をかけた 1 ページを渡す */
   onPageCrawled?: (page: CrawledPage, count: number) => void;
@@ -1411,6 +1492,7 @@ export async function crawlSiteUrl(options: {
   totalPages: number;
   pages: CrawledPage[];
 }> {
+  assertCrawlInputs(options);
   const {
     url: initialUrl,
     maxPages = 10,
@@ -1446,11 +1528,25 @@ export async function crawlSiteUrl(options: {
   const visitKey = (u: string) => u.split('#')[0].replace(/\/+$/, '');
   /** scrape と同じ整形。リンクをたどるために links を取っているので、formats で求められていなければ外す */
   const shape = (p: ScrapeResult) => formatCompactScrapeResult(formats.includes('links') ? p : { ...p, links: undefined }) as CrawledPage;
+  /**
+   * パターンの照合に使える仕事の量は、crawl 1 回で決まった量まで（水準の limits.patternSteps。url_glob.ts）。超えたら、新しいリンクをたどらない
+   * （悪意のあるパターンと、長い URL を並べたサイトの組で、メインのスレッドを使い切らせない。設計 6・穴 21）
+   */
+  const globBudget = { steps: (options.limits ?? currentLimits()).patternSteps };
+  let patternBudgetSpent = false;
   /** include/exclude は、リンクをたどって見つけた URL にだけ適用する。起点 URL は常に取得する。 */
   const passesPatterns = (item: { url: string; depth: number }): boolean => {
     if (item.depth === 0) return true;
-    if (excludePatterns && excludePatterns.length > 0 && matchUrlPattern(item.url, excludePatterns)) return false;
-    if (includePatterns && includePatterns.length > 0 && !matchUrlPattern(item.url, includePatterns)) return false;
+    if (item.url.length > MAX_CRAWL_URL_LENGTH || patternBudgetSpent) return false;
+    try {
+      if (excludePatterns && excludePatterns.length > 0 && matchUrlPattern(item.url, excludePatterns, globBudget)) return false;
+      if (includePatterns && includePatterns.length > 0 && !matchUrlPattern(item.url, includePatterns, globBudget)) return false;
+    } catch (error) {
+      if (!(error instanceof GlobBudgetError)) throw error;
+      patternBudgetSpent = true;
+      noteAmplificationLimit();
+      return false;
+    }
     return true;
   };
 

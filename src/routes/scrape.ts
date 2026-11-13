@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import type { z } from 'zod';
 import {
+  assertCrawlInputs,
   assertScrapeInputs,
   scrapeUrl,
   scrapeBatchUrls,
@@ -199,7 +200,8 @@ scrapeRoutes.post('/map', async (c) => {
   if ('error' in input) return input.error;
 
   try {
-    const result = await mapSiteUrl({ ...input.data, tenantId: c.get('tenant')?.tenantId ?? 'legacy' });
+    // クライアントが切断したら（req.signal）、サイトマップを取るのをやめる
+    const result = await mapSiteUrl({ ...input.data, tenantId: c.get('tenant')?.tenantId ?? 'legacy', signal: c.req.raw.signal });
 
     return c.json(result);
   } catch (err) {
@@ -221,6 +223,7 @@ scrapeRoutes.post('/crawl', async (c) => {
     return c.json(result);
   } catch (err) {
     const msg = errorMessage(err) || 'Crawl failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
     return formatError(c, msg, code, status, retryable);
   }
@@ -232,6 +235,12 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
   const input = await readValidatedRequestBody(c, CrawlRequestSchema);
   if ('error' in input) return input.error;
   const { data } = input;
+  try {
+    assertCrawlInputs(data);
+  } catch (err) {
+    if (err instanceof ScrapeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    throw err;
+  }
 
   return streamSSE(c, async (stream) => {
     await stream.writeSSE({

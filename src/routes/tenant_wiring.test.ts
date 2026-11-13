@@ -37,6 +37,13 @@ describe('POST /map', () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ url: 'https://example.com/', tenantId: 'name:alice' });
   });
 
+  test('クライアントの切断の合図（req.signal）を渡す（切断したら、サイトマップを取るのをやめる）', async () => {
+    const spy = spyOn(scraper, 'mapSiteUrl').mockResolvedValue(mapped);
+    spies.push(spy);
+    await appFor('name:alice', scrapeRoutes).request('/map', json({ url: 'https://example.com/' }));
+    expect(spy.mock.calls[0][0].signal).toBeInstanceOf(AbortSignal);
+  });
+
   test('tenant を決めた認証が無い組み立てでは legacy', async () => {
     const spy = spyOn(scraper, 'mapSiteUrl').mockResolvedValue(mapped);
     spies.push(spy);
