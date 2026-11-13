@@ -11,6 +11,7 @@
  *  (7) map_site と tenant（設計 5。穴 17）: robots.txt・サイトマップを、呼んだ tenant の保存済みのセッションで取り、保存済みのセッションで見えた map を、別の tenant に返さない
  *  (8) 管理者の鍵と POST /cache/clear（設計 5。穴 19）: admin: true の鍵だけが、全員分（共有のキャッシュも）を消せる。ほかの鍵は、自分の tenant のキャッシュだけを消す
  *  (9) REST のモジュール（設計 5。穴 20）: SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求は 401 で、設定を教えない）。文書（/openapi.json）にも載らない
+ *  (10) 増幅の上限（設計 6。穴 11・21）: SORA_ISOLATION=strict で、map_site は robots.txt の Sitemap: 行の先頭 5 つだけを取り、crawl のパターンとセレクタは 20 個まで（超えたら 400）。standard（既定）では、緩い値
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -44,10 +45,11 @@ const base = `http://127.0.0.1:${port}`;
 
 // 廃止した名前（置き換え先の無い旧名と、リリースされなかった名前）の全部。登録簿から取る（名前を、ここに書き写さない）
 const REMOVED_ENV = Object.keys(LEGACY).filter((name) => !LEGACY[name].to);
-const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_KEYS_FILE', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_MODULES', ...REMOVED_ENV];
+const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_KEYS_FILE', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_MODULES', 'SORA_ISOLATION', ...REMOVED_ENV];
 
 /** 認証の環境変数を、この場面のものに替えて fn を回す（認証は、要求のたびに環境を読む）。終わったら、セッションを捨てる */
 async function scenario(label: string, vars: Record<string, string>, fn: () => Promise<void>): Promise<void> {
+  if (process.env.AUTH_CHECK_TRACE) console.error(`[auth-check] 場面: ${label}`);
   for (const name of AUTH_ENV) delete process.env[name];
   Object.assign(process.env, vars);
   try {
@@ -330,7 +332,7 @@ await scenario('map_site と tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH
 });
 mapSite.close();
 
-// (9) REST のモジュール。SORA_MODULES=web にすると、web 以外のモジュールの経路（/watch/*・/trade/* など）は、REST でも 404（MODULE_DISABLED）
+// REST を、鍵つきで呼ぶ（(9)・(10) で使う）
 const restAs = async (key: string | undefined, method: string, path: string, body?: object) => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(key ? { 'X-API-Key': key } : {}) };
   const response = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -341,6 +343,46 @@ const restAs = async (key: string | undefined, method: string, path: string, bod
   } catch {}
   return { status: response.status, json, text };
 };
+
+// (10) 増幅の上限。悪意のあるサイト: robots.txt に Sitemap: を 100 行並べ、それぞれが空のサイトマップ（つぎの候補に進む）
+let amplificationHits = 0;
+const amplificationSite = createServer((request, response) => {
+  const origin = `http://127.0.0.1:${(amplificationSite.address() as { port: number }).port}`;
+  if (request.url === '/robots.txt') {
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.end(Array.from({ length: 100 }, (_, i) => `Sitemap: ${origin}/amplify/${i}.xml`).join('\n'));
+    return;
+  }
+  if (request.url?.startsWith('/amplify/')) {
+    amplificationHits++;
+    response.writeHead(200, { 'content-type': 'application/xml' });
+    response.end('<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>');
+    return;
+  }
+  response.writeHead(200, { 'content-type': 'text/html' });
+  response.end('<html><head><title>t</title></head><body><main><h1>t</h1><p>増幅を確かめるページの本文です。読めるだけの長さの文章を、ここに置いておきます。</p></main></body></html>');
+});
+await new Promise<void>((resolve) => amplificationSite.listen(0, '127.0.0.1', () => resolve()));
+const amplificationUrl = `http://127.0.0.1:${(amplificationSite.address() as { port: number }).port}/`;
+await scenario('増幅の上限（strict）', { SORA_AUTH_KEYS_FILE: keyPath, SORA_ISOLATION: 'strict', SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  const mapped = await restAs(MAP_BOB, 'POST', '/map', { url: amplificationUrl, limit: 10, noCache: true });
+  check(mapped.status === 200, `増幅の上限: strict の /map が 200 でない: ${mapped.status} ${mapped.text.slice(0, 120)}`);
+  check(amplificationHits === 5, `増幅の上限: strict で、robots.txt の Sitemap: 行を 5 つだけ取っていない（${amplificationHits} 回）`);
+  const patterns = await restAs(MAP_BOB, 'POST', '/crawl', { url: amplificationUrl, includePatterns: Array.from({ length: 21 }, (_, i) => `/p${i}/**`) });
+  check(patterns.status === 400 && patterns.json?.code === 'INVALID_INPUT', `増幅の上限: strict で、パターン 21 個が 400 でない: ${patterns.status} ${patterns.text.slice(0, 120)}`);
+  const selectors = await restAs(MAP_BOB, 'POST', '/scrape', { url: amplificationUrl, removeSelectors: Array.from({ length: 21 }, (_, i) => `.r${i}`) });
+  check(selectors.status === 400 && selectors.json?.code === 'INVALID_INPUT', `増幅の上限: strict で、セレクタ 21 個が 400 でない: ${selectors.status} ${selectors.text.slice(0, 120)}`);
+});
+await scenario('増幅の上限（既定の standard）', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  amplificationHits = 0;
+  const selectors = await restAs(MAP_BOB, 'POST', '/scrape', { url: amplificationUrl, removeSelectors: Array.from({ length: 21 }, (_, i) => `.r${i}`) });
+  check(selectors.status !== 400, `増幅の上限: 既定（standard）で、セレクタ 21 個が断られた（緩い値は 100 個）: ${selectors.status} ${selectors.text.slice(0, 120)}`);
+  const mapped = await restAs(MAP_BOB, 'POST', '/map', { url: amplificationUrl, limit: 10, noCache: true });
+  check(mapped.status === 200 && amplificationHits > 5, `増幅の上限: 既定（standard）で、Sitemap: 行を 5 つより多く取っていない（${amplificationHits} 回。緩い値は 50 行）`);
+});
+amplificationSite.close();
+
+// (9) REST のモジュール。SORA_MODULES=web にすると、web 以外のモジュールの経路（/watch/*・/trade/* など）は、REST でも 404（MODULE_DISABLED）
 await scenario('REST のモジュール', { SORA_AUTH_KEYS_FILE: keyPath, SORA_MODULES: 'web' }, async () => {
   const noKey = await restAs(undefined, 'GET', '/watch/list');
   check(noKey.status === 401, `REST のモジュール: 鍵のない要求が 401 でない（設定を教えている）: ${noKey.status} ${noKey.text.slice(0, 120)}`);
@@ -425,5 +467,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締める');
 process.exit(0);
