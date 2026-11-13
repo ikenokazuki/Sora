@@ -1,7 +1,9 @@
 // 名前つきの複数の鍵（鍵ファイル。SORA_AUTH_KEYS_FILE）。設計: docs/superpowers/specs/2026-11-12-isolation-design.md の設計 4。
 // 共有のサービスとして、鍵ごとに別の tenant で動かすための入口。tenant の ID は、鍵でなく name から作る（鍵を入れ替えても、tenant の状態が消えない）。
 //
-//   { "keys": [ { "name": "alice", "key": "<16〜256 字の ASCII>" }, { "name": "bob", "keyHash": "sha256:<64 桁の 16 進>" } ] }
+//   { "keys": [ { "name": "alice", "key": "<16〜256 字の ASCII>" }, { "name": "bob", "keyHash": "sha256:<64 桁の 16 進>" }, { "name": "ops", "key": "…", "admin": true } ] }
+//
+// admin: true の鍵だけが、全体に効く操作（全員分のキャッシュの消去など）をできる。鍵ごとの属性で、同じ name の別の鍵には及ばない。
 //
 // 誤りは、鍵の値もハッシュも文に入れず（標準エラーに残る）、すべてを一度に知らせる。1 つでもあれば、鍵の表は作らない（読めない鍵ファイルを、匿名にしない）。
 import { createHash } from 'node:crypto';
@@ -15,12 +17,14 @@ export interface ApiKeyEntry {
   digest: string;
   /** 平文の key で書かれていた（ハッシュの keyHash ではない） */
   plain: boolean;
+  /** 全体に効く操作を許す鍵（admin: true）。鍵ごとの属性 */
+  admin: boolean;
 }
 
 const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const PLAIN_KEY = /^[\x21-\x7e]{16,256}$/;
 const KEY_HASH = /^sha256:([0-9a-fA-F]{64})$/;
-const ENTRY_FIELDS: readonly string[] = ['name', 'key', 'keyHash'];
+const ENTRY_FIELDS: readonly string[] = ['name', 'key', 'keyHash', 'admin'];
 
 export function digestOf(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -60,7 +64,7 @@ export function parseApiKeyFile(text: string): { entries: ApiKeyEntry[]; errors:
       return;
     }
     for (const field of Object.keys(row)) {
-      if (!ENTRY_FIELDS.includes(field)) errors.push(`${at} に、未対応の項目 ${shown(field)} があります（対応しているのは name・key・keyHash）`);
+      if (!ENTRY_FIELDS.includes(field)) errors.push(`${at} に、未対応の項目 ${shown(field)} があります（対応しているのは name・key・keyHash・admin）`);
     }
 
     let name: string | undefined;
@@ -87,6 +91,12 @@ export function parseApiKeyFile(text: string): { entries: ApiKeyEntry[]; errors:
       else digest = matched[1].toLowerCase();
     }
 
+    let admin = false;
+    if (row.admin !== undefined) {
+      if (typeof row.admin !== 'boolean') errors.push(`${at}.admin は true か false にしてください`);
+      else admin = row.admin;
+    }
+
     if (name === undefined || digest === undefined) return;
     const earlier = firstIndexOfDigest.get(digest);
     if (earlier !== undefined) {
@@ -94,7 +104,7 @@ export function parseApiKeyFile(text: string): { entries: ApiKeyEntry[]; errors:
       return;
     }
     firstIndexOfDigest.set(digest, index);
-    entries.push({ name, digest, plain });
+    entries.push({ name, digest, plain, admin });
   });
   return { entries: errors.length > 0 ? [] : entries, errors };
 }
@@ -104,15 +114,20 @@ export function parseApiKeyFile(text: string): { entries: ApiKeyEntry[]; errors:
  * （攻撃者は、表のハッシュの値を作れないので、表の引き方の時間の差から、鍵を絞れない）。
  */
 export class ApiKeyStore {
-  private readonly owners = new Map<string, string>();
+  private readonly owners = new Map<string, { name: string; admin: boolean }>();
 
   constructor(entries: readonly ApiKeyEntry[]) {
-    for (const { digest, name } of entries) this.owners.set(digest, name);
+    for (const { digest, name, admin } of entries) this.owners.set(digest, { name, admin });
+  }
+
+  /** 鍵の持ち主の name と、全体に効く操作を許す鍵か。知らない鍵は undefined */
+  lookupEntry(token: string): { name: string; admin: boolean } | undefined {
+    return this.owners.get(digestOf(token));
   }
 
   /** 鍵の持ち主の name。知らない鍵は undefined */
   lookup(token: string): string | undefined {
-    return this.owners.get(digestOf(token));
+    return this.lookupEntry(token)?.name;
   }
 
   get size(): number {
@@ -121,7 +136,7 @@ export class ApiKeyStore {
 
   /** tenant の name（重複なし・並べ替え済み） */
   names(): string[] {
-    return [...new Set(this.owners.values())].sort();
+    return [...new Set([...this.owners.values()].map((owner) => owner.name))].sort();
   }
 }
 

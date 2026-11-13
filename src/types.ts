@@ -1222,6 +1222,7 @@ export const MetricsResponseSchema = z.object({
 
 export const CacheClearResponseSchema = z.object({
   status: z.string().describe('ステータス ("ok")'),
+  scope: z.enum(['all', 'tenant']).describe('消した範囲。all: 全員分（共有のキャッシュも。管理者だけ）、tenant: 呼んだ利用者の分だけ'),
   cleared: z.number().describe('削除されたキャッシュエントリ総数'),
 });
 
@@ -2457,7 +2458,7 @@ export function generateOpenApiDocument() {
       },
       '/cache/clear': {
         post: {
-          summary: 'キャッシュの全クリア',
+          summary: 'キャッシュのクリア（管理者は全員分、それ以外は呼んだ利用者の分だけ。鍵ファイルを使わない運用は、全員が管理者）',
           responses: {
             '200': {
               description: 'キャッシュクリア結果',

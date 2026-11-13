@@ -11,6 +11,8 @@ import {
   isSharedBrowserConnected,
 } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
+import { clearTenantCache } from '../cache.js';
+import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
 import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
 import { isModuleActive } from '../mcp/registry.js';
@@ -182,9 +184,12 @@ systemRoutes.get('/metrics', (c) => {
   });
 });
 
+// 全員分のキャッシュ（共有のキーも）を消せるのは、管理者だけ（鍵ファイルの admin: true の鍵。鍵ファイルを使わない運用は、全員が管理者）。
+// それ以外は、呼んだ tenant のキャッシュだけを消す（共有のキーを消すと、全員のキャッシュの命中が下がるため。設計 5・穴 19）
 systemRoutes.post('/cache/clear', (c) => {
-  const count = clearCache();
-  return c.json({ status: 'ok', cleared: count });
+  const tenant = c.get('tenant');
+  if (tenant?.admin === true) return c.json({ status: 'ok', scope: 'all', cleared: clearCache() });
+  return c.json({ status: 'ok', scope: 'tenant', cleared: clearTenantCache(tenant?.tenantId ?? LEGACY_TENANT_ID) });
 });
 
 // OpenAPI 仕様書エンドポイント (Zod スキーマから完全自動生成)

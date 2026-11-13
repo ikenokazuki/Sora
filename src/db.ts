@@ -248,6 +248,24 @@ export function dbClearAllCache(): number {
   }
 }
 
+/** 主キー（key）の範囲で引く文。主キーの索引が効くので、表の全体を走査しない（管理者でない利用者が、何度呼んでも） */
+export const CLEAR_CACHE_BY_PREFIX_SQL = 'DELETE FROM cache_entries WHERE key >= ? AND key < ?';
+
+/**
+ * キーが prefix で始まる行を消す。範囲 [prefix, prefix の最後の 1 文字を 1 つ進めたもの) で引く（prefix は `tenant:<ID>:` で、最後の ':' を ';' に進める）。
+ * LIKE は使わない（キーの _ と % を、ワイルドカードとして読んでしまう）。空の prefix は、全消去にせず、何も消さない
+ */
+export function dbClearCacheByPrefix(prefix: string): number {
+  if (prefix === '') return 0;
+  const upper = prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+  try {
+    const db = getDb();
+    return db.query(CLEAR_CACHE_BY_PREFIX_SQL).run(prefix, upper).changes;
+  } catch {
+    return 0;
+  }
+}
+
 /** API 使用量の古い日次行を削除（レート制限は当日のみ参照するため既定 90 日保持） */
 export function dbPurgeOldApiUsage(maxAgeDays = 90): number {
   try {
