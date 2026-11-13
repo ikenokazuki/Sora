@@ -108,7 +108,7 @@ describe('buildScrapeCacheKey', () => {
   test('includeMedia: false は別のキー（既定の true と同じ値は同じキー）、キーの版は v10', () => {
     expect(keyOf({ includeMedia: false })).not.toBe(keyOf({}));
     expect(keyOf({ includeMedia: true })).toBe(keyOf({}));
-    expect(keyOf({})).toStartWith('scrape:v10:');
+    expect(keyOf({})).toStartWith('scrape:v11:');
   });
 
   test('ヘッダー名の大文字小文字と並び順、formats の並び順は区別しない', () => {

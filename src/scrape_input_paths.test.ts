@@ -181,7 +181,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
         const url = `${base()}/shot-ttl-${Date.now()}`;
         const result = await scrapeUrl({ url, formats: ['markdown', 'screenshot'] });
         expect(result.warnings?.join('\n')).toContain('screenshot');
-        expect(setSpy.mock.calls.filter(([key]) => String(key).startsWith(`scrape:v10:${url}:`)).map(([, , ttl]) => ttl)).toEqual([cache.CACHE_TTL_EMPTY]);
+        expect(setSpy.mock.calls.filter(([key]) => String(key).startsWith(`scrape:v11:${url}:`)).map(([, , ttl]) => ttl)).toEqual([cache.CACHE_TTL_EMPTY]);
       } finally {
         spy.mockRestore();
         setSpy.mockRestore();

@@ -34,7 +34,8 @@ import {
   computeAnswerability,
   extractQueryHighlightDetails,
 } from './enrichment.js';
-import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
+import { bypassesSharedCache, isSensitiveHeaderName } from './security/credential_scope.js';
+import { tenantCacheKey, tenantStateUsed, trackTenantState } from './security/tenant_state.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
@@ -651,7 +652,7 @@ export function buildScrapeCacheKey(
     contextTitle: options.contextTitle ?? '',
     snippet: options.snippet ?? '',
   });
-  return `scrape:v10:${options.url}:${digest}`;
+  return `scrape:v11:${options.url}:${digest}`;
 }
 
 /** 入力の誤りは、取得の前に断る（REST では 400。/scrape/stream はストリームを開く前にここで確かめる） */
@@ -712,18 +713,30 @@ export async function scrapeUrl(options: {
   // Never place credential-scoped content in public cache.
   // This invariant is required for multi-tenant safety.
   // Authenticated scrapes bypass shared cache on both read and write.
-  const useSharedCache =
-    !options.noCache &&
-    !hasSensitiveRequestCredentials({ headers: options.headers, cookies: options.cookies });
+  // 資格情報の名前の一覧には頼らない: Cookie か、無害と決めたもの以外のヘッダーを渡した取得は、共有のキャッシュを読まず、書かない（設計 5）
+  const useSharedCache = !options.noCache && !bypassesSharedCache({ headers: options.headers, cookies: options.cookies });
   if (!useSharedCache && !options.noCache) incrementSecurityCounter('sora_private_cache_bypass_total');
 
+  // tenant の保存済みの状態（Cookie・localStorage）を使って得た結果は、その tenant のキーにだけ置く（共有のキーに置くと、別の tenant に返る。設計 5・E25）。
+  // 状態を使ったかは、取得の側（静的取得・ブラウザ）が立てる印で分かる。読むのは、tenant のキー、共有のキーの順
+  const tenantId = options.tenantId ?? 'legacy';
+  const ownKey = tenantCacheKey(tenantId, cacheKey);
+
   if (useSharedCache) {
-    const cached = getFromCache<ScrapeResult>(cacheKey);
+    const cached = getFromCache<ScrapeResult>(ownKey, { countMiss: false }) ?? getFromCache<ScrapeResult>(cacheKey);
     if (cached) {
       onProgress?.({ stage: 'done', message: 'Cache hit', data: cached });
       return cached;
     }
   }
+
+  /** 結果を置く。状態を使った取得なら tenant のキー、使わなければ共有のキー（資格情報つきの取得は、どちらにも置かない） */
+  const cacheResult = (result: ScrapeResult) => {
+    if (!useSharedCache) return;
+    const own = tenantStateUsed();
+    if (own) incrementSecurityCounter('sora_tenant_cache_write_total');
+    setToCache(own ? ownKey : cacheKey, result, scrapeCacheTtl(result));
+  };
 
   const scrapeTask = async () => {
     const finalizeOpts = {
@@ -751,7 +764,7 @@ export async function scrapeUrl(options: {
     if (!wantsPage && isModuleActive('youtube') && parseYouTubeUrl(url)) {
       const page = await getYoutubePage(url, { noCache: options.noCache, query: options.query, maxChars });
       result = await finalizeScrapeResult(videoPageResult(url, page, 'YouTube', maxChars), finalizeOpts);
-      if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+      cacheResult(result);
       return result;
     }
 
@@ -778,7 +791,7 @@ export async function scrapeUrl(options: {
           siteName: tweetRes.siteName,
         };
         result = await finalizeScrapeResult(baseResult, finalizeOpts);
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
     }
@@ -835,7 +848,7 @@ export async function scrapeUrl(options: {
         // 上限を超える動画・音声のファイルも、読めないファイルとして返す（取得の失敗にしない）
         if (err?.code !== 'RESPONSE_TOO_LARGE' || !MEDIA_CONTENT_TYPE.test(String(err.contentType).toLowerCase())) throw err;
         result = await finalizeScrapeResult(mediaFileResult(err.finalUrl || url, err.contentType, err.contentLength), finalizeOpts);
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
       const { finalUrl, response } = fetched;
@@ -846,14 +859,14 @@ export async function scrapeUrl(options: {
         const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
         const { fullContent, ...pdfResult } = await parsePdfToMarkdown(buf, finalUrl, maxChars);
         result = await finalizeScrapeResult(pdfResult, { ...finalizeOpts, highlightSource: fullContent });
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
 
       if (MEDIA_CONTENT_TYPE.test(contentType)) {
         await response.body?.cancel().catch(() => {});
         result = markHttpError(await finalizeScrapeResult(mediaFileResult(finalUrl, contentType, response.headers.get('Content-Length')), finalizeOpts), response.status);
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
 
@@ -957,7 +970,7 @@ export async function scrapeUrl(options: {
         onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
         result = markHttpError(await finalizeScrapeResult(staticResult, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
 
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
         return result;
       }
@@ -980,7 +993,7 @@ export async function scrapeUrl(options: {
       if (initialHttpResult) {
         onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
         result = markHttpError(await finalizeScrapeResult(initialHttpResult, { ...finalizeOpts, highlightSource: initialHttpFull }), initialHttpStatus);
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
       throw browserErr;
@@ -991,7 +1004,7 @@ export async function scrapeUrl(options: {
       const page = await getTiktokPage(browserRes.html, url, { title: browserRes.title });
       if (page) {
         result = await finalizeScrapeResult(videoPageResult(url, page, 'TikTok', maxChars), finalizeOpts);
-        if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+        cacheResult(result);
         return result;
       }
     }
@@ -1057,13 +1070,15 @@ export async function scrapeUrl(options: {
       result = markUnreadable(result, 'TikTok の確認の画面のまま、動画のデータを読めませんでした。時間をおいて再試行してください。');
     }
 
-    if (useSharedCache) setToCache(cacheKey, result, scrapeCacheTtl(result));
+    cacheResult(result);
     onProgress?.({ stage: 'done', message: 'Scraping completed successfully', data: result });
     return result;
   };
+  const tracked = () => trackTenantState(scrapeTask).then(({ value }) => value);
   // Credential-scoped requests must not share in-flight results either.
-  if (!useSharedCache) return scrapeTask();
-  return runWithSingleFlight(cacheKey, scrapeTask);
+  if (!useSharedCache) return tracked();
+  // 取得の途中でまとめるのも、同じ tenant の中だけ（別の tenant が、状態で見える内容を受け取らない）
+  return runWithSingleFlight(ownKey, tracked);
 }
 
 // ==========================================
@@ -1718,7 +1733,12 @@ type IntegratedSearchKeyIgnored =
   | 'tenantId' // 公開情報の検索なので、テナントをまたいで共有する
   | 'scrapeDeadlineMs'; // 締切で欠けた結果は保存しないので、保存される結果は締切の値に依らない
 
-export async function integratedSearch(options: {
+export async function integratedSearch(options: Parameters<typeof integratedSearchTracked>[0]): Promise<Record<string, any>> {
+  // 検索の中で読んだページが、tenant の保存済みの状態を使ったなら、応答を共有のキャッシュに置かない（置く側が、この範囲の印を見る）
+  return (await trackTenantState(() => integratedSearchTracked(options))).value;
+}
+
+async function integratedSearchTracked(options: {
   query: string;
   limit?: number;
   scrapeContent?: boolean;
@@ -1808,9 +1828,16 @@ export async function integratedSearch(options: {
     scrapeBudget,
     videos,
   });
-  const cacheKey = `search:integrated:v13:${query}:${digest}`;
+  const cacheKey = `search:integrated:v14:${query}:${digest}`;
+  const ownKey = tenantCacheKey(requestTenantId, cacheKey);
+  /** 応答を置く。読んだページが tenant の状態を使ったなら tenant のキー、使わなければ共有のキー */
+  const cacheResponse = (response: unknown) => {
+    const own = tenantStateUsed();
+    if (own) incrementSecurityCounter('sora_tenant_cache_write_total');
+    setToCache(own ? ownKey : cacheKey, response, integratedSearchCacheTtl(finalResponse));
+  };
   if (!noCache) {
-    const cached = getFromCache<any>(cacheKey);
+    const cached = getFromCache<any>(ownKey, { countMiss: false }) ?? getFromCache<any>(cacheKey);
     if (cached) return cached;
   }
 
@@ -2305,12 +2332,12 @@ export async function integratedSearch(options: {
   // response (the cache key already separates verbose from compact).
   // verbose が真のときは schedule を足さず、results[].events のまま返す（MCP の入力スキーマと OpenAPI の説明どおり）。
   if (options.verbose === true) {
-    if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, finalResponse, integratedSearchCacheTtl(finalResponse));
+    if (!noCache && !scrapeDeadlineHit) cacheResponse(finalResponse);
     return finalResponse;
   }
   const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {});
   // 締切で欠けた結果は劣化応答なのでキャッシュしない
-  if (!noCache && !scrapeDeadlineHit) setToCache(cacheKey, publicResponse, integratedSearchCacheTtl(finalResponse));
+  if (!noCache && !scrapeDeadlineHit) cacheResponse(publicResponse);
   return publicResponse;
 }
 
