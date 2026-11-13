@@ -9,6 +9,7 @@ import { envBool, envError, envInt, envList, envRaw } from './config.js';
 import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
+import { markTenantStateUsed } from './security/tenant_state.js';
 import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { isProxyBypassed } from './net/no_proxy.js';
 import { errorMessage } from './errors.js';
@@ -467,6 +468,11 @@ export async function fetchWithSafeRedirects(
   // 後続の「資格情報なし」リクエストに流れ、ログイン済みの内容が共有キャッシュに入ってしまう。
   const credentialScope = credentialScopeFor(customHeaders, customCookies);
   const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId, credentialScope);
+  // この取得が、Cookie を持つセッション（保存済みの Cookie を戻したもの、前の取得で受け取ったもの）で始まるなら、結果は、その tenant の状態で見える内容かもしれない。
+  // 結果を置く側（scrapeUrl など）が、共有のキャッシュに置かないよう、印を立てる。この取得の途中で受け取る Cookie は、数えない（この取得の結果を変えない）
+  try {
+    if (session.getAllCookies().length > 0) markTenantStateUsed();
+  } catch {}
 
   while (redirects <= maxRedirects) {
     let parsed: URL;

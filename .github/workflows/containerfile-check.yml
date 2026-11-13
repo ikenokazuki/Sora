@@ -35,6 +35,10 @@ on:
       - src/routes/mcp_route.ts
       - src/security/api_keys.ts
       - src/security/tenant_context.ts
+      - src/security/tenant_state.ts
+      - src/security/credential_scope.ts
+      - src/cache.ts
+      - src/scraper.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

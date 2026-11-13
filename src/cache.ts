@@ -110,7 +110,10 @@ if (typeof setInterval !== 'undefined') {
   if (sweepTimer.unref) sweepTimer.unref();
 }
 
-export function getFromCache<T>(key: string): (T & { cached: true; cachedAt?: string; ageSeconds?: number }) | null {
+/**
+ * キャッシュを読む。countMiss: false は、外れを数えない（tenant のキーを先に読み、外れたら共有のキーを読むときに、1 回の読みを 2 回の外れとして数えないため）。
+ */
+export function getFromCache<T>(key: string, { countMiss = true }: { countMiss?: boolean } = {}): (T & { cached: true; cachedAt?: string; ageSeconds?: number }) | null {
   const now = Date.now();
 
   // 1. L1 メモリキャッシュの参照 (0ms)
@@ -119,7 +122,7 @@ export function getFromCache<T>(key: string): (T & { cached: true; cachedAt?: st
     if (now > entry.expiresAt) {
       memoryCache.delete(key);
       dbDeleteCache(key);
-      cacheMisses++;
+      if (countMiss) cacheMisses++;
       return null;
     }
     // 真の LRU: 参照されたエントリを末尾（最新）に移動
@@ -160,7 +163,7 @@ export function getFromCache<T>(key: string): (T & { cached: true; cachedAt?: st
     };
   }
 
-  cacheMisses++;
+  if (countMiss) cacheMisses++;
   return null;
 }
 

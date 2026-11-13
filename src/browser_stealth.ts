@@ -16,6 +16,7 @@ import {
 } from './db.js';
 import { groupCookiesByDomain, pickBrowserProfile, throttleDomain } from './http_fetcher.js';
 import { hasSensitiveRequestCredentials } from './security/credential_scope.js';
+import { markTenantStateUsed } from './security/tenant_state.js';
 import { enrichTimeTreeHtml, waitForTimeTreeResponses } from './timetree.js';
 import { envInt } from './config.js';
 
@@ -415,6 +416,7 @@ async function renderWithStealthBrowser(
       let restoredSession = false;
       const persistedCookies = useStoredSession ? dbGetTenantCookies(tenantId, domain) : undefined;
       if (persistedCookies && persistedCookies.length > 0) {
+        markTenantStateUsed(); // その tenant の状態で見える内容かもしれない。結果を共有のキャッシュに置かない（設計 5）
         restoredSession = !carriesCredentials;
         const restoredCookies = persistedCookies.map((c) => ({
           name: c.name,
@@ -432,6 +434,7 @@ async function renderWithStealthBrowser(
 
       const persistedStorage = useStoredSession ? dbGetTenantStorage(tenantId, domain) : undefined;
       if (persistedStorage && Object.keys(persistedStorage).length > 0) {
+        markTenantStateUsed();
         restoredSession = !carriesCredentials;
         await page.evaluateOnNewDocument((data: Record<string, string>) => {
           try {
