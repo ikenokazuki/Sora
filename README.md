@@ -2497,7 +2497,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
   - 利用者ごとの状態の単位（tenant）は、認証のミドルウェアが決めたものだけを使います。MCP も REST も、生のヘッダーから別に作りません。`Authorization` の `Bearer` は、大文字小文字を区別せずに読み（RFC 7235）、`Bearer` があれば鍵はそれだけを読みます（誤った `Bearer` と正しい `X-API-Key` を併せても通りません）。
-  - リバースプロキシ配下（`SORA_AUTH_TRUST_PROXY=true`）では、`X-Forwarded-For` を右から数えます（左の値は利用者が書けるので信じません）。段数は `SORA_AUTH_PROXY_HOPS`（既定 1）です。
+  - 鍵を設定したら、ループバックからの接続でも鍵が要ります（接続元を、認証の代わりにしません。v4 の鍵なしのループバック通過の設定は、v5 で廃止しました）。ローカルの道具には、鍵を渡してください（`/health` は鍵なしで開きます）。
   - 複数の利用者が使うときは、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、鍵ごとに別の tenant で動かせます。鍵は SHA-256 で書けます（4.6）。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
@@ -2551,9 +2551,6 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 |---|---|---|
 | `SORA_AUTH_DAILY_LIMIT` | *(無制限)* | API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます |
 | `SORA_AUTH_KEYS_FILE` | *(未設定)* | 名前つきの複数の鍵のファイルのパス（JSON。`{"keys": [{"name": "alice", "key": "…"}, {"name": "bob", "keyHash": "sha256:…"}]}`）。設定すると、共有のサービスとして、鍵ごとに別の tenant（`name:<name>`）で動きます。`name` は英小文字・数字・`-`・`_` の 1〜64 字、`key` は 16〜256 字の空白を含まない ASCII、`keyHash` は `sha256:` と鍵の SHA-256（64 桁の 16 進）です。同じ `name` を複数の行に書くと、どちらの鍵も同じ tenant です（鍵の入れ替えの移行期に使います）。匿名は認めず（`SORA_ALLOW_ANONYMOUS` は効きません）、`SORA_API_KEY` とは併用できません。ファイルが無い・読めない・誤りがある・鍵が 1 つも無いときは、起動しません。起動のときに 1 回読むので、鍵を足す・消すときは再起動してください。平文の `key` を書いたファイルは `chmod 600` にしてください（所有者以外も読めるときは警告します）。詳しくは README の「4.6 複数のユーザーで使う」 |
-| `SORA_AUTH_LOOPBACK_NO_KEY` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `SORA_AUTH_PROXY_HOPS` | `1` | `SORA_AUTH_TRUST_PROXY=true` のときの、`X-Forwarded-For` を足す、信頼するリバースプロキシの段数（1〜10）。右から数えて、この番目のアドレスを接続元とします。1 は、いちばん右（Sora の手前のプロキシが見た相手。nginx が 1 台ならこれ）、2 は、CDN とロードバランサーが続く構成です。`X-Forwarded-For` の長さがこの段数に足りない要求は、ループバックとみなしません |
-| `SORA_AUTH_TRUST_PROXY` | `false` | `true` で、`X-Forwarded-For` から接続元を読みます（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。読むのは、右から `SORA_AUTH_PROXY_HOPS` 番目のアドレスです（先頭の値は、利用者が書けるので信じません）。前段のリバースプロキシが、自分の見た接続元を右端に足す（または、その値に置き換える）構成が前提です。プロキシを通らずに Sora へつなげる経路があるなら、設定しないでください（その経路から `X-Forwarded-For` を書かれます）。v5 より前は先頭の値を読んでいたので、プロキシが 2 段以上のときは `SORA_AUTH_PROXY_HOPS` も設定してください |
 
 **ログ**
 
@@ -2798,7 +2795,6 @@ docker run -d --name sora -p 3016:8000 \
 - 平文の `key` を書いたファイルを、所有者以外も読めるときは、警告します。
 - 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。
 - 日次の上限（`SORA_AUTH_DAILY_LIMIT`）は、tenant ごとに数えます。拒否の回数は、`/metrics` の `sora_auth_rejected_missing_total`（鍵なし）と `sora_auth_rejected_invalid_total`（誤った鍵）で見られます。
-- `SORA_AUTH_LOOPBACK_NO_KEY=true` の鍵なしの通過は、鍵ファイルでも使えます（共有の `internal` の tenant になります）。共有のサービスでは使わないでください。
 
 **まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。監視対象とその履歴（`watch`）は tenant で分かれず、全員に見えます。`POST /cache/clear` は全員分のキャッシュを消します。共有キャッシュの規則は、資格情報とみなすヘッダーの名前の一覧に頼っています。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
