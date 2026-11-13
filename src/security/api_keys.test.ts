@@ -141,12 +141,15 @@ describe('parseApiKeyFile: 誤り（すべてを一度に知らせ、1 つでも
       file([{ name: 'alice', keyHash: `sha256:${sha(KEY_A)}x` }]),
       file([{ name: 'alice', key: KEY_A }, { name: 'bob', key: KEY_A }]),
       `{"keys": [{"name": "alice", "key": "${secret}"` /* 閉じていない */,
+      '{"keys":[{"name":"a","key":SECRET-unquoted-ABCDEF123456}]}' /* 鍵を引用符なしで書いた。エンジンの失敗の文は、この断片を含む */,
+      '{"keys":[{"name":"a","key":"SECRET-a","key":SECRET-b-ABCDEF123456}]}',
       file([{ name: 'alice', key: KEY_A, admin: KEY_B }]),
       file([{ name: KEY_A, key: KEY_B }]),
     ];
     for (const text of texts) {
       const message = parseApiKeyFile(text).errors.join('\n');
       expect(message, text).not.toContain('SECRET');
+      expect(message, text).not.toContain('ABCDEF123456');
       for (const leaked of [secret, KEY_A, KEY_B, sha(KEY_A), sha(KEY_B)]) expect(message, text).not.toContain(leaked);
     }
   });

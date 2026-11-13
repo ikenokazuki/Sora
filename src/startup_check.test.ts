@@ -319,6 +319,15 @@ describe('名前つきの複数の鍵（SORA_AUTH_KEYS_FILE）は、起動のと
     expect(lines.join('\n')).not.toContain('SECRET');
   });
 
+  test('鍵を引用符なしで書いた壊れた JSON でも、標準エラーに鍵の値を出さない（JSON エンジンの失敗の文は、入力の断片を含む）', () => {
+    const path = write('{"keys":[{"name":"a","key":sk_fake_ABCDEF123456}]}');
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: path });
+    expect(exits).toEqual([1]);
+    expect(errorLines(lines)).toEqual([`${PREFIX} エラー: SORA_AUTH_KEYS_FILE: JSON として読めません（カンマ・引用符・括弧を確かめてください）`]);
+    expect(lines.join('\n')).not.toContain('sk_fake');
+    expect(lines.join('\n')).not.toContain('ABCDEF123456');
+  });
+
   test('鍵が 1 つも無い・JSON でない: 止める（鍵が無い状態を、Fail-Open の匿名にしない）', () => {
     for (const content of [keys(), '', '{']) {
       const { exits, lines } = run({ SORA_AUTH_KEYS_FILE: write(content) });
@@ -352,5 +361,11 @@ describe('名前つきの複数の鍵（SORA_AUTH_KEYS_FILE）は、起動のと
 
   test('stdio は認証を通らないので、鍵ファイルを読まない（無くても止めない）', () => {
     expect(run({ SORA_AUTH_KEYS_FILE: join(dir, 'missing.json') }, [], 'stdio')).toEqual({ lines: [], exits: [], asked: [] });
+  });
+
+  test('stdio でも、SORA_API_KEY との併用は止める（SORA_ の付く名前の矛盾は、stdio でも知らせる。HTTP で起動すれば止まる設定）。ただし、鍵ファイルは読まない', () => {
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: join(dir, 'missing.json'), SORA_API_KEY: 'single-key-0123456789' }, [], 'stdio');
+    expect(exits).toEqual([1]);
+    expect(errorLines(lines)).toEqual([`${PREFIX} エラー: SORA_API_KEY と SORA_AUTH_KEYS_FILE は併用できません。鍵ファイルを使うときは SORA_API_KEY を消してください（鍵ファイルは、名前つきの複数の鍵を持ちます）`]);
   });
 });
