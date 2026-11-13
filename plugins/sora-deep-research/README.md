@@ -5,7 +5,7 @@ Sora MCPと組む深層調査スキルと接続設定の配布物。呼出元LLM
 ## 内容
 
 - `skills/sora-deep-research/SKILL.md`: 調査手順（確認事項・証拠・不足の記録、取得失敗と0件の区別）。
-- `skills/sora-client/SKILL.md`: コードを実行できる環境から、REST（`GET /tools` → `GET /tools/<name>` → 呼ぶ）で Sora を使う手順。`client/SKILL.md` と同じ内容。
+- `skills/sora-client/SKILL.md`: コードを実行できる環境から、REST（`GET /tools` → `GET /tools/<name>` → 呼ぶ）で Sora を使う手順。
 - 2 つとも MCP リソース（`sora-skill://sora-deep-research`、`sora-skill://sora-client`）として、Sora サーバーからも取得できる。
 - `mcp.example.json`: Sora MCPサーバへの接続例。
 - `.codex-plugin/plugin.json`: プラグイン定義。

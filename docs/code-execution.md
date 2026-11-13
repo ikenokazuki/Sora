@@ -15,10 +15,9 @@ Sora の MCP サーバーは、これまでどおり MCP だけで使える。�
 ## LLM が REST の入口を見つける経路
 
 - **instructions**: 「コードを実行できるなら REST を直接呼ぶ（`GET /tools` で一覧、`GET /tools/<name>` で入力のスキーマ。手順はスキル `sora-client`、リソース `sora-skill://sora-client`）。できなければ MCP のツールを直接呼ぶ」という一行を載せている。
-- **スキル `sora-client`**: つなぎ方、`GET /tools` → `GET /tools/<name>` → 呼ぶ、の 3 手、curl と Python の例、絞り方の原則、エラーの扱い。次の 3 か所に同じ内容で置いてある。
+- **スキル `sora-client`**: つなぎ方、`GET /tools` → `GET /tools/<name>` → 呼ぶ、の 3 手、curl と Python の例、絞り方の原則、エラーの扱い。次の 2 か所に同じ内容で置いてある。
   - プラグイン `plugins/sora-deep-research/skills/sora-client/`（Skills 対応環境に自動で認識される）
   - MCP リソース `sora-skill://sora-client`（`resources/list` に出る）
-  - リポジトリの `client/SKILL.md`（`bun run gen:client` がプラグインのものを写す）
 - **`search_tools` の応答**: どの `detail` でも、末尾に同じ案内の一文が付く。ツールを探しに来た LLM が、直接呼ぶ前に目にする。
 
 どれも `tools/list` を増やさない。
@@ -74,15 +73,13 @@ for h in official:
     print(sora("POST", "/scrape", {"url": h["url"]})["content"][:500])
 ```
 
-## 型付き TypeScript クライアント
+## 型付き TypeScript クライアント（v5.0.0 で廃止）
 
-v2.40.0 から型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>` は、v5.0.0 で廃止した。言語や、TypeScript・bun の有無に依存するため。エージェントは REST を直接呼ぶ（`GET /tools` → `GET /tools/<name>` → 呼ぶ）。
-
-- 生成した型付きクライアントは、リポジトリの `client/` にだけある。OpenAPI と `REST_MAP` から `bun run gen:client` で生成してコミットしている（`src/client_sync.test.ts` が、コミット済みの内容との差を検出する）。
+v2.40.0 から型付き TypeScript クライアントを配っていた `GET /client`・`GET /client/<path>` は、v5.0.0 で廃止し、型付きクライアントそのもの（リポジトリの `client/` と生成器）も消した。言語や、TypeScript・bun の有無に依存するため。エージェントは REST を直接呼ぶ（`GET /tools` → `GET /tools/<name>` → 呼ぶ）。型が要るときは、`GET /openapi.json` から標準のジェネレータでクライアントを作る。
 
 ## 実測
 
-文字数は、呼び出し側が受け取る HTTP 本文の長さ（型付きクライアントでも REST の直接呼び出しでも、同じ本文を受け取る）。
+文字数は、呼び出し側が受け取る HTTP 本文の長さ。
 
 **固定で文脈に載る量（`tools/list`、`bun scripts/measure-context.ts`）**
 

@@ -80,11 +80,11 @@ describe('(2) 旧名（LEGACY）が残っていない', () => {
   /** 旧名を入力に使うテスト（わざと） */
   const OLD_NAME_TESTS = ['src/config.ts', 'src/config.test.ts', 'src/env_names.test.ts', 'src/startup_check.test.ts'];
 
-  test('README・docs・scripts・src・packages・plugins・client・設定ファイル・workflow に、旧名が語として無い（RELEASE_NOTES.md は対象外）', () => {
+  test('README・docs・scripts・src・packages・plugins・設定ファイル・workflow に、旧名が語として無い（RELEASE_NOTES.md は対象外）', () => {
     const targets = [
       'README.md', 'Containerfile', 'smithery.yaml', 'run_test.sh', 'package.json',
       ...docsFiles(), ...files('scripts'), ...files('src').filter((f) => !OLD_NAME_TESTS.includes(f)),
-      ...files('packages'), ...files('plugins'), ...files('client'), ...files('.github'),
+      ...files('packages'), ...files('plugins'), ...files('.github'),
     ];
     const hits = targets.flatMap((f) => lines(f).flatMap((line, i) => {
       // GitHub の secret の名前（secrets.NAME）は環境変数でない。secret の名前は変えていない

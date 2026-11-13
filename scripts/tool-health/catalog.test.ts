@@ -75,7 +75,7 @@ describe('tool-health catalog consistency', () => {
 });
 
 describe('restRoutesOf', () => {
-  const several = [{ method: 'POST', path: '/b' }, { method: 'POST', path: '/b/c', fn: 'bC' }];
+  const several = [{ method: 'POST', path: '/b' }, { method: 'POST', path: '/b/c' }];
   const map: RestMap = { none: null, one: { method: 'GET', path: '/a' }, several };
 
   test('null is no route, one route is a one-element array, an array keeps its order', () => {

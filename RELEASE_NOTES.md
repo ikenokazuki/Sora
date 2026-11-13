@@ -1,12 +1,13 @@
 # Sora v5.0.0 — MCP のツールを用途ごとに 53 個から 33 個にまとめ、環境変数の名前を整理した
 
-用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST と型付きクライアント（`client/`）の関数名を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,232・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。あわせて、環境変数の名前を整理しました（旧名は読みません。「先に気づく変更（運用者）」と「環境変数の整理」）。
+用途の近い MCP のツールを 1 つにまとめ、53 個を 33 個にしました（初期公開は 14 個から 13 個）。ツールが多いと、LLM が似た名前のツールの中から選び間違えるためです。まとめたツールは、入力（`type`・`action`・`include`・`part`・`agencies`、URL の形、どの引数を渡したか）で使い方を選び、元のツールと同じ処理を呼びます。ツールの統合では、REST を変えていません（v4.2.0 からの REST の変更は、下の `GET /client` の廃止・`search_road_traffic` の `source`・「REST の応答の文」・「v4.2.0 以降に main に入った、そのほかの変更」のとおりです）。型付きクライアント（`client/`）は消しました（「先に気づく変更（呼び出し側）」）。`scripts/measure-context.ts` の値は、既定 23,060・全ツール 57,232・`instructions` 8,685 です（v4.2.0 は 22,269・63,529・8,948）。あわせて、環境変数の名前を整理しました（旧名は読みません。「先に気づく変更（運用者）」と「環境変数の整理」）。
 
 ## 先に気づく変更（呼び出し側）
 
 - **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
-- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスの欄は同じで（応答の文だけ、後の「REST の応答の文」のとおり変えたものがあります）、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `GET /client` の廃止と `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。型付きクライアントの関数名（`scrapeBatch`・`mapSite`・`getElevation` など 52 個）も同じです。
-- **`GET /client`・`GET /client/{path}` を廃止しました（v4.2.0 以降の変更で deprecated にしていました）。** 代わりは `GET /tools` と `GET /tools/{name}`、および各操作の REST の直接呼び出しです。型が要るときは、OpenAPI から標準のジェネレータで作ってください。リポジトリの `client/` の生成物は残っています（配る経路が無くなっただけです）。`GET /tools` の追加と合わせて、OpenAPI の操作の数は v4.2.0 と同じ 82 です。
+- **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスの欄は同じで（応答の文だけ、後の「REST の応答の文」のとおり変えたものがあります）、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `GET /client` の廃止と `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。
+- **`GET /client`・`GET /client/{path}` を廃止しました（v4.2.0 以降の変更で deprecated にしていました）。** 代わりは `GET /tools` と `GET /tools/{name}`、および各操作の REST の直接呼び出しです。リポジトリの `client/` も消しました（次の項目）。`GET /tools` の追加と合わせて、OpenAPI の操作の数は v4.2.0 と同じ 82 です。
+- **型付きクライアント（`client/`）を削除しました。** `GET /client` の廃止に続き、リポジトリの `client/`・`scripts/gen-client/`・`bun run gen:client` もなくなり、イメージに `/app/client` も入りません。v2.40.0〜v4.x で `GET /client` から取っていた人は、v5.0.0 では取れません（404）。リポジトリの `client/` を写した人は、作り直せなくなります（写した版の関数が呼ぶ REST は v5.0.0 にもあるので呼べますが、MCP のツール名の統合で、ツール名とファイル名・関数名が合わなくなります。例: `scrape_batch.ts` の `scrapeBatch` は、v5.0.0 では `scrape` の `urls` です。以後の REST の変更は、写した版に反映されません）。代わりは、REST の直接呼び出し（`GET /tools` → `GET /tools/<name>` → 呼ぶ）か、OpenAPI から標準のジェネレータで作ったクライアントです。スキル `sora-client`（REST の直接呼び出しの手順）は残っています。
 - **`search_road_traffic` の応答の `source` が `"jartic"` から `"yahoo-roadway"` になりました**（REST・MCP とも。#70）。実際に読んでいるのは Yahoo! 道路交通情報（`roadway.yahoo.co.jp`）のページで、取得元を JARTIC と表示するのは実態に合わないためです。取得の動きとほかの欄は変えていません。`source` で分岐している呼び出し側は直してください。`search_tools` の検索語には `JARTIC` を残しています。
 - **MCP の応答の形が変わるツールがあります。**
   - `lookup_address`・`lookup_hts`・`get_youtube` は、旧ツールの応答の先頭に `mode` 欄が付きます（`normalize` / `reverse` / `postal`、`verify` / `predict`、`video` / `channel`）。ほかの欄は旧ツールと同じです。
@@ -144,13 +145,6 @@
 - `POST /search/video` で検索語が URL のときの `message` が、`YouTube なら get_youtube` と書きます。
 - YouTube のページを `scrape` で読んだときの注記（`/scrape`・`/scrape/batch`・`search_deep` など）が、続きの読み方を `get_youtube` と書きます。注記が 11 字短くなった分、長い字幕に使える字数が 11 字増えます。
 - OpenAPI の YouTube の抜粋（`reason`・`text`）の説明の文、`SongRecognitionResult.itunes` と `WatchTargetRecord.interval_seconds` の説明の文（MCP のツール名の言及を新しい名前にした）。
-
-## 型付きクライアント（`client/`）
-
-- **配る経路の `GET /client` は廃止しました。** 生成物は、リポジトリの `client/` にだけあります（`bun run gen:client` で作り直す）。
-- **ファイルの名前は、まとめたツールの名前になりました**（例: `servers/sora/scrape_batch.ts` は `servers/sora/scrape.ts` の中に入りました）。`servers/sora/index.js` から読む import は、今までどおり動きます。
-- **関数名は変えていません**（52 個）。まとめたツールの各ルートは、旧いツールの名前の関数のままです（例: `scrape` の `/scrape/batch` は `scrapeBatch`）。
-- **各関数の説明（JSDoc）は、その関数が呼ぶ REST のルートの OpenAPI の `summary`（あれば `description`）から作ります。** 今までは MCP のツールの説明を写していたので、まとめたツールでは REST の応答に無い `mode` などを書いていました。`catalog.json` の `description` は、`searchTools` で探せるように、ツールの説明のままです（1 ルート 1 行）。
 
 ## v4.2.0 以降に main に入った、そのほかの変更
 
