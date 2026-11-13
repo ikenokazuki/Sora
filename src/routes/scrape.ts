@@ -16,7 +16,7 @@ import {
   CrawlRequestSchema,
   MapRequestSchema,
 } from '../types.js';
-import { dropNullFields, formatError } from './utils.js';
+import { busyEventFields, busyResponse, dropNullFields, formatError } from './utils.js';
 import { errorMessage, ScrapeInputError } from '../errors.js';
 
 export const scrapeRoutes = new Hono();
@@ -98,6 +98,8 @@ scrapeRoutes.post('/scrape', async (c) => {
     const result = await scrapeUrl({ ...parsed.data, verbose, tenantId });
     return c.json(formatCompactScrapeResult(result, { verbose }));
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     const msg = errorMessage(err) || 'Scrape failed';
     if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'SCRAPE_ERROR');
@@ -155,7 +157,7 @@ scrapeRoutes.post('/scrape/stream', async (c) => {
         event: 'error',
         data: JSON.stringify({
           error: errorMessage(err) || 'Scrape failed',
-          code: 'SCRAPE_ERROR',
+          ...(busyEventFields(err) ?? { code: 'SCRAPE_ERROR' }),
         }),
       });
     }
@@ -186,6 +188,8 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
     const formattedResults = result.results?.map((r) => formatCompactScrapeResult(r, { verbose })) ?? [];
     return c.json({ ...result, results: formattedResults });
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     const msg = errorMessage(err) || 'Batch scrape failed';
     if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
@@ -205,6 +209,8 @@ scrapeRoutes.post('/map', async (c) => {
 
     return c.json(result);
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     const msg = errorMessage(err) || 'Map failed';
     const { code, status, retryable } = classifyFetchError(msg, 'MAP_ERROR');
     return formatError(c, msg, code, status, retryable);
@@ -222,6 +228,8 @@ scrapeRoutes.post('/crawl', async (c) => {
 
     return c.json(result);
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     const msg = errorMessage(err) || 'Crawl failed';
     if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
@@ -271,7 +279,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
       const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
       await stream.writeSSE({
         event: 'error',
-        data: JSON.stringify({ error: msg, code, status, retryable }),
+        data: JSON.stringify({ error: msg, ...(busyEventFields(err) ?? { code, status, retryable }) }),
       });
     }
   });

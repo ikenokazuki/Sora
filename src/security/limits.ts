@@ -1,9 +1,9 @@
-// 増幅の上限の値（設計 6。穴 11・21・23・24・26）。水準（SORA_ISOLATION）で、組み込みの 2 組の値を切り替える。個別の環境変数は足さない
+// 増幅の上限と、ブラウザの枠の値（設計 6。穴 11・21・23〜26）。水準（SORA_ISOLATION）で、組み込みの 2 組の値を切り替える。個別の環境変数は足さない
 // （設定が増えすぎるため）。値の組は、呼ぶたびに水準を読んで選ぶ（起動のあとで環境を変える運用・テストに追従する）。
 //
 //   standard（既定）: ユーザーが 1 人か、互いに信頼できる少数。今までの使い方を止めない緩い値で、異常な入力（無制限の本文・星だらけのパターンなど）だけを止める
 //   strict: 互いに信頼できない利用者に公開する共有のサービス。設計書の値（未決 7）
-import { envEnum, envError } from '../config.js';
+import { type Env, envEnum, envError } from '../config.js';
 
 export type IsolationLevel = 'standard' | 'strict';
 
@@ -28,6 +28,14 @@ export interface Limits {
   selectorCount: number;
   /** セレクタ 1 つの長さ（文字数） */
   selectorLength: number;
+  /** ブラウザの枠（browserSemaphore）を待つ要求の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
+  browserQueuePerTenant: number;
+  /** ブラウザの枠を待つ要求の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
+  browserQueueTotal: number;
+  /** ブラウザの枠を待つ時間の上限（ミリ秒）。超えたら断る（429） */
+  browserQueueWaitMs: number;
+  /** 1 つの tenant が、同時に持てる枠の割合（1〜100 のパーセント。枠の数に掛けて切り捨て、最低 1 枠）。100 は制限なし */
+  browserTenantSharePercent: number;
 }
 
 const MB = 1024 * 1024;
@@ -43,6 +51,10 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   patternSteps: 200_000_000,
   selectorCount: 100,
   selectorLength: 2000,
+  browserQueuePerTenant: 100,
+  browserQueueTotal: 500,
+  browserQueueWaitMs: 600_000,
+  browserTenantSharePercent: 100,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -56,6 +68,10 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   patternSteps: 20_000_000,
   selectorCount: 20,
   selectorLength: 500,
+  browserQueuePerTenant: 10,
+  browserQueueTotal: 100,
+  browserQueueWaitMs: 60_000,
+  browserTenantSharePercent: 50,
 });
 
 /**
@@ -63,12 +79,12 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
  * （安全側を選ぶ切り替えなので、打ち間違いが、上限を緩めてはいけない）。登録簿と同じ文（変数名と正しい形）で、エラーにする
  * （src/net/egress.ts の rejectInvalid と同じ）。未設定・空は standard
  */
-export function isolationLevel(env?: Parameters<typeof envEnum>[1]): IsolationLevel {
+export function isolationLevel(env?: Env): IsolationLevel {
   const problem = envError('SORA_ISOLATION', env);
   if (problem) throw new Error(problem);
   return envEnum('SORA_ISOLATION', env);
 }
 
-export function limits(env?: Parameters<typeof envEnum>[1]): Readonly<Limits> {
+export function limits(env?: Env): Readonly<Limits> {
   return isolationLevel(env) === 'strict' ? STRICT_LIMITS : STANDARD_LIMITS;
 }

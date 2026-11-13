@@ -2632,7 +2632,7 @@ describe('Sora REST & MCP Endpoints', () => {
     let maxWorkersObserved = 0;
 
     const worker = async () => {
-      await sem.acquire();
+      const lease = await sem.acquire();
       try {
         activeWorkers++;
         if (activeWorkers > maxWorkersObserved) {
@@ -2641,7 +2641,7 @@ describe('Sora REST & MCP Endpoints', () => {
         await new Promise((r) => setTimeout(r, 30));
       } finally {
         activeWorkers--;
-        sem.release();
+        lease();
       }
     };
 

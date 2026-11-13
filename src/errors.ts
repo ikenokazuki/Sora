@@ -22,3 +22,24 @@ export function errorKind(err: unknown): string {
 
 /** scrape（url・urls）と REST の /scrape・/scrape/batch の入力の誤り（REST では 400 の INVALID_INPUT）。取得の前に見つけたものに使う */
 export class ScrapeInputError extends Error {}
+
+/**
+ * 断った理由（ブラウザの枠の待ち行列。設計 6。穴 25）:
+ * tenant_queue_full = その利用者が待てる数の上限・queue_full = 全体で待てる数の上限・queue_timeout = 待ち時間の上限
+ */
+export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout';
+
+/**
+ * 資源（ブラウザの枠）が混み合っていて、待たせずに（または待たせたあとに）断ったときの例外。
+ * REST では 429 と Retry-After（秒）、MCP ではエラーの文になる。再試行してよい
+ */
+export class ResourceBusyError extends Error {
+  constructor(
+    message: string,
+    readonly reason: BusyReason,
+    readonly retryAfterSec = 5,
+  ) {
+    super(message);
+    this.name = 'ResourceBusyError';
+  }
+}

@@ -395,7 +395,7 @@ async function renderWithStealthBrowser(
   }
 
   await throttleDomain(url);
-  await browserSemaphore.acquire();
+  const lease = await browserSemaphore.acquire(tenantId);
   recordBrowserUsage();
 
   try {
@@ -611,6 +611,6 @@ async function renderWithStealthBrowser(
       }
     }
   } finally {
-    browserSemaphore.release();
+    lease();
   }
 }

@@ -45,6 +45,11 @@ on:
       - src/routes/watch.ts
       - src/mcp/tools_watch.ts
       - src/routes/scrape.ts
+      - src/routes/browser.ts
+      - src/routes/utils.ts
+      - src/browser_semaphore.ts
+      - src/browser_session.ts
+      - src/errors.ts
       - src/security/tenant_cache.ts
       - src/routes/system.ts
       - src/routes/module_guard.ts
