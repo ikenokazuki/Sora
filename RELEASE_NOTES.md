@@ -180,6 +180,13 @@
   - `Authorization` の `Bearer` を、大文字小文字を区別せずに読みます（RFC 7235）。小文字の `bearer <正しい鍵>` は、これまで認証が 401 にしていました。`Authorization` に Bearer があれば、鍵はそれだけを読むので、誤った Bearer と正しい `X-API-Key` を併せると 401 です（これまでも、大文字の `Bearer` は 401 でした）。
   - 挙動が変わるのは、鍵が決める tenant ではないときだけです。鍵を設定していないとき、`SORA_ALLOW_ANONYMOUS=true` で鍵の無い（または誤った）要求は、MCP も REST と同じ共有の scope（`legacy`）になります。以前は MCP だけ、送ってきた文字列ごとに別の tenant になっていました。`SORA_AUTH_LOOPBACK_NO_KEY=true` で鍵なしで通る要求は、MCP も REST と同じ `internal` の scope です（以前の MCP は `legacy`）。サイトごとの Cookie / localStorage は tenant ごとに保存するので、MCP が以前の scope に保存していた分は引き継がれません（次の取得で作り直されます）。有効な鍵で認証された要求の tenant は変わりません。
   - `SORA_AUTH_TRUST_PROXY=true` のとき、`X-Forwarded-For` の先頭の値でなく、右から `SORA_AUTH_PROXY_HOPS` 番目（既定 1）を接続元として読みます。先頭の値は利用者が書けるので、`X-Forwarded-For: 127.0.0.1` を付けるだけで、`SORA_AUTH_LOOPBACK_NO_KEY=true` の鍵なしの通過に入れました（プロキシは本当の接続元を右に足すだけです）。リバースプロキシが 2 段以上のときは、`SORA_AUTH_PROXY_HOPS` を設定してください。IP アドレスでない値と、段数に足りない `X-Forwarded-For` は、ループバックとみなしません。`SORA_AUTH_PROXY_HOPS` は `SORA_AUTH_TRUST_PROXY=true` のときだけ効き、そうでないときに設定すると、起動時に警告します。
+- **名前つきの複数の鍵（鍵ファイル `SORA_AUTH_KEYS_FILE`）を足しました。設定しなければ、挙動は変わりません。** 複数の利用者が 1 つの Sora を使うときに、利用者ごとに別の鍵を渡し、鍵ごとに別の tenant（ID は `name:<name>`）で動かせます。サイトごとの Cookie / localStorage・MCP のセッション・ブラウザのセッション・日次の上限が、tenant ごとに分かれます。
+  - 形式は `{"keys": [{"name": "alice", "keyHash": "sha256:…"}, {"name": "bob", "key": "…"}]}`（JSON）です。鍵は SHA-256 の `keyHash` でも平文の `key` でも書けます（ハッシュを勧めます。手順は README 4.6）。同じ `name` を複数の行に書くと、どちらの鍵も同じ tenant です（鍵の入れ替えの移行期）。
+  - 匿名は認めません（`SORA_ALLOW_ANONYMOUS` は効かず、真にしていると警告します）。`SORA_API_KEY` とは併用できません（起動を止めます）。
+  - ファイルが無い・読めない・JSON の誤りがある・鍵が 1 つも無いときは、起動しません（鍵が無い状態を、認証なしにしないため）。誤りは、どの行のどの項目かを標準エラーにすべて出します（鍵の値は出しません）。起動のときに 1 回だけ読むので、鍵を足す・消すときは再起動してください。起動のあとに読めなくなったときは、認証が要る要求を 503 で断ります。
+  - 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。日次の上限（`SORA_AUTH_DAILY_LIMIT`）は tenant ごとに数えます。拒否の回数は `/metrics` の `sora_auth_rejected_missing_total`・`sora_auth_rejected_invalid_total` で見られます（単一の鍵のときも数えます）。
+  - REST の `/browser/action` の持ち主の確認は、名前つきの鍵では、鍵の値でなく tenant で行います（同じ tenant の別の鍵でも、セッションを続けられます）。
+  - 互いに信頼できない利用者に公開するには、まだ足りないものがあります（監視対象の分離・全員分のキャッシュを消す操作・共有キャッシュの規則・tenant ごとの上限。README 4.6）。段階的に進めています。
 - **運用の確認を足しました。** 週 1 回、リリースのイメージの Chromium・Bun・distroless の土台と CI の Bun を新しい版と比べ、遅れていれば issue で知らせます（#79）。CI の Bun を 1.4.2 から 1.4.4 に上げました（brotli の範囲外書き込みなど、2026-10 の勧告 3 件の修正を含む版、#80）。また、週 1 回、上流の wreq-util に、いまの上限より新しい Chrome のプロファイルが入ったかを見て、入っていれば、その rev で試しにイメージをビルドし、ブラウザと静的取得の ClientHello を比べて、通れば更新の PR を作ります（マージは人が決めます。手順は `docs/browser-alignment.md`、#87）。
 
 # Sora v4.2.0 — HTS の推測の判例を手元の索引から引くようにし、町名がローマ字の住所を読めるようにした
