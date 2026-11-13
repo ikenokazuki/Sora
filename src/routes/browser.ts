@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono';
 import { executeBrowserActions } from '../scraper.js';
 import { BrowserActionRequestSchema } from '../types.js';
 import { extractAuthToken } from '../auth.js';
-import { formatError } from './utils.js';
+import { busyResponse, formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
 
 export const browserRoutes = new Hono();
@@ -45,6 +45,8 @@ export const handleBrowserAction = async (c: Context) => {
 
     return c.json(result);
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     const msg = errorMessage(err) || 'Browser action failed';
     const isForbidden = msg.includes('Forbidden') || msg.includes('permission');
     const isSecurity = isForbidden || msg.includes('private or blocked') || msg.includes('遮断');

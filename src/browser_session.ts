@@ -17,6 +17,7 @@ import {
   humanMouseMove,
   pruneInvisibleElements,
   type BrowserActionStep,
+  type Lease,
 } from './scraper.js';
 import { envBool } from './config.js';
 import { errorMessage } from './errors.js';
@@ -451,6 +452,8 @@ export async function handleBrowserSessionAction(
   let page: Page;
   let browserInstance: Browser | undefined;
   let context: BrowserContext | undefined;
+  /** ワンショット実行が持つ枠（実行の終わりまで持つ）。セッション作成の枠は、作成の間だけ持つ */
+  let oneShotLease: Lease | undefined;
 
   if (isStateful) {
     // 既存セッションの取得または新規作成
@@ -468,12 +471,11 @@ export async function handleBrowserSessionAction(
         session.imagesStale = true;
       }
     } else {
-      // 新規セッションの初期化 (上限超過時は最古セッションを退避)
-      await evictOldestSessionIfNeeded();
-
-      await browserSemaphore.acquire();
+      // 新規セッションの初期化。枠を得てから、上限超過時は最古セッションを退避する（枠を断られたときに、ほかの人のセッションを閉じない）
+      const lease = await browserSemaphore.acquire(options.tenantId);
       recordBrowserUsage();
       try {
+        await evictOldestSessionIfNeeded();
         const browserRes = await getBrowser();
         browserInstance = browserRes.browser;
         isDedicated = browserRes.isDedicated;
@@ -505,13 +507,13 @@ export async function handleBrowserSessionAction(
         session = created;
         activeSessions.set(requestedId, session);
       } finally {
-        browserSemaphore.release();
+        lease();
       }
     }
     refreshSessionTimer(session);
   } else {
     // ワンショット実行（セッション管理なし・即破棄）
-    await browserSemaphore.acquire();
+    oneShotLease = await browserSemaphore.acquire(options.tenantId);
     recordBrowserUsage();
     try {
       const browserRes = await getBrowser();
@@ -530,7 +532,7 @@ export async function handleBrowserSessionAction(
 
       await applyStealthEvasions(page);
     } catch (err) {
-      browserSemaphore.release();
+      oneShotLease?.();
       throw err;
     }
   }
@@ -661,7 +663,7 @@ export async function handleBrowserSessionAction(
           await context.close().catch(() => {});
         }
       } finally {
-        browserSemaphore.release();
+        oneShotLease?.();
       }
     }
   }

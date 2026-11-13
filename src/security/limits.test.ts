@@ -54,6 +54,17 @@ describe('limits', () => {
     });
   });
 
+  test('ブラウザの枠の値（待つ数・待ち時間・tenant の割合）: strict は設計の値、standard は緩い値。割合は 1〜100 のパーセント', () => {
+    expect(STRICT_LIMITS).toMatchObject({ browserQueuePerTenant: 10, browserQueueTotal: 100, browserQueueWaitMs: 60_000, browserTenantSharePercent: 50 });
+    expect(STANDARD_LIMITS).toMatchObject({ browserQueuePerTenant: 100, browserQueueTotal: 500, browserQueueWaitMs: 600_000, browserTenantSharePercent: 100 });
+    for (const table of [STANDARD_LIMITS, STRICT_LIMITS]) {
+      expect(table.browserTenantSharePercent).toBeGreaterThanOrEqual(1);
+      expect(table.browserTenantSharePercent).toBeLessThanOrEqual(100);
+      // 1 人の待ちが、全体の待ちを超える値にはしない（超えても全体の上限が先に効くだけで、意味がない）
+      expect(table.browserQueuePerTenant).toBeLessThanOrEqual(table.browserQueueTotal);
+    }
+  });
+
   test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());

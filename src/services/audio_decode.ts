@@ -52,7 +52,7 @@ const extractInPage = (offsets: number[], windowSec: number, rate: number) => {
  */
 export async function decodeAudioWindows(bytes: Uint8Array, pickWindows: (durationSec: number) => number[]): Promise<DecodedWindows> {
   if (!resolveChromiumPath()) throw new Error('Chromium/Chrome が見つからないため音声を変換できません');
-  await browserSemaphore.acquire();
+  const lease = await browserSemaphore.acquire();
   recordBrowserUsage();
   try {
     const { browser, isDedicated } = await getBrowser();
@@ -73,6 +73,6 @@ export async function decodeAudioWindows(bytes: Uint8Array, pickWindows: (durati
       else await context.close();
     }
   } finally {
-    browserSemaphore.release();
+    lease();
   }
 }

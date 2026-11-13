@@ -145,7 +145,6 @@ export const SETTINGS = {
   },
   SORA_ISOLATION: {
     area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard',
-    defaultDoc: '`standard`',
     doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。いまの `strict` は、この上限の値を切り替えます（起動時の検査などのほかの要件は、段階的に足します）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
   },
   SORA_DB_PATH: {

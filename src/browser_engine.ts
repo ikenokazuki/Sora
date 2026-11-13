@@ -14,8 +14,10 @@ import {
   SandboxFallback,
   withoutNoSandbox,
 } from './browser_launch_plan.js';
+import { type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
+import { limits } from './security/limits.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
@@ -23,6 +25,8 @@ import { getProxyConfig } from './net/proxy_config.js';
 // 判定の本体は net/ip_policy.ts に移した。ここからも、これまでどおり import できるようにしておく
 export { isBlockedHostname, isPrivateIp, isPrivateIpUint32, parseIpv4ToUint32 } from './net/ip_policy.js';
 export { getProxyConfig } from './net/proxy_config.js';
+// 枠の本体は browser_semaphore.ts に移した（tenant ごとの公平な待ち行列。設計 6）。ここからも、これまでどおり import できるようにしておく
+export { type Lease, type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
 
 /** Chromium 実行バイナリパスの自動検出 */
 export function resolveChromiumPath(): string | undefined {
@@ -472,43 +476,6 @@ export function maybeRotateSharedBrowser(): void {
   }
 }
 
-/** 簡易セマフォ（ブラウザ同時実行数制限） */
-export class SimpleSemaphore {
-  private current = 0;
-  private queue: Array<() => void> = [];
-
-  constructor(public readonly max: number) {}
-
-  async acquire(): Promise<void> {
-    if (this.current < this.max) {
-      this.current++;
-      return;
-    }
-    await new Promise<void>((resolve) => {
-      this.queue.push(resolve);
-    });
-    this.current++;
-  }
-
-  release(): void {
-    this.current = Math.max(0, this.current - 1);
-    const next = this.queue.shift();
-    if (next) {
-      next();
-    } else if (this.current === 0) {
-      maybeRotateSharedBrowser();
-    }
-  }
-
-  get activeCount(): number {
-    return this.current;
-  }
-
-  get pendingCount(): number {
-    return this.queue.length;
-  }
-}
-
 /**
  * ブラウザ同時実行数の既定値。bun 本体 + Chromium の常駐に約700MB、1ページあたり約300MB を見込み、
  * 利用可能メモリから導く（1〜5）。メモリ不明なら従来の 5。SORA_BROWSER_MAX_CONCURRENCY 明示時はそちらが優先。
@@ -540,8 +507,17 @@ export function resolveBrowserConcurrency(raw: string | undefined, memBytes: num
   return envInt('SORA_BROWSER_MAX_CONCURRENCY', { SORA_BROWSER_MAX_CONCURRENCY: raw }) ?? defaultBrowserConcurrency(memBytes);
 }
 
-/** 同時に動かすブラウザの数（モジュールの読み込み時に決める）。 */
-export const browserSemaphore = new SimpleSemaphore(resolveBrowserConcurrency(envRaw('SORA_BROWSER_MAX_CONCURRENCY'), detectMemoryLimitBytes()));
+/** 枠の待ち行列の方針。水準（SORA_ISOLATION）の値を、枠を取るたびに読む（設計 6。穴 25） */
+export function browserQueuePolicy(): QueuePolicy {
+  const lim = limits();
+  return { perTenant: lim.browserQueuePerTenant, total: lim.browserQueueTotal, waitMs: lim.browserQueueWaitMs, sharePercent: lim.browserTenantSharePercent };
+}
+
+/** 同時に動かすブラウザの数（モジュールの読み込み時に決める）。使い終わったら、共有ブラウザを入れ替える */
+export const browserSemaphore = new SimpleSemaphore(resolveBrowserConcurrency(envRaw('SORA_BROWSER_MAX_CONCURRENCY'), detectMemoryLimitBytes()), {
+  policy: browserQueuePolicy,
+  onIdle: maybeRotateSharedBrowser,
+});
 
 const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();
 const DNS_CACHE_TTL_MS = 60_000;
