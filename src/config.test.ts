@@ -79,6 +79,7 @@ const SECRETS = [
 const INTS: Record<string, [number, number | undefined, number | undefined, number?]> = {
   PORT: [1, 65_535, 8000],
   SORA_AUTH_DAILY_LIMIT: [1, undefined, undefined],
+  SORA_AUTH_PROXY_HOPS: [1, 10, 1],
   SORA_MCP_MAX_SESSIONS: [1, undefined, 100],
   SORA_BROWSER_MAX_CONCURRENCY: [1, undefined, undefined, 50],
   SORA_BROWSER_IDLE_TTL_MS: [0, undefined, 300_000],
@@ -116,8 +117,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 9 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(62);
+  test('counts match the design (53 + 10 settings, 13 standard names, 40 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(63);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(40);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -185,7 +186,7 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the nine settings added after the design are registered', () => {
+  test('the ten settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
@@ -201,6 +202,8 @@ describe('registry', () => {
     expect(SETTINGS.SORA_EGRESS_PORTS).not.toHaveProperty('default');
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).toMatchObject({ area: 'egress', kind: 'list' });
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).not.toHaveProperty('default');
+    // 信頼するリバースプロキシの段数（X-Forwarded-For を右から数える）。1〜10、既定は 1 段
+    expect(SETTINGS.SORA_AUTH_PROXY_HOPS).toMatchObject({ area: 'auth', kind: 'int', default: 1, min: 1, max: 10 });
   });
 
   test('names follow the naming rules and do not collide', () => {
@@ -776,6 +779,23 @@ describe('checkEnv', () => {
       expect(errors, set).toEqual([]);
       expect(warnings, set).toEqual([`${id} と ${secret} は組で設定します。${set} だけでは効かず、API を使わずにブラウザで照会します（${missing} も設定するか、${set} を消してください）`]);
       expect(warnings[0]).not.toContain('value-9r');
+    }
+  });
+
+  test('SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効く: 効かないときは警告して起動する', () => {
+    expect(checkEnv({ SORA_AUTH_TRUST_PROXY: 'true', SORA_AUTH_PROXY_HOPS: '2' })).toEqual({ errors: [], warnings: [] });
+    expect(checkEnv({ SORA_AUTH_TRUST_PROXY: 'true' })).toEqual({ errors: [], warnings: [] });
+    expect(checkEnv({})).toEqual({ errors: [], warnings: [] });
+    for (const env of [{ SORA_AUTH_PROXY_HOPS: '2' }, { SORA_AUTH_PROXY_HOPS: '2', SORA_AUTH_TRUST_PROXY: 'false' }, { SORA_AUTH_PROXY_HOPS: '2', SORA_AUTH_TRUST_PROXY: ' ' }]) {
+      const { errors, warnings } = checkEnv(env);
+      expect(errors, JSON.stringify(env)).toEqual([]);
+      expect(warnings, JSON.stringify(env)).toEqual(['SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効きます。いまは効きません（SORA_AUTH_TRUST_PROXY=true にするか、この設定を消してください）']);
+    }
+    // 不正な値は、効かない警告ではなく、値の誤りとして止める
+    for (const raw of ['0', '11', 'abc', '1.5']) {
+      const { errors } = checkEnv({ SORA_AUTH_TRUST_PROXY: 'true', SORA_AUTH_PROXY_HOPS: raw });
+      expect(errors, raw).toHaveLength(1);
+      expect(errors[0]).toContain('SORA_AUTH_PROXY_HOPS');
     }
   });
 

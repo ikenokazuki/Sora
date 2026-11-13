@@ -17,6 +17,7 @@ on:
       - scripts/browser-egress-check.ts
       - scripts/static-egress-check.ts
       - scripts/fetch-egress-check.ts
+      - scripts/auth-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
@@ -29,6 +30,9 @@ on:
       - src/net/egress_gateway.ts
       - src/net/ip_policy.ts
       - src/net/proxy_config.ts
+      - src/auth.ts
+      - src/mcp.ts
+      - src/routes/mcp_route.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

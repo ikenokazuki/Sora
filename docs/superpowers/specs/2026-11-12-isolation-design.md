@@ -60,7 +60,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 状態と tenant:
 
-15. **MCP の tenant の決め方が、認証と食い違う**（`mcp.ts:119-128` と `auth.ts:23-34`）(確認): 認証は `Bearer `（大文字小文字を区別）か `X-API-Key` を見るが、MCP は `Authorization` の `Bearer <任意>`（大文字小文字を区別しない）から tenant を作る。`Authorization: bearer 任意` と `X-API-Key: 正しい鍵` を併せると、認証は通り、MCP は任意の tenant で動く。複数の鍵にしたとき、tenant ごとの上限・状態から逃げられる。
+15. **MCP の tenant の決め方が、認証と食い違う**（`mcp.ts:119-128` と `auth.ts:23-34`）(確認。E20 で再現。PR 3a で閉じた): 認証は `Bearer `（大文字小文字を区別）か `X-API-Key` を見るが、MCP は `Authorization` の `Bearer <任意>`（大文字小文字を区別しない）から tenant を作る。`Authorization: bearer 任意` と `X-API-Key: 正しい鍵` を併せると、認証は通り、MCP は任意の tenant で動く。複数の鍵にしたとき、tenant ごとの上限・状態から逃げられる。
 16. **共有キャッシュの規則が、資格情報の名前の一覧に頼る**（`credential_scope.ts`。キーに tenant は含めない。`scraper.ts:615-619`）(一部確認): 資格情報とみなすヘッダーは限られた名前だけ。`X-Auth`・`Api-Key`・`X-CSRF-Token`・URL 内の userinfo や token で得た内容は、共有キャッシュに入り、ほかの tenant に返りうる。tenant の保存済み Cookie で得た結果も共有される。
 17. **tenant を渡さない経路**（`map`・`search_web(formats)`・ウォッチ・`inspect_image`・社会・intel の本文取得・音声の取得）は、全員が `legacy` の Cookie ジャーを共有する。
 18. **ウォッチ**: 穴 2 に加えて、登録数の上限がない。`watch_check` は id を省くと、全 tenant の全件を順に取得して webhook も送る。`GET /watch/list` は `SELECT *` で、webhook URL（トークン入りが多い）と内容を、全員分返す。
@@ -80,7 +80,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 27. **子プロセスが環境変数を丸ごと継承する**（Yahoo のバイナリ `yahoo.ts:202`・`address_builder.ts:40`・`rs_trafilatura.ts:33`。`spawn` に `env` の指定がない）(確認: yahoo): 通信する子プロセスに、運用者の秘密が渡る。
 28. **利用者が渡した音声が、共有の Chromium（root・`--no-sandbox`）のメディアデコーダーに入る**（`audio_decode.ts:55-70`。`recognize_song`。`setupPageSecurity` なしのページで `decodeAudioData`）(確認): ブラウザの乗っ取りの入口になる。
-29. **`TRUST_PROXY=true` かつ `ALLOW_LOCAL_NO_AUTH=true` のとき、認証を外せる**（`auth.ts` の `resolvePeerLocal`）(確認): クライアントが書ける `X-Forwarded-For` の先頭の値を信じる。
+29. **`TRUST_PROXY=true` かつ `ALLOW_LOCAL_NO_AUTH=true` のとき、認証を外せる**（`auth.ts` の `resolvePeerLocal`）(確認。E20 で再現。PR 3a で閉じた): クライアントが書ける `X-Forwarded-For` の先頭の値を信じる。
 30. **webhook URL（トークン入りが多い）をそのままログに出す**（`enrichment.ts:231・252・256`）。`/docs`・`/swagger` が、SRI なしの CDN のスクリプト（unpkg の `swagger-ui-dist@5` の浮動版）を読み、CSP がない。GCC の証明書は、certifier を省くと、運用者の `SORA_GCC_CERTIFIER` の名前・住所・連絡先が利用者の出力に入る。
 
 問題なしと確認されたのは、宛先が固定のホストだけで、入力が表・正規表現・エンコードを通ってから固定のホストのパスやクエリに入るもの（youtube・lyrics・music・gov・life・disaster・traffic・geocoding・poi・tracking・trade のデータ層・x_detail・address 系・社会の固定の提供元など）と、tenant・ブラウザセッションの所有者検査・MCP のツールの有効化・SQL のバインド変数・子プロセスの引数（配列・検証済み JSON・シェルなし）。
@@ -105,6 +105,9 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **E17**（PR 2d。Bun 1.4.4 の `fetch` と、ゲートウェイ（自前）。手元の確認）: `fetch(url, { proxy })` で確かめた。(1) 内部の宛先は、ゲートウェイが断る: `http://127.0.0.1:…` は 403（`private_ip`）、`http://localhost:…` は 403（`blocked_host`）、`https://127.0.0.1:…`（CONNECT）は `ERR_PROXY_TUNNEL`（宛先には何も届かない）。(2) **環境変数 `NO_PROXY` が宛先を挙げていると、`proxy` を指定しても、無視されて、直接つなぐ**（`NO_PROXY=127.0.0.1,localhost` で、ゲートウェイを指定した `http://127.0.0.1:…` が、宛先に届いた）。実行中に設定した `NO_PROXY` も、すぐ効く。(3) 名前（`web.test`）は、ゲートウェイが解決して届く。本文は、文字列・Uint8Array・Blob・FormData・Request オブジェクトのどれも、そのまま届く。長さが先にわからない（ストリームの）本文は、ゲートウェイが 400（`bad_request`）で断る（呼び出し元には、無い）。302 の追従（相対 URL）・5MB の本文・連続 40 件・並列 60 件は、すべて通る。`fetch.preconnect` がある（ゲートウェイを通らない。呼び出し元には、無い）。
 - **E18**（PR 2d。同梱の Yahoo 検索バイナリ。イメージの中）: バイナリは、**Go ではなく Rust**（reqwest・hyper・tokio を含む）。環境変数 `HTTPS_PROXY` を、手元の待ち受け（要求行を記録して 403 を返すだけ）に向けて呼ぶと、`CONNECT search.yahoo.co.jp:443` が、そこに届いた（守る）。断られると、直接つながず、`Error: error sending request for url (…)`（`isError: true`）を返す。`NO_PROXY=search.yahoo.co.jp` を足すと、**プロキシを使わず、直接つないだ**（実際の検索結果が返り、待ち受けには何も来なかった）→ 子プロセスの環境から `NO_PROXY`・`ALL_PROXY` を消す。
 - **E19**（PR 2d。Bun の `fetch` と子プロセスをゲートウェイに通す確認。`scripts/fetch-egress-check.ts`）: イメージの中（Bun 1.4.4）で、`SORA_EGRESS_GATEWAY=on`、環境変数 `NO_PROXY` に内部の宛先（127.0.0.1・localhost）と確認で使う名前を挙げたまま、`installEgressFetch()` を入れて確かめた。(1) Bun の `fetch`: `http://127.0.0.1:…`・`http://localhost:…` は 403（ゲートウェイが、解決の前に断る）、`https://127.0.0.1:…` は接続の失敗で、内部のサーバーには何も届かない。名前（`web.test`。OS では解決できない）は、ゲートウェイが解決して、宛先に origin-form の要求が届く。(2) 同梱の Yahoo 検索バイナリ（`callYahooMcp`）: `search.yahoo.co.jp` を、ゲートウェイが解決し（確認では、内部の IP に解決する名前にしてある）、内部の IP は断られ、バイナリは、直接つながずに `isError` を返す。(3) 住所データの構築の子プロセス（Bun）の `fetch` が、ゲートウェイ経由で、宛先に届く。**陰性対照**（配線を 1 か所ずつ壊す）: Yahoo の子プロセスがゲートウェイを指さない・構築の子プロセスがゲートウェイを指さない・`NO_PROXY` を外さない（内部のサーバーに 200 で届いた）・`fetch` に `proxy` を付けない・子プロセスの `NO_PROXY` を消さない、の 5 通りは、すべて、確認が失敗した（Yahoo のバイナリは、実際の検索結果を返した）。
+- **E20**（PR 3a の前。main の 4debce3 で、穴 15・29 を再現した。手元の確認）: 本物のアプリ（認証のミドルウェア → MCP）に、`SORA_API_KEY` を設定して送った。穴 15: 正しい `X-API-Key` に `Authorization: bearer attacker-chosen-a`（小文字）を併せて初期化すると 200 でセッションができる（認証は `X-API-Key` で通る）。そのセッションを、正しい `X-API-Key` だけで続けると **404**（同じ鍵の同じ利用者が、自分のセッションを続けられない）、最初と同じ任意の bearer で続けると **200**（任意の文字列で、別の tenant になれる）。正しい鍵を小文字の `bearer <鍵>` だけで送ると、認証が **401**（RFC 7235 では scheme は大文字小文字を問わない）。穴 29: `SORA_AUTH_TRUST_PROXY=true`・`SORA_AUTH_LOOPBACK_NO_KEY=true` で、利用者が `X-Forwarded-For: 127.0.0.1` を付け、プロキシが本当の接続元 `198.51.100.7` を右に足した（`127.0.0.1, 198.51.100.7`）要求が、鍵なしで **200**（内部の tenant）。プロキシが足しただけの `198.51.100.7` は 401。
+- **E21**（PR 3a。Bun 1.4.4 の `Bun.serve` が報告する接続元。手元の確認）: `Bun.serve({ port })`（`src/index.ts` と同じ。hostname 無し）は、IPv4 の `127.0.0.1` からの接続を **`::ffff:127.0.0.1`**（family は IPv6）と報告し、`localhost`（IPv6）からの接続は `::1` と報告する。`hostname: '127.0.0.1'` で待ち受けると `127.0.0.1`（IPv4）。`isLoopbackAddress` は `::ffff:127.0.0.1` をループバックと認めない（単体テストが固定している）ので、**`SORA_AUTH_LOOPBACK_NO_KEY=true` は、本物のサーバーでは、IPv4 の直接接続に効かない**（`::1` には効く）。閉じる側に外れていて、危険ではない。直すと通る範囲が広がるので、この PR では直していない（未決 11）。
+- **E22**（PR 3a。認証の入口の確認。`scripts/auth-check.ts`）: 本物のアプリを、待ち受けを `127.0.0.1` に固定した本物の `Bun.serve`（本物の TCP・接続元・HTTP の読み取り）に載せて、HTTP で叩いた。(1) 同じ鍵は、`X-API-Key`・`Bearer`・`bearer`・`BEARER` のどれでも、同じ tenant（セッションを続けられる）。誤った Bearer と正しい `X-API-Key` を併せると 401。(2) `SORA_ALLOW_ANONYMOUS=true` で、鍵を持つ利用者と匿名は別の tenant（互いのセッションは 404）。匿名どうしは、任意の bearer を付けても同じ scope。(3) `SORA_AUTH_TRUST_PROXY=true`: 利用者が左に書いた `127.0.0.1`（`127.0.0.1, 198.51.100.7`）は 401、右端がループバック（`198.51.100.7, 127.0.0.1`）は 200。`X-Forwarded-For` を 2 行に分けて送っても、Bun は 1 つの列として束ね、右から数える（左の行の `127.0.0.1` は効かない）。IP アドレスでない値（`localhost`・ポートつき・短縮形）は 401。`SORA_AUTH_PROXY_HOPS=2` は右から 2 番目で、段数に足りない列は 401。(4) `SORA_AUTH_TRUST_PROXY` なしでは、`X-Forwarded-For`・`X-Real-IP` つきの要求は、鍵なしで通らない。手元のイメージ（Bun 1.4.4・rootless Podman）でも通った。**陰性対照**（実装を 1 か所ずつ壊す）: Bearer を大文字小文字を区別して読む・先頭の値を信じる・段数を無視する・段数に足りないとき接続元に落とす・IP アドレスかを見ない・`X-Forwarded-For` つきを直接の接続とみなす・MCP に tenant を渡さない・MCP が生のヘッダーから tenant を作る・`SORA_AUTH_TRUST_PROXY` を見ない、の 9 通りは、すべて、確認が失敗した。`verify-image.sh` の 12 が、CI のイメージで回す。
 
 ## 設計
 
@@ -196,6 +199,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - 鍵の比較は、定数時間で、鍵の数によらず一定の時間にする。
 - **tenant の決め方を 1 か所にする**（穴 15）: 認証のミドルウェアが決めた tenant（`c.get('tenant')`）だけを使い、MCP も生のヘッダーから作らない。`Bearer` の解釈は、大文字小文字を区別しない形（RFC 7235）で、認証と MCP をそろえる。
 - **`X-Forwarded-For`**（穴 29）: 信頼するプロキシの段数から数えた位置の値を使う（先頭を信じない）。`strict` では `ALLOW_LOCAL_NO_AUTH` を無視する。
+- **実装の状態（PR 3a。#104。認証の tenant の一本化と `X-Forwarded-For`。新機能なし）**: `extractAuthToken`（`auth.ts`）が、`Authorization` の `Bearer` を大文字小文字を区別せずに読む（あれば鍵はそれだけ。無ければ `X-API-Key`）。`McpSessionManager.handleRequest` は、生のヘッダーから tenant を作らず、呼び出し側が渡す `tenantId` を使う（渡さなければ `legacy`）。`/mcp`・`/sse`・`/message` のルートは、認証のミドルウェアが決めた `c.get('tenant')` を渡す（`mcpTenantFromRequest` は消した）。有効な鍵の tenant は変わらない（`key:<鍵の SHA-256 の先頭 16 桁>`）。変わるのは、鍵が決める tenant ではないとき: 鍵を設定していない・匿名（`SORA_ALLOW_ANONYMOUS=true` で鍵が無いか誤り）の MCP は、REST と同じ `legacy`（以前は、送ってきた文字列ごとの tenant）。`SORA_AUTH_LOOPBACK_NO_KEY` で通る MCP は、REST と同じ `internal`（以前は `legacy`）。`X-Forwarded-For` は、`forwardedClientAddress(header, hops)`（`auth.ts`）が、右から `SORA_AUTH_PROXY_HOPS` 番目（既定 1。1〜10）を返す。IP アドレスでない値と、段数に足りない列は `undefined`で、`resolvePeerLocal` は、ソケットの相手にも先頭にも落とさず、ローカルではないとする。`X-Forwarded-For` が無いときは、ソケットの相手で決める（従来どおり）。`SORA_AUTH_TRUST_PROXY` なしのときの扱い（`X-Forwarded-For`・`X-Real-IP` つきの要求は、直接の接続ではない）は変えない。`SORA_AUTH_PROXY_HOPS` は、`SORA_AUTH_TRUST_PROXY=true` でないときに設定すると、起動時に警告する。確認は `scripts/auth-check.ts`（E22。`verify-image.sh` の 12）。REST の `/browser/action` の所有者の検査（`ownerToken` に生の鍵を渡す）は、変えていない。
 
 ### 5. 状態の分離（I2）
 
@@ -238,7 +242,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 
 1. **ブラウザの起動**（2 の前半）: 別 uid・許可リストの環境変数・パイプ・サンドボックスの自動判定。子プロセスの環境変数の許可リストと、webhook URL のログ（穴 27・30）も、ここで。4 つの PR に分けた。1a = 子プロセスの環境変数の許可リストと webhook のログ（#92）、1b = CDP をパイプに（#93）、1c = 別 uid の起動と、サンドボックスの自動判定（#95）、1d = Docker でサンドボックスを使う seccomp プロファイルと、CI の確認（#96）。
 2. **出口のゲートウェイ**（1）: ゲートウェイ・ブラウザ・wreq・Bun の `fetch`・子プロセスの 4 系統を通す・DNS の失敗は閉じる・ポートの制限。ハーネスで、ゲートウェイ経由でも ClientHello が変わらないことを確かめる。6 つの PR に分ける。2a = ゲートウェイの核と、IP 判定の共通化（#97。どこにもつなげない。既定の挙動は変わらない）、2b は 2 つに分けた: 2b-1 = 運用者の上流のプロキシの種類を広げる（socks5・https。#98）、2b-2 = ブラウザを通す（`SORA_EGRESS_GATEWAY=on` で有効化。#99）。2c も 2 つに分ける: 2c-1 = 静的取得（wreq）を通す（`SORA_EGRESS_GATEWAY=on` で有効化。#100）、2c-2 = 検査の DNS の失敗を閉じる（`standard` の挙動が変わる。#101）。2d = Bun の `fetch` と子プロセスを通す（`SORA_EGRESS_GATEWAY=on` で有効化。#103）。
-3. **tenant**（4）: 複数の鍵・MCP の tenant の一本化・`X-Forwarded-For`（穴 15・29）。
+3. **tenant**（4）: 2 つの PR に分ける。3a = MCP の tenant の一本化と `X-Forwarded-For` の読み方（#104。穴 15・29。新機能なし。`standard` でも、鍵が決める tenant ではないときの MCP の tenant と、`SORA_AUTH_TRUST_PROXY=true` の読み方が変わる）、3b = 名前つきの複数の鍵（鍵ファイル）。
 4. **状態の分離**（5）: ウォッチ・共有キャッシュの規則・intel・全体に効く操作・REST のモジュール・`/health`（穴 14・16〜20）。
 5. **資源の公平と増幅の上限**（6）: tenant ごとの上限・待ち行列の時間切れ・サイトマップ・ウォッチ・正規表現・`browser_action`・DB の上限（穴 21〜26）。
 6. **tenant ごとのブラウザ**（2 の後半）: uid の池。
@@ -258,6 +262,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 ## 互換性（挙動が変わるところ）
 
 - `standard` で変わりうるのは、DNS の失敗を閉じること（検査の DNS が失敗したら、取得を始めない。いまは、取得側の解決に任せて続ける。ただし、名前を相手が解決する取得（運用者のプロキシ・出口のゲートウェイ越し）は、これまでどおり。PR 2c-2）と、ブラウザのプロセスの uid・環境変数・サンドボックス（使えるときだけ）。取得結果・指紋は変えない。
+- 段階 3a で `standard` でも変わるのは、(1) 鍵が決める tenant ではないときの MCP の tenant（鍵なし・匿名・鍵なしのループバック通過）、(2) `Authorization` の `bearer`（小文字）も鍵として読むことと、`Bearer` があれば `X-API-Key` を読まないこと、(3) `SORA_AUTH_TRUST_PROXY=true` の `X-Forwarded-For` の読み方（先頭 → 右から `SORA_AUTH_PROXY_HOPS` 番目）。有効な鍵の tenant と、REST の tenant は変わらない。サイトごとの Cookie / localStorage は tenant ごとなので、(1) で tenant が変わる MCP は、以前の tenant に保存した分を引き継がない（次の取得で作り直される）。
 - ブラウザの通信をゲートウェイ経由にすること（`standard` でも入れるか）は、未決の 5。入れる場合、HTTP/3（QUIC）は使えなくなる（静的取得の指紋とは、むしろそろう）。
 - ゲートウェイを有効にすると（既定は off）、Bun の `fetch` も、内部の宛先・許していないポートに届かなくなる。運用者が設定した内部の宛先（`SORA_X_DETAIL_BASE_URL` に指定した自前の FxEmbed など）も同じで、届かせるには `SORA_EGRESS_ALLOW_HOSTS` に挙げる（未決の 10）。`standard` の挙動は変わらない。
 - 上限（増幅・ウォッチ・`browser_action` など）は、`standard` では緩い既定値にして、今までの利用を止めない。`strict` で締める。
@@ -282,3 +287,4 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 8. `/health?detailed=true` を、`strict` で認証つきにするか（監視の使い方に影響する。案: 認証つきにし、結果を 1 分キャッシュする）。
 9. 共有キャッシュを、「ヘッダーか Cookie を 1 つでも渡したら使わない」にしてよいか（命中率が下がりうる。案: はい）。
 10. （決定済み。ユーザーの指示、2026-11-13）ゲートウェイを有効にしたとき、運用者が設定した内部の宛先（`SORA_X_DETAIL_BASE_URL`・`SORA_OPENPOI_BASE_URL` に指定した自前のサーバーなど。プライベートな IP や 80・443 以外のポート）は、届かない（Bun の `fetch` も、ゲートウェイを通るため）。許す宛先を一覧で渡せるようにした: `SORA_EGRESS_ALLOW_HOSTS`（PR 2d の同じ PR）。宛先は 1 つずつ挙げ、ワイルドカード・CIDR は使えない。挙げた宛先は、利用者が指定した URL にも効く（ゲートウェイは、呼び出し元を見分けない）ので、必要なものだけを挙げる。
+11. `SORA_AUTH_LOOPBACK_NO_KEY=true` が、本物のサーバーでは IPv4 の直接接続（`127.0.0.1`）に効かない（E21。接続元が `::ffff:127.0.0.1` と報告され、`isLoopbackAddress` が認めない）のを、直すか。案: 直さない。閉じる側に外れていて、危険ではない。直すと、`X-Forwarded-For` を足さない同じホストのプロキシ（TCP のプロキシなど）の配下で、この設定を誤って有効にしている運用者の認証が外れる。直すなら、`SORA_AUTH_LOOPBACK_NO_KEY` の説明にその前提を足し、IPv4 射影のループバック（`::ffff:127.0.0.0/104`）だけを認める。

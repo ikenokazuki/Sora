@@ -12,6 +12,7 @@
 #   9. 8 を、7 と同じ硬化した運用（サンドボックス有効）でも確かめる
 #  10. 静的取得（wreq-js。イメージの自前の native）の通信を、出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/static-egress-check.ts）
 #  11. Bun の fetch と、通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築）の通信を、出口のゲートウェイに通すと、内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決し、許す宛先の一覧（SORA_EGRESS_ALLOW_HOSTS）に挙げた宛先だけが内部の IP でも届く（scripts/fetch-egress-check.ts）
+#  12. 本物のアプリ（認証のミドルウェア → MCP・REST）を、本物の Bun.serve に載せると、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）で、X-Forwarded-For は右から数え、利用者が左に書いた 127.0.0.1 では鍵なしの通過に入れない（scripts/auth-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -88,3 +89,12 @@ docker run --rm \
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/fetch-egress-check.ts
+
+# 12. 認証の入口（設計 4。E20・E21）。本物のアプリを、待ち受けを 127.0.0.1 に固定した本物の Bun.serve に載せて、HTTP で叩く。
+#     MCP の tenant は認証が決めたものだけ（同じ鍵は X-API-Key でも Bearer の大文字小文字違いでも同じ tenant。誤った Bearer と正しい X-API-Key は 401。匿名は鍵を持つ利用者と別の scope）。
+#     X-Forwarded-For（SORA_AUTH_TRUST_PROXY=true）は右から SORA_AUTH_PROXY_HOPS 番目だけを見る（利用者が左に書いた 127.0.0.1 では、SORA_AUTH_LOOPBACK_NO_KEY の鍵なしの通過に入れない。2 行に分けて送っても同じ）
+#     アプリ全体（src/index.ts）を読み込むので、楽曲認識の指紋のパッケージ（packages/audio-signature。src が相対で読む）も /app に置く
+docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/auth-check.ts

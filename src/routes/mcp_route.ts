@@ -25,7 +25,8 @@ export async function handleMcpRequest(c: Context) {
       headers,
     });
   }
-  return mcpSessionManager.handleRequest(req, { parsedBody });
+  // tenant は、認証のミドルウェアが決めたものだけを使う（生のヘッダーから別に作らない）
+  return mcpSessionManager.handleRequest(req, { parsedBody, tenantId: c.get('tenant')?.tenantId });
 }
 
 export const mcpRoutes = new Hono();

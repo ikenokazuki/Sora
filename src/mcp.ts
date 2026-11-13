@@ -1,5 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { tenantIdForApiKey } from './security/tenant_context.js';
+import { LEGACY_TENANT_ID } from './security/tenant_context.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
@@ -110,27 +110,17 @@ export interface McpSessionEntry {
   state: McpSessionState;
 }
 
+/** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
+export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
+
 /**
  * MCP Streamable HTTP 仕様準拠のマルチセッションマネージャー
  * 各クライアント接続ごとに独立したセッションとトランスポートを管理し、
  * セッションIDに基づくルーティング、放置セッションの自動回収（TTL）、
  * 並行リクエストの安全なディスパッチを行います。
+ * セッションは tenant に結び付く。tenant は呼び出し側（認証のミドルウェアが決めたもの）が渡し、ここでは生のヘッダーから作らない
+ * （渡さなければ legacy）。
  */
-/** Tenant identity for MCP session ownership and tenant-scoped tool handlers. */
-export function mcpTenantFromRequest(req: Request): string {
-  try {
-    const auth = req.headers.get('authorization') || '';
-    const m = auth.match(/^Bearer\s+(.+)$/i);
-    if (m?.[1]) return tenantIdForApiKey(m[1].trim());
-    const key = req.headers.get('x-api-key');
-    if (key?.trim()) return tenantIdForApiKey(key.trim());
-  } catch {}
-  return 'legacy';
-}
-
-/** 上限に達したとき、直近これだけの間に使われたセッションは退避せず守る（initialize の連打で稼働中の接続を追い出させない） */
-export const DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS = 30_000;
-
 export class McpSessionManager {
   private sessions = new Map<string, McpSessionEntry>();
   private cleanupInterval: ReturnType<typeof setInterval>;
@@ -177,9 +167,9 @@ export class McpSessionManager {
   }
 
   /** Route HTTP requests to their session without sharing activation state. */
-  public async handleRequest(req: Request, options?: { parsedBody?: unknown }): Promise<Response> {
+  public async handleRequest(req: Request, options?: { parsedBody?: unknown; tenantId?: string }): Promise<Response> {
     const sessionId = req.headers.get('mcp-session-id');
-    const tenantId = mcpTenantFromRequest(req);
+    const tenantId = options?.tenantId ?? LEGACY_TENANT_ID;
 
     // 1. 既存セッションは作成時と同じテナントからのみ利用できる。
     if (sessionId) {
