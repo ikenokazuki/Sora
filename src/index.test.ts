@@ -3092,6 +3092,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     // 監視ターゲット登録
     const { target } = await registerWatchTarget({
+      tenantId: 'legacy',
       url: 'https://example.com',
       title: 'Example Test Watch',
       initialFetch: false,
@@ -3100,13 +3101,13 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(target.url).toBe('https://example.com');
 
     // ターゲット一覧
-    const list = listWatchTargets();
+    const list = listWatchTargets('legacy');
     expect(list.some((t) => t.id === target.id)).toBe(true);
 
     // 削除
-    const deleted = deleteWatchTarget(target.id);
+    const deleted = deleteWatchTarget(target.id, 'legacy');
     expect(deleted).toBe(true);
-    expect(dbGetWatchTarget(target.id)).toBeUndefined();
+    expect(dbGetWatchTarget(target.id, 'legacy')).toBeUndefined();
   });
 
   it('POST /watch/register, GET /watch/list, and DELETE /watch/:id should operate smoothly', async () => {

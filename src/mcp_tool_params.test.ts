@@ -1215,20 +1215,20 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
     for (const [name, spy] of Object.entries(spies)) if (!except.includes(name)) expect(spy as any, name).not.toHaveBeenCalled();
   };
 
-  test('register: registerWatchTarget に url・title・selector・webhookUrl だけを渡し、応答は旧 watch_register と同じ', async () => {
+  test('register: registerWatchTarget に url・title・selector・webhookUrl と、サーバーが決めた tenant だけを渡し、応答は旧 watch_register と同じ', async () => {
     const spies = mockAll();
     const args = { url: TARGET.url, title: '当落', selector: '#status', webhookUrl: 'https://example.com/hook' };
     const res = await call({ action: 'register', ...args });
     expect(res.isError, textOf(res)).toBeFalsy();
     expect(body(res)).toEqual(REGISTERED);
-    expect(spies.register.mock.calls[0][0]).toEqual(args);
+    expect(spies.register.mock.calls[0][0]).toEqual({ ...args, tenantId: 'legacy' });
     notCalled(spies, ['register']);
   });
 
   test('check: id があれば旧 watch_check の 1 件、省けば全件の配列', async () => {
     const spies = mockAll();
     expect(body(await call({ action: 'check', id: 'w1' }))).toEqual(CHECKED);
-    expect(spies.check.mock.calls[0][0]).toBe('w1');
+    expect(spies.check.mock.calls[0].slice(0, 2)).toEqual(['w1', 'legacy']);
     expect(body(await call({ action: 'check' }))).toEqual([CHECKED]);
     expect(spies.checkAll).toHaveBeenCalledTimes(1);
     expect(spies.check).toHaveBeenCalledTimes(1);
@@ -1245,10 +1245,30 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
   test('delete: 旧 watch_delete と同じ { success, id }', async () => {
     const spies = mockAll();
     expect(body(await call({ action: 'delete', id: 'w1' }))).toEqual({ success: true, id: 'w1' });
-    expect(spies.del.mock.calls[0][0]).toBe('w1');
+    expect(spies.del.mock.calls[0]).toEqual(['w1', 'legacy']);
     spies.del.mockReturnValue(false);
     expect(body(await call({ action: 'delete', id: 'none' }))).toEqual({ success: false, id: 'none' });
     notCalled(spies, ['del']);
+  });
+
+  test('セッションの tenant（鍵が決めたもの）を、5 つの操作のすべてに渡す。引数では、別の tenant を名乗れない', async () => {
+    const spies = mockAll();
+    const options = { sessionState: { activatedTools: new Set<string>(), tenantId: 'name:alice' } };
+    const asAlice = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'watch', arguments: args }), options) as Promise<any>;
+    await asAlice({ action: 'register', url: TARGET.url });
+    await asAlice({ action: 'check', id: 'w1' });
+    await asAlice({ action: 'check' });
+    await asAlice({ action: 'list' });
+    await asAlice({ action: 'delete', id: 'w1' });
+    expect(spies.register.mock.calls[0][0]).toMatchObject({ tenantId: 'name:alice' });
+    expect(spies.check.mock.calls[0].slice(0, 2)).toEqual(['w1', 'name:alice']);
+    expect(spies.checkAll.mock.calls[0][0]).toBe('name:alice');
+    expect(spies.list.mock.calls[0][0]).toBe('name:alice');
+    expect(spies.del.mock.calls[0]).toEqual(['w1', 'name:alice']);
+    // tenantId を引数に足しても、無視される（サービスに渡る tenant は、セッションのもののまま）
+    await asAlice({ action: 'list', tenantId: 'name:bob' });
+    expect(spies.list).toHaveBeenCalledTimes(2);
+    expect(spies.list.mock.calls[1][0]).toBe('name:alice');
   });
 
   test('失敗は、旧ツールと同じ文（Watch register error・Watch check error・Watch list error・Watch delete error）', async () => {
@@ -1301,7 +1321,7 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
     const res = await call({ action: 'register', url: TARGET.url, webhookUrl: '' });
     expect(res.isError, textOf(res)).toBeFalsy();
     // 空の webhookUrl は登録しない（旧 watch_register は "" を断っていた）
-    expect(spies.register.mock.calls[0][0]).toStrictEqual({ url: TARGET.url, title: undefined, selector: undefined, webhookUrl: undefined });
+    expect(spies.register.mock.calls[0][0]).toStrictEqual({ url: TARGET.url, title: undefined, selector: undefined, webhookUrl: undefined, tenantId: 'legacy' });
     notCalled(spies, ['list', 'register']);
   });
 
@@ -1309,7 +1329,7 @@ describe('watch: action で登録・確認・一覧・削除（旧 watch_registe
     const spies = mockAll();
     const res = await call({ action: 'register', url: ` ${TARGET.url}\u3000`, webhookUrl: '\u00a0https://example.com/hook\n' });
     expect(res.isError, textOf(res)).toBeFalsy();
-    expect(spies.register.mock.calls[0][0]).toEqual({ url: TARGET.url, webhookUrl: 'https://example.com/hook' });
+    expect(spies.register.mock.calls[0][0]).toEqual({ url: TARGET.url, webhookUrl: 'https://example.com/hook', tenantId: 'legacy' });
   });
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 何もせず、正しい使い方のエラー`, async () => {

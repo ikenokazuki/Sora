@@ -296,7 +296,15 @@ export interface WatchHistoryRecord {
   detected_at: number;
 }
 
+/** 呼んだ側に返す列。tenant の ID は、呼んだ側が自分のものだと知っているので、返さない（API の形を変えない） */
+const WATCH_TARGET_COLUMNS = 'id, url, title, selector, last_hash, last_content, webhook_url, interval_seconds, last_checked_at, created_at';
+
+/**
+ * 監視対象を登録（新規または更新）する。持ち主は tenantId。
+ * 別の tenant が持つ id への登録は、上書きせずに断る（URL や通知先を書き換えられない）。
+ */
 export function dbSaveWatchTarget(target: {
+  tenantId: string;
   id?: string;
   url: string;
   title?: string;
@@ -312,8 +320,8 @@ export function dbSaveWatchTarget(target: {
   const interval = target.interval_seconds || 3600;
 
   db.query(`
-    INSERT INTO watch_targets (id, url, title, selector, last_hash, last_content, webhook_url, interval_seconds, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO watch_targets (id, tenant_id, url, title, selector, last_hash, last_content, webhook_url, interval_seconds, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       url = excluded.url,
       title = excluded.title,
@@ -322,8 +330,10 @@ export function dbSaveWatchTarget(target: {
       last_content = excluded.last_content,
       webhook_url = excluded.webhook_url,
       interval_seconds = excluded.interval_seconds
+    WHERE watch_targets.tenant_id = excluded.tenant_id
   `).run(
     id,
+    target.tenantId,
     target.url,
     target.title || null,
     target.selector || null,
@@ -334,23 +344,28 @@ export function dbSaveWatchTarget(target: {
     now,
   );
 
-  return dbGetWatchTarget(id)!;
+  // 別の tenant の id だったときは、上の更新が何もしていない。その行を返さずに断る
+  const saved = dbGetWatchTarget(id, target.tenantId);
+  if (!saved) throw new Error(`Watch target id is not available: ${id}`);
+  return saved;
 }
 
-export function dbGetWatchTarget(id: string): WatchTargetRecord | undefined {
+/** 監視対象を 1 件読む。tenant が違う id は、存在しない id と同じに undefined */
+export function dbGetWatchTarget(id: string, tenantId: string): WatchTargetRecord | undefined {
   try {
     const db = getDb();
-    const row = db.query<WatchTargetRecord, [string]>('SELECT * FROM watch_targets WHERE id = ?').get(id);
+    const row = db.query<WatchTargetRecord, [string, string]>(`SELECT ${WATCH_TARGET_COLUMNS} FROM watch_targets WHERE id = ? AND tenant_id = ?`).get(id, tenantId);
     return row || undefined;
   } catch {
     return undefined;
   }
 }
 
-export function dbListWatchTargets(): WatchTargetRecord[] {
+/** その tenant の監視対象だけ */
+export function dbListWatchTargets(tenantId: string): WatchTargetRecord[] {
   try {
     const db = getDb();
-    return db.query<WatchTargetRecord, []>('SELECT * FROM watch_targets ORDER BY created_at DESC').all();
+    return db.query<WatchTargetRecord, [string]>(`SELECT ${WATCH_TARGET_COLUMNS} FROM watch_targets WHERE tenant_id = ? ORDER BY created_at DESC`).all(tenantId);
   } catch {
     return [];
   }
@@ -369,10 +384,11 @@ export function dbUpdateWatchTargetCheck(id: string, hash: string, content?: str
   }
 }
 
-export function dbDeleteWatchTarget(id: string): boolean {
+/** その tenant の監視対象だけを消す。tenant が違う id は、存在しない id と同じに false */
+export function dbDeleteWatchTarget(id: string, tenantId: string): boolean {
   try {
     const db = getDb();
-    const res = db.query('DELETE FROM watch_targets WHERE id = ?').run(id);
+    const res = db.query('DELETE FROM watch_targets WHERE id = ? AND tenant_id = ?').run(id, tenantId);
     return res.changes > 0;
   } catch {
     return false;
