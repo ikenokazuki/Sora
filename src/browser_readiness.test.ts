@@ -43,7 +43,7 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/calendar`, mode: 'browser', timeoutMs: 6500, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/calendar`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.contentStatus).toBe('body');
       expect(result.content).toContain('2026-10-07');
       expect(result.content).toContain('15:35');
@@ -65,7 +65,7 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const started = Date.now();
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
       expect(result.content).toContain('15:35');
       expect(Date.now() - started).toBeLessThan(9000);
     } finally {
@@ -83,7 +83,7 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
       const started = Date.now();
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/`, mode: 'browser', timeoutMs: 15000, noCache: true });
       expect(result.content).toContain('15:35');
       expect(Date.now() - started).toBeLessThan(3500);
     } finally {
@@ -103,7 +103,7 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/challenge`, mode: 'browser', timeoutMs: 6500, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/challenge`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.contentStatus).toBe('body');
       expect(result.content).toContain('15:35');
       expect(navigations).toBe(1);
@@ -130,7 +130,7 @@ describe.skipIf(!resolveChromiumPath())('browser content readiness', () => {
     const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
     try {
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/hidden`, mode: 'browser', timeoutMs: 6500, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/hidden`, mode: 'browser', timeoutMs: 6500, noCache: true });
       expect(result.content).toContain('15:35');
       expect(result.content).not.toContain('Hidden placeholder');
       expect(navigations).toBe(1);

@@ -15,6 +15,13 @@ export interface TenantContext {
 
 export const LEGACY_TENANT_ID = 'legacy';
 
+/**
+ * 利用者を持たない取得（Sora が自分の都合で読むページ。GCC の商品ページ・trade の商品ページ・国の情報の記事）の範囲。
+ * 保存済みの Cookie・localStorage を、読まず、書かない（db.ts）。tenant を渡さず legacy として動くと、鍵なしの利用者の保存済みの状態を、
+ * 読んで、書き換えてしまうため。`name:`・`key:` の前置きが無いので、鍵や名前の tenant の ID と重ならない。
+ */
+export const PUBLIC_TENANT_ID = 'public';
+
 // Anonymous requests share the legacy scope: per-user isolation is
 // impossible without identity, and this preserves single-user behavior
 // (pre-migration persisted state stays visible). authMode still

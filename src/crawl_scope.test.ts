@@ -66,7 +66,7 @@ describe('crawlSiteUrl: include / exclude パターン', () => {
   test('パターン指定なしは同一サイトを幅優先でたどる', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 10, maxDepth: 2, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 10, maxDepth: 2, noCache: true });
       expect(paths(r)).toEqual(['/', '/docs/a', '/tag/x', '/docs/b', '/about', '/docs/c']);
     } finally {
       server.stop(true);
@@ -76,7 +76,7 @@ describe('crawlSiteUrl: include / exclude パターン', () => {
   test('excludePatterns に一致する URL だけを除き、他は取得する', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 10, maxDepth: 2, excludePatterns: ['/tag/**'], noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 10, maxDepth: 2, excludePatterns: ['/tag/**'], noCache: true });
       expect(paths(r)).toEqual(['/', '/docs/a', '/docs/b', '/about', '/docs/c']);
     } finally {
       server.stop(true);
@@ -86,7 +86,7 @@ describe('crawlSiteUrl: include / exclude パターン', () => {
   test('includePatterns は発見したリンクにだけ適用し、起点 URL は常に取得する', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 10, maxDepth: 2, includePatterns: ['/docs/**'], noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 10, maxDepth: 2, includePatterns: ['/docs/**'], noCache: true });
       expect(paths(r)).toEqual(['/', '/docs/a', '/docs/b', '/docs/c']);
     } finally {
       server.stop(true);
@@ -96,7 +96,7 @@ describe('crawlSiteUrl: include / exclude パターン', () => {
   test('include と exclude の併用', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({
+      const r = await crawlSiteUrl({ tenantId: 'legacy',
         url: base + '/', maxPages: 10, maxDepth: 2,
         includePatterns: ['/docs/**'], excludePatterns: ['/docs/b'], noCache: true,
       });
@@ -109,7 +109,7 @@ describe('crawlSiteUrl: include / exclude パターン', () => {
   test('起点 URL が excludePatterns に一致しても取得する（明示された URL なので）', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 10, maxDepth: 1, excludePatterns: ['/', '/about'], noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 10, maxDepth: 1, excludePatterns: ['/', '/about'], noCache: true });
       expect(paths(r)).toContain('/');
       expect(paths(r)).not.toContain('/about');
     } finally {
@@ -123,7 +123,7 @@ describe('crawlSiteUrl: ホストの扱い', () => {
     const { server, base } = startSite({ redirectFromAlias: true });
     try {
       const aliasUrl = `http://127.0.0.2:${server.port}/`;
-      const r = await crawlSiteUrl({ url: aliasUrl, maxPages: 10, maxDepth: 2, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: aliasUrl, maxPages: 10, maxDepth: 2, noCache: true });
       expect(paths(r)).toEqual(['/', '/docs/a', '/tag/x', '/docs/b', '/about', '/docs/c']);
       expect(new URL(r.pages[0].url).host).toBe(new URL(base).host);
     } finally {
@@ -148,7 +148,7 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
   test('maxPages を超えず、並行取得でも幅優先の順序を保つ', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 3, maxDepth: 2, concurrency: 3, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 3, maxDepth: 2, concurrency: 3, noCache: true });
       expect(paths(r)).toEqual(['/', '/docs/a', '/tag/x']);
       expect(r.count).toBe(3);
     } finally {
@@ -159,7 +159,7 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
   test('concurrency を指定した件数まで並行に取得する（1 なら逐次）', async () => {
     const parallel = startSite({ delayMs: 300 });
     try {
-      await crawlSiteUrl({ url: parallel.base + '/', maxPages: 5, maxDepth: 1, concurrency: 3, noCache: true });
+      await crawlSiteUrl({ tenantId: 'legacy', url: parallel.base + '/', maxPages: 5, maxDepth: 1, concurrency: 3, noCache: true });
       expect(parallel.maxInFlight()).toBeGreaterThanOrEqual(2);
       expect(parallel.maxInFlight()).toBeLessThanOrEqual(3);
     } finally {
@@ -167,7 +167,7 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
     }
     const sequential = startSite({ delayMs: 50 });
     try {
-      await crawlSiteUrl({ url: sequential.base + '/', maxPages: 4, maxDepth: 1, concurrency: 1, noCache: true });
+      await crawlSiteUrl({ tenantId: 'legacy', url: sequential.base + '/', maxPages: 4, maxDepth: 1, concurrency: 1, noCache: true });
       expect(sequential.maxInFlight()).toBe(1);
     } finally {
       sequential.server.stop(true);
@@ -178,7 +178,7 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
     const prev = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'false';
     try {
-      await expect(crawlSiteUrl({ url: 'http://127.0.0.1:9/', maxPages: 3, noCache: true })).rejects.toThrow(/遮断/);
+      await expect(crawlSiteUrl({ tenantId: 'legacy', url: 'http://127.0.0.1:9/', maxPages: 3, noCache: true })).rejects.toThrow(/遮断/);
     } finally {
       process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prev;
     }
@@ -189,7 +189,7 @@ describe('crawlSiteUrl: 件数・並行度・失敗の扱い', () => {
     try {
       const withBroken = body('Home', ['/missing', '/about']);
       SITE['/'] = withBroken;
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 5, maxDepth: 1, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 5, maxDepth: 1, noCache: true });
       expect(paths(r)).toContain('/');
       expect(paths(r)).toContain('/about');
     } finally {

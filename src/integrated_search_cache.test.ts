@@ -49,7 +49,7 @@ function stubWebSearch(path: string) {
 }
 
 const search = (query: string, extra: Record<string, unknown> = {}) =>
-  integratedSearch({ query, limit: 1, includeRealtime: false, scrapeContent: true, ...extra }) as Promise<any>;
+  integratedSearch({ tenantId: 'legacy', query, limit: 1, includeRealtime: false, scrapeContent: true, ...extra }) as Promise<any>;
 
 test('maxChars が違う要求は別の結果として取得する（小さい指定の結果を、大きい指定に返さない）', async () => {
   const spy = stubWebSearch('maxchars-small-first');
@@ -115,7 +115,7 @@ test('noCache: true は本文の取得（scrapeUrl）にも届く（上位・補
   // 本文の取得を全部失敗させ、予備の 2 件の補充と、追加取得（同じ 2 件）まで進める
   const scrape = spyOn(scraper, 'scrapeUrl').mockRejectedValue(new Error('down'));
   try {
-    await integratedSearch({ query: 'integrated nocache page fetch', limit: 1, includeRealtime: false, adaptiveScrape: true, scrapeBudget: 3, videos: 1, noCache: true });
+    await integratedSearch({ tenantId: 'legacy', query: 'integrated nocache page fetch', limit: 1, includeRealtime: false, adaptiveScrape: true, scrapeBudget: 3, videos: 1, noCache: true });
     const urls = scrape.mock.calls.map(([o]) => o.url);
     expect(urls.filter((u) => u.includes('youtube.com'))).toHaveLength(1);
     expect(urls.filter((u) => u.includes('nocache-'))).toHaveLength(5);

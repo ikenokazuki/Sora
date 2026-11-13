@@ -99,7 +99,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
     stubYoutube('メイクしながら話した動画');
     const searches = spySearches();
     const url = `https://www.youtube.com/watch?v=${vid()}&t=367s`;
-    const r = await integratedSearch({ query: url, limit: 5, videos: 3, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: url, limit: 5, videos: 3, noCache: true }) as any;
     expect(searches.web).not.toHaveBeenCalled();
     expect(searches.video).not.toHaveBeenCalled();
     expect(searches.realtime).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
       const fee = path === '/a' ? `<h2>料金</h2><p>入場料は 3000 円です。${'補足の説明です。'.repeat(10)}</p>` : '';
       return new Response(page(`ページ${path}`, `<p>${'前置きの文章です。'.repeat(30)}</p>${fee}<h2>アクセス</h2><p>${'駅から歩いて 5 分です。'.repeat(10)}</p>`), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     });
-    const r = await integratedSearch({ query: `${base}/b と ${base}/a の料金`, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: `${base}/b と ${base}/a の料金`, noCache: true }) as any;
     expect(r.results.map((x: any) => x.url)).toEqual([`${base}/b`, `${base}/a`]);
     expect(r.results.map((x: any) => x.title)).toEqual(['ページ/b', 'ページ/a']);
     expect((r.results[1].highlights ?? []).join('\n')).toContain('3000 円');
@@ -130,7 +130,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
     spySearches();
     const detail = spyOn(xDetail.defaultXDetailProvider, 'fetchStatus').mockResolvedValue({ text: 'テストの投稿の本文です', author: { name: 'テスト', screenName: 'test_user' } } as never);
     cleanups.push(() => detail.mockRestore());
-    const r = await integratedSearch({ query: 'https://x.com/test_user/status/1234567890123456789', noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: 'https://x.com/test_user/status/1234567890123456789', noCache: true }) as any;
     expect(r.results[0].title).toBe('テスト (@test_user) on X: "テストの投稿の本文です..."');
     expect(r.results[0].markdown).toContain('テストの投稿の本文です');
   });
@@ -139,7 +139,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
     allowLocalFetch();
     spySearches();
     const base = serve(() => new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]), { headers: { 'Content-Type': 'image/png' } }));
-    const r = await integratedSearch({ query: `${base}/photo.png`, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: `${base}/photo.png`, noCache: true }) as any;
     expect(r.results[0]).toMatchObject({ contentStatus: 'unavailable' });
     expect(r.results[0].markdown).toContain('image/png');
     expect(r.contextSufficiency).toEqual({ level: 'insufficient', reasons: ['no-usable-content'] });
@@ -155,7 +155,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
       { title: '入場料と料金の案内', url: `${base}/gone`, snippet: '入場料 料金', source: 'web' },
       { title: 'ご案内', url: `${base}/ok`, snippet: 'ご案内', source: 'web' },
     ]);
-    const r = await integratedSearch({ query: '入場料 料金 順位テスト', includeRealtime: false, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: '入場料 料金 順位テスト', includeRealtime: false, noCache: true }) as any;
     expect(r.results.map((x: any) => x.url)).toEqual([`${base}/ok`, `${base}/gone`]);
     expect(r.results[1].contentStatus).toBe('unavailable');
   });
@@ -164,7 +164,7 @@ describe('search_deep (integratedSearch) with a URL in the query', () => {
     stubYoutube('元の題名の講義');
     const url = `https://www.youtube.com/watch?v=${vid()}`;
     spySearches([{ title: 'A lecture title translated into English', url, snippet: '講義の動画', source: 'web' }]);
-    const r = await integratedSearch({ query: '特異値分解 講義 題名テスト', includeRealtime: false, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: '特異値分解 講義 題名テスト', includeRealtime: false, noCache: true }) as any;
     expect(r.results[0]).toMatchObject({ url, title: '元の題名の講義' });
   });
 });
@@ -190,7 +190,7 @@ describe('scrapeUrl: files and error pages it cannot read', () => {
   test('an image file is not read as text: only its type and size come back, as unavailable', async () => {
     allowLocalFetch();
     const base = serve(() => new Response(new Uint8Array(1234).fill(7), { headers: { 'Content-Type': 'image/jpeg' } }));
-    const r = await scrapeUrl({ url: `${base}/cat.jpg`, noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: `${base}/cat.jpg`, noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('image/jpeg');
     expect(r.content).toContain('1,234');
@@ -200,7 +200,7 @@ describe('scrapeUrl: files and error pages it cannot read', () => {
   test('an image served with an error status says so', async () => {
     allowLocalFetch();
     const base = serve(() => new Response(new Uint8Array(100), { status: 404, headers: { 'Content-Type': 'image/jpeg' } }));
-    const r = await scrapeUrl({ url: `${base}/missing.jpg`, noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: `${base}/missing.jpg`, noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('HTTP 404');
   });
@@ -211,7 +211,7 @@ describe('scrapeUrl: files and error pages it cannot read', () => {
     });
     const spy = spyOn(httpFetcher, 'fetchWithSafeRedirects').mockRejectedValue(tooLarge);
     cleanups.push(() => spy.mockRestore());
-    const r = await scrapeUrl({ url: 'https://example.com/movie.mp4', noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: 'https://example.com/movie.mp4', noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('video/mp4');
     expect(r.content).toContain('41,000,000');
@@ -238,7 +238,7 @@ describe('scrapeUrl: files and error pages it cannot read', () => {
   test('an HTTP error page is unavailable and gives no highlights (static fetch)', async () => {
     allowLocalFetch();
     const base = serve(() => new Response(page('入場料の案内', `<p>${'入場料のページは見つかりませんでした。'.repeat(10)}</p>`), { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
-    const r = await scrapeUrl({ url: `${base}/gone`, mode: 'fast', query: '入場料', extractHighlights: true, noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: `${base}/gone`, mode: 'fast', query: '入場料', extractHighlights: true, noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('HTTP 404');
     expect(r.highlights ?? []).toEqual([]);
@@ -249,11 +249,11 @@ describe('scrapeUrl: files and error pages it cannot read', () => {
     const base = serve((req) => new URL(req.url).pathname === '/empty'
       ? new Response('', { status: 403 })
       : new Response(forbidden, { status: 403, headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
-    const r = await scrapeUrl({ url: `${base}/blocked`, mode: 'browser', timeoutMs: 8000, noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: `${base}/blocked`, mode: 'browser', timeoutMs: 8000, noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('HTTP 403');
     // 本文の無い 403 では Chrome がエラー画面（"HTTP ERROR 403"）を出す。TikTok の本番の形
-    const empty = await scrapeUrl({ url: `${base}/empty`, mode: 'browser', timeoutMs: 8000, noCache: true });
+    const empty = await scrapeUrl({ tenantId: 'legacy', url: `${base}/empty`, mode: 'browser', timeoutMs: 8000, noCache: true });
     expect(empty.contentStatus).toBe('unavailable');
   }, 30000);
 });

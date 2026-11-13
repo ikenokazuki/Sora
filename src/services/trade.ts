@@ -1,5 +1,6 @@
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
 import { errorMessage } from '../errors.js';
+import { PUBLIC_TENANT_ID } from '../security/tenant_context.js';
 import { type CrossRuling, type CrossStatus, crossSource, lookupCrossRulings } from './cbp_cross.js';
 import { CROSS_INDEX_ATTRIBUTION } from './cross_index.js';
 import {
@@ -1961,6 +1962,7 @@ export async function checkProductCompliance(
       const { scrapeUrl } = await import('../scraper.js');
       const scrapeRes = await scrapeUrl({
         url: options.url,
+        tenantId: PUBLIC_TENANT_ID, // 商品ページを、利用者の保存済みの状態なしで読む（設計 5。穴 17）
         onlyMainContent: true,
         maxChars: 5000,
       });

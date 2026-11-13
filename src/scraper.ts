@@ -35,7 +35,8 @@ import {
   extractQueryHighlightDetails,
 } from './enrichment.js';
 import { bypassesSharedCache, isSensitiveHeaderName } from './security/credential_scope.js';
-import { tenantCacheKey, tenantStateUsed, trackTenantState } from './security/tenant_state.js';
+import { getFromTenantCache, setToTenantCache } from './security/tenant_cache.js';
+import { tenantCacheKey, trackTenantState } from './security/tenant_state.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
@@ -687,7 +688,11 @@ export async function scrapeUrl(options: {
   maskPii?: boolean;
   noCache?: boolean;
   timeoutMs?: number;
-  tenantId?: string;
+  /**
+   * 取得の持ち主（必須。設計 5。穴 17）。保存済みの Cookie・localStorage と、結果のキャッシュ（tenant のキー）は、この tenant のもの。
+   * 呼んだ利用者（認証が決めた tenant）を渡す。利用者を持たない取得（Sora が自分の都合で読むページ）は、PUBLIC_TENANT_ID
+   */
+  tenantId: string;
   verbose?: boolean;
   keepDataImages?: boolean;
   includeMedia?: boolean;
@@ -718,12 +723,12 @@ export async function scrapeUrl(options: {
   if (!useSharedCache && !options.noCache) incrementSecurityCounter('sora_private_cache_bypass_total');
 
   // tenant の保存済みの状態（Cookie・localStorage）を使って得た結果は、その tenant のキーにだけ置く（共有のキーに置くと、別の tenant に返る。設計 5・E25）。
-  // 状態を使ったかは、取得の側（静的取得・ブラウザ）が立てる印で分かる。読むのは、tenant のキー、共有のキーの順
-  const tenantId = options.tenantId ?? 'legacy';
-  const ownKey = tenantCacheKey(tenantId, cacheKey);
+  // 状態を使ったかは、取得の側（静的取得・ブラウザ）が立てる印で分かる。読むのは、tenant のキー、共有のキーの順（security/tenant_cache.ts）
+  const { tenantId } = options;
+  const ownKey = tenantCacheKey(tenantId, cacheKey); // 取得をまとめる（single-flight）キー。別の tenant の取得とは、まとめない
 
   if (useSharedCache) {
-    const cached = getFromCache<ScrapeResult>(ownKey, { countMiss: false }) ?? getFromCache<ScrapeResult>(cacheKey);
+    const cached = getFromTenantCache<ScrapeResult>(tenantId, cacheKey);
     if (cached) {
       onProgress?.({ stage: 'done', message: 'Cache hit', data: cached });
       return cached;
@@ -733,9 +738,7 @@ export async function scrapeUrl(options: {
   /** 結果を置く。状態を使った取得なら tenant のキー、使わなければ共有のキー（資格情報つきの取得は、どちらにも置かない） */
   const cacheResult = (result: ScrapeResult) => {
     if (!useSharedCache) return;
-    const own = tenantStateUsed();
-    if (own) incrementSecurityCounter('sora_tenant_cache_write_total');
-    setToCache(own ? ownKey : cacheKey, result, scrapeCacheTtl(result));
+    setToTenantCache(tenantId, cacheKey, result, scrapeCacheTtl(result));
   };
 
   const scrapeTask = async () => {
@@ -813,7 +816,7 @@ export async function scrapeUrl(options: {
         'networkidle2',
         wantsScreenshot,
         fullPage,
-        options.tenantId ?? 'legacy',
+        tenantId,
         {
           isContentReady: (html, finalUrl) => {
             const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
@@ -842,7 +845,7 @@ export async function scrapeUrl(options: {
           { ...defaultReferrerHeaders(options.headers, options.cookies), ...options.headers },
           options.cookies,
           undefined,
-          options.tenantId ?? 'legacy',
+          tenantId,
         );
       } catch (err: any) {
         // 上限を超える動画・音声のファイルも、読めないファイルとして返す（取得の失敗にしない）
@@ -1107,7 +1110,7 @@ export async function scrapeBatchUrls(options: {
   webhookUrl?: string;
   timeoutMs?: number;
   noCache?: boolean;
-  tenantId?: string;
+  tenantId: string;
   includeMedia?: boolean;
   verbose?: boolean;
 }): Promise<BatchScrapeResult> {
@@ -1162,6 +1165,7 @@ const SITEMAP_CHILD_CONCURRENCY = 3;
 
 export async function fetchSitemapEntries(
   sitemapUrl: string,
+  tenantId: string,
   limit = 200,
   maxDepth = 2,
   currentDepth = 0,
@@ -1169,7 +1173,7 @@ export async function fetchSitemapEntries(
   if (currentDepth > maxDepth || limit <= 0) return [];
 
   try {
-    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000);
+    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000, 5, undefined, undefined, undefined, tenantId);
     if (!response.ok) return [];
 
     const xml = await response.text();
@@ -1205,7 +1209,7 @@ export async function fetchSitemapEntries(
       for (let i = 0, size = 1; i < childUrls.length; i += size, size = SITEMAP_CHILD_CONCURRENCY) {
         const remaining = limit - entries.length;
         const batch = await Promise.all(
-          childUrls.slice(i, i + size).map((loc: string) => fetchSitemapEntries(loc, remaining, maxDepth, currentDepth + 1)),
+          childUrls.slice(i, i + size).map((loc: string) => fetchSitemapEntries(loc, tenantId, remaining, maxDepth, currentDepth + 1)),
         );
         for (const subEntries of batch) entries.push(...subEntries);
         if (entries.length >= limit) return entries.slice(0, limit);
@@ -1257,7 +1261,7 @@ export function isHostInSites(linkHost: string, sites: Iterable<string>, include
 /** map の since / until を指定したとき、日付で絞る前に読む sitemap の URL 数の上限 */
 const MAP_DATE_SCAN_LIMIT = 5000;
 
-export async function mapSiteUrl(options: {
+type MapSiteOptions = {
   url: string;
   limit?: number;
   includeSubdomains?: boolean;
@@ -1265,20 +1269,32 @@ export async function mapSiteUrl(options: {
   until?: string;
   timeoutMs?: number;
   noCache?: boolean;
-}): Promise<{
+  /** 呼んだ利用者（認証が決めた tenant）。robots.txt・サイトマップ・ページの取得は、この tenant の保存済みのセッションで行う */
+  tenantId: string;
+};
+type MapSiteResult = {
   url: string;
   links: string[];
   count: number;
   source: 'sitemap' | 'links';
   cached?: boolean;
-}> {
+};
+
+export async function mapSiteUrl(options: MapSiteOptions): Promise<MapSiteResult> {
+  // 取得が tenant の保存済みの状態を使ったなら、結果は、その tenant のキーにだけ置く（置く側が、この範囲の印を見る）
+  return (await trackTenantState(() => mapSiteTracked(options))).value;
+}
+
+async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
+  const { tenantId } = options;
   const url = options.url;
   const limit = Math.min(options.limit ?? 200, 1000);
   // v2: 日付で絞ってから件数で切るようにした（v1 は先に切っていたので、limit と since を併用した結果が違う）
-  const cacheKey = `map:v2:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
+  // v3: tenant の保存済みの状態で見えた内容を、tenant のキーに置くようにした（v2 の、状態で見える内容が入っているかもしれない共有のキーは、読まない）
+  const cacheKey = `map:v3:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
 
   if (!options.noCache) {
-    const cached = getFromCache<any>(cacheKey);
+    const cached = getFromTenantCache<any>(tenantId, cacheKey);
     if (cached) return cached;
   }
 
@@ -1292,7 +1308,7 @@ export async function mapSiteUrl(options: {
   ];
 
   try {
-    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000);
+    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000, 5, undefined, undefined, undefined, tenantId);
     if (robotsRes.response.ok) {
       const robotsText = await robotsRes.response.text();
       const sitemapMatches = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
@@ -1311,7 +1327,7 @@ export async function mapSiteUrl(options: {
   // 読むのは先頭 MAP_DATE_SCAN_LIMIT 件まで。それより後ろの URL は、日付を指定しても拾えない
   const scanLimit = options.since || options.until ? MAP_DATE_SCAN_LIMIT : limit;
   for (const sitemapUrl of candidateSitemaps) {
-    const entries = await fetchSitemapEntries(sitemapUrl, scanLimit);
+    const entries = await fetchSitemapEntries(sitemapUrl, tenantId, scanLimit);
     if (entries.length > 0) {
       const filteredEntries = filterSitemapEntriesByDate(entries, options.since, options.until);
       const links = filteredEntries.map((e) => e.url).slice(0, limit);
@@ -1321,13 +1337,14 @@ export async function mapSiteUrl(options: {
         count: links.length,
         source: 'sitemap' as const,
       };
-      if (!options.noCache) setToCache(cacheKey, result);
+      if (!options.noCache) setToTenantCache(tenantId, cacheKey, result);
       return result;
     }
   }
 
   const scraped = await scrapeUrl({
     url,
+    tenantId,
     maxChars: 5000,
     formats: ['links'],
     noCache: options.noCache,
@@ -1354,7 +1371,7 @@ export async function mapSiteUrl(options: {
     source: 'links' as const,
   };
 
-  if (!options.noCache) setToCache(cacheKey, result);
+  if (!options.noCache) setToTenantCache(tenantId, cacheKey, result);
   return result;
 }
 
@@ -1382,7 +1399,8 @@ export async function crawlSiteUrl(options: {
   includeMedia?: boolean;
   noCache?: boolean;
   webhookUrl?: string;
-  tenantId?: string;
+  /** 呼んだ利用者（認証が決めた tenant）。ページの取得は、この tenant の保存済みのセッションで行う */
+  tenantId: string;
   onPageScraped?: (page: ScrapeResult) => void;
   /** 応答の pages と同じ整形をかけた 1 ページを渡す */
   onPageCrawled?: (page: CrawledPage, count: number) => void;
@@ -1455,7 +1473,7 @@ export async function crawlSiteUrl(options: {
         try {
           const scraped = await scrapeUrl({
             url: item.url,
-            tenantId: (options as any).tenantId ?? 'legacy',
+            tenantId: options.tenantId,
             maxChars,
             formats: Array.from(new Set([...formats, 'links'])),
             query,
@@ -1767,7 +1785,8 @@ async function integratedSearchTracked(options: {
   scrapeDeadlineMs?: number;
   /** Yahoo の動画検索の上位の YouTube 動画を、字幕から何本読んで results に足すか（0〜5。既定 0 で、動画は検索しない）。 */
   videos?: number;
-  tenantId?: string;
+  /** 呼んだ利用者（認証が決めた tenant）。読むページの取得と、応答のキャッシュは、この tenant のもの */
+  tenantId: string;
 }): Promise<Record<string, any>> {
   const query = options.query;
   // 検索語に URL があれば、検索せずにその URL を読む（URL を検索語にすると、Web・X・動画のどの検索でも関係ない結果になる）。
@@ -1799,7 +1818,7 @@ async function integratedSearchTracked(options: {
   const adaptiveScrape = options.adaptiveScrape ?? false;
   const scrapeBudget = Math.min(Math.max(options.scrapeBudget ?? 8, limit), 20);
   const videos = isModuleActive('youtube') && !readQueryUrls ? Math.min(Math.max(Math.floor(options.videos ?? 0), 0), 5) : 0;
-  const requestTenantId = options.tenantId ?? 'legacy';
+  const requestTenantId = options.tenantId;
   // 題名は検索結果のものを使う。ただし検索語の URL と YouTube の動画は、読んだページの題名にする
   // （Yahoo は YouTube の題名を英語に訳して返すことがある。2026-10-26 に確認）
   // includeMedia: false の scrapeUrl は media を省くので、そのときは URL で YouTube の動画か見る
@@ -1829,15 +1848,10 @@ async function integratedSearchTracked(options: {
     videos,
   });
   const cacheKey = `search:integrated:v14:${query}:${digest}`;
-  const ownKey = tenantCacheKey(requestTenantId, cacheKey);
   /** 応答を置く。読んだページが tenant の状態を使ったなら tenant のキー、使わなければ共有のキー */
-  const cacheResponse = (response: unknown) => {
-    const own = tenantStateUsed();
-    if (own) incrementSecurityCounter('sora_tenant_cache_write_total');
-    setToCache(own ? ownKey : cacheKey, response, integratedSearchCacheTtl(finalResponse));
-  };
+  const cacheResponse = (response: unknown) => setToTenantCache(requestTenantId, cacheKey, response, integratedSearchCacheTtl(finalResponse));
   if (!noCache) {
-    const cached = getFromCache<any>(ownKey, { countMiss: false }) ?? getFromCache<any>(cacheKey);
+    const cached = getFromTenantCache<any>(requestTenantId, cacheKey);
     if (cached) return cached;
   }
 

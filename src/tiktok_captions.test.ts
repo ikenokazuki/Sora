@@ -115,7 +115,7 @@ describe('scrapeUrl with a TikTok video URL', () => {
   test('opens the video in the browser (the plain fetch only gets the WAF page) and reads the captions', async () => {
     const calls = stubCaptionFetch();
     const browser = stubBrowser(withCaptions);
-    const r = await scrapeUrl({ url: 'https://www.tiktok.com/@test_user/video/7000000000000000001', noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: 'https://www.tiktok.com/@test_user/video/7000000000000000001', noCache: true });
     expect(browser).toHaveBeenCalledTimes(1);
     expect(calls).toEqual([CAPTION_URL]);
     expect(r).toMatchObject({ siteName: 'TikTok', contentStatus: 'body', author: 'テストの人 (@test_user)' });
@@ -125,7 +125,7 @@ describe('scrapeUrl with a TikTok video URL', () => {
   test('a TikTok page still on the challenge ("Please wait...") comes back unavailable', async () => {
     stubCaptionFetch();
     stubBrowser('<html><head><title>TikTok</title></head><body><p>Please wait...</p></body></html>', 200);
-    const r = await scrapeUrl({ url: 'https://www.tiktok.com/@test_user/video/7000000000000000003', noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: 'https://www.tiktok.com/@test_user/video/7000000000000000003', noCache: true });
     expect(r.contentStatus).toBe('unavailable');
     expect(r.content).toContain('確認の画面');
   });
@@ -133,7 +133,7 @@ describe('scrapeUrl with a TikTok video URL', () => {
   test('a TikTok page answered with 403 stays unavailable', async () => {
     stubCaptionFetch();
     stubBrowser('<html><body><h1>You don\'t have authorization to view this page.</h1><p>HTTP ERROR 403</p></body></html>', 403);
-    const r = await scrapeUrl({ url: 'https://www.tiktok.com/@test_user/video/7000000000000000002', noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: 'https://www.tiktok.com/@test_user/video/7000000000000000002', noCache: true });
     expect(r.contentStatus).toBe('unavailable');
   });
 });

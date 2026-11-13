@@ -26,15 +26,15 @@ describe('scrape shared-cache isolation (P0-SEC-01)', () => {
     const url = `http://127.0.0.1:${port}/page`;
     try {
       // Authenticated: two identical requests must both hit origin (no read, no write).
-      await scrapeUrl({ url, headers: { Authorization: 'Bearer A' }, mode: 'fast', formats: ['markdown'] });
-      await scrapeUrl({ url, headers: { Authorization: 'Bearer A' }, mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ tenantId: 'legacy', url, headers: { Authorization: 'Bearer A' }, mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ tenantId: 'legacy', url, headers: { Authorization: 'Bearer A' }, mode: 'fast', formats: ['markdown'] });
       expect(hits).toBe(2);
       // Different credential must not receive the other tenant result.
-      await scrapeUrl({ url, headers: { Authorization: 'Bearer B' }, mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ tenantId: 'legacy', url, headers: { Authorization: 'Bearer B' }, mode: 'fast', formats: ['markdown'] });
       expect(hits).toBe(3);
       // Unauthenticated requests still share cache.
-      await scrapeUrl({ url, mode: 'fast', formats: ['markdown'] });
-      await scrapeUrl({ url, mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', formats: ['markdown'] });
+      await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', formats: ['markdown'] });
       expect(hits).toBe(4);
     } finally {
       server.close();

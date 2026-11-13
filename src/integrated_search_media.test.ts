@@ -47,7 +47,7 @@ function stubWebSearch(paths: string[]) {
 }
 
 const search = (query: string, extra: Record<string, unknown> = {}) =>
-  scraper.integratedSearch({ query, limit: 1, includeRealtime: false, scrapeContent: true, ...extra }) as Promise<any>;
+  scraper.integratedSearch({ tenantId: 'legacy', query, limit: 1, includeRealtime: false, scrapeContent: true, ...extra }) as Promise<any>;
 
 describe('search_deep の includeMedia を scrapeUrl に渡す', () => {
   // 最初の取得 (/tiny-a は使えない本文)、失敗分の補充 (/b)、adaptive の追加取得 (/c・/d。問いの語 zzqqword がどこにも無いので不足のまま) の 3 か所

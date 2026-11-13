@@ -1,4 +1,5 @@
 import { envBool, envList } from '../../config.js';
+import { PUBLIC_TENANT_ID } from '../../security/tenant_context.js';
 import { researchCountryContext, type ResearchDependencies } from './report.js';
 import { createGdacsProvider } from './providers/gdacs.js';
 import { createGdeltExportProvider } from './providers/gdelt_files.js';
@@ -65,7 +66,7 @@ export function createScrapeArticleAdapter(): (url: string, signal: AbortSignal)
     if (signal.aborted) throw signal.reason;
     const { scrapeUrl } = await import('../../scraper.js');
     const result = await scrapeUrl({
-      url, mode: 'fast', maxChars: 12000, timeoutMs: 4000,
+      url, tenantId: PUBLIC_TENANT_ID, mode: 'fast', maxChars: 12000, timeoutMs: 4000,
       onlyMainContent: true, extractHighlights: false, noCache: true,
     });
     if (signal.aborted) throw signal.reason;

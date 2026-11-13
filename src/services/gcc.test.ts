@@ -995,6 +995,17 @@ describe('product page suggestions (I3, I5, M11)', () => {
     expect(err.details.items[0].suggestions).toMatchObject({ identifier: 'HLM-S', identifierType: 'sku' });
   }, 15_000);
 
+  it('reads the product page as the public tenant (no stored session of any user is read or written)', async () => {
+    const spy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url: 'https://shop.example.com/p', jsonLd: [] } as unknown as Awaited<ReturnType<typeof scraper.scrapeUrl>>);
+    try {
+      await generateGccCertificate(options([{ ...HELMET, identifier: undefined, url: 'https://shop.example.com/p' }]));
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0]).toMatchObject({ url: 'https://shop.example.com/p', tenantId: 'public' });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('reads Product data from @graph and falls back from sku to gtin and mpn, with one offer’s sku and one variant chosen without a ?variant=', async () => {
     const read = async (jsonLd: unknown[], url = 'https://shop.example.com/p') => {
       const spy = spyOn(scraper, 'scrapeUrl').mockResolvedValue({ url, jsonLd } as unknown as Awaited<ReturnType<typeof scraper.scrapeUrl>>);

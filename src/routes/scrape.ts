@@ -199,7 +199,7 @@ scrapeRoutes.post('/map', async (c) => {
   if ('error' in input) return input.error;
 
   try {
-    const result = await mapSiteUrl(input.data);
+    const result = await mapSiteUrl({ ...input.data, tenantId: c.get('tenant')?.tenantId ?? 'legacy' });
 
     return c.json(result);
   } catch (err) {

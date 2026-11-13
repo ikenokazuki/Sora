@@ -29,11 +29,11 @@ describe('scrape の includeMedia と rs-trafilatura への引数（手元のサ
 
   test('includeMedia: false なら本文の画像を [画像: alt] にし、ogImage を省く', async () => {
     const url = `http://127.0.0.1:${server.port}/media`;
-    const off = await scrapeUrl({ url, mode: 'fast', includeMedia: false, noCache: true });
+    const off = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', includeMedia: false, noCache: true });
     expect(off.content).toContain('[画像: フライヤー]');
     expect(off.content).not.toContain('flyer.jpg');
     expect(off.ogImage).toBeUndefined();
-    const on = await scrapeUrl({ url, mode: 'fast', noCache: true });
+    const on = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', noCache: true });
     expect(on.content).toContain('flyer.jpg');
     expect(on.ogImage).toBe('https://example.com/og.jpg');
   });
@@ -45,7 +45,7 @@ describe('scrape の includeMedia と rs-trafilatura への引数（手元のサ
     chmodSync(bin, 0o755);
     process.env.SORA_RS_TRAFILATURA_PATH = bin;
     try {
-      await scrapeUrl({ url: `http://127.0.0.1:${server.port}/rs-wire`, mode: 'fast', removeSelectors: ['h1'], noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/rs-wire`, mode: 'fast', removeSelectors: ['h1'], noCache: true });
       expect(readFileSync(`${bin}.stdin`, 'utf8')).not.toContain('<h1>');
     } finally {
       delete process.env.SORA_RS_TRAFILATURA_PATH;

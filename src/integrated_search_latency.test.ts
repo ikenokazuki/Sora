@@ -15,7 +15,7 @@ test('starts web page acquisition before the independent realtime search complet
   const realtimeSpy = spyOn(yahoo, 'searchYahooRealtime').mockImplementation(() => realtime);
   const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
-  const search = integratedSearch({ query: 'Concert schedule', limit: 1, includeRealtime: true, noCache: true });
+  const search = integratedSearch({ tenantId: 'legacy', query: 'Concert schedule', limit: 1, includeRealtime: true, noCache: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const acquired = await Promise.race([

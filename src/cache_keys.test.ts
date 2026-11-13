@@ -40,7 +40,7 @@ describe('buildScrapeCacheKey', () => {
     shouldExtractHighlights: false,
   };
   const keyOf = (patch: Partial<ScrapeOptions> = {}, r: Partial<typeof resolved> = {}) =>
-    buildScrapeCacheKey({ url, ...patch }, { ...resolved, ...r });
+    buildScrapeCacheKey({ tenantId: 'legacy', url, ...patch }, { ...resolved, ...r });
   const baseKey = keyOf();
 
   const changesTheResult: Array<[string, Partial<ScrapeOptions>]> = [
@@ -163,9 +163,9 @@ describe('scrapeUrl のキャッシュ（手元のサーバーで確認）', () 
   test('別のセレクタで取得し直すと、前のセレクタの結果ではなく、そのセレクタの結果が返る', async () => {
     const url = urlFor('selectors');
     const before = hits;
-    const a = await scrapeUrl({ url, mode: 'fast', selectors: { name: 'h1' } });
-    const b = await scrapeUrl({ url, mode: 'fast', selectors: { price: '.price' } });
-    const c = await scrapeUrl({ url, mode: 'fast' });
+    const a = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', selectors: { name: 'h1' } });
+    const b = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', selectors: { price: '.price' } });
+    const c = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast' });
 
     expect(a.extracted).toEqual({ name: 'Blue Widget' });
     expect(b.extracted).toEqual({ price: '1,980 yen' });
@@ -177,8 +177,8 @@ describe('scrapeUrl のキャッシュ（手元のサーバーで確認）', () 
   test('同じ指定の繰り返しはキャッシュから返る', async () => {
     const url = urlFor('repeat');
     const before = hits;
-    const first = await scrapeUrl({ url, mode: 'fast', selectors: { name: 'h1' } });
-    const second = await scrapeUrl({ url, mode: 'fast', selectors: { name: 'h1' } });
+    const first = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', selectors: { name: 'h1' } });
+    const second = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', selectors: { name: 'h1' } });
 
     expect(second.extracted).toEqual(first.extracted);
     expect(cached(second)).toBe(true);
@@ -188,9 +188,9 @@ describe('scrapeUrl のキャッシュ（手元のサーバーで確認）', () 
   test('資格情報ではないヘッダー（Accept-Language）が違えば、別の結果として取得する', async () => {
     const url = urlFor('lang');
     const before = hits;
-    const ja = await scrapeUrl({ url, mode: 'fast', headers: { 'Accept-Language': 'ja' } });
-    const en = await scrapeUrl({ url, mode: 'fast', headers: { 'Accept-Language': 'en' } });
-    const jaAgain = await scrapeUrl({ url, mode: 'fast', headers: { 'accept-language': 'ja' } });
+    const ja = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', headers: { 'Accept-Language': 'ja' } });
+    const en = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', headers: { 'Accept-Language': 'en' } });
+    const jaAgain = await scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', headers: { 'accept-language': 'ja' } });
 
     expect(ja.content).toContain('こんにちは');
     expect(en.content).toContain('Hello');

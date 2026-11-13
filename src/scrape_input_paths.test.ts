@@ -107,7 +107,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
 
   describe('maskPii', () => {
     test('html・rawHtml・title・description にもかかる（静的な取得）', async () => {
-      const result = await scrapeUrl({ url: `${base()}/mask`, mode: 'fast', formats: ['markdown', 'html', 'rawHtml'], maskPii: true, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/mask`, mode: 'fast', formats: ['markdown', 'html', 'rawHtml'], maskPii: true, noCache: true });
       expect(result.content).not.toContain(mail);
       expect(result.title).toBe('[EMAIL] の案内');
       expect(result.html).toContain('[EMAIL]');
@@ -116,7 +116,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     });
 
     test('jsonLd・images の alt・author・evidence・mailto:/tel: のリンクにもかかる', async () => {
-      const options = { url: `${base()}/pii`, mode: 'fast' as const, formats: ['markdown', 'html', 'rawHtml', 'jsonLd', 'links', 'images'] as Array<'markdown' | 'html' | 'rawHtml' | 'jsonLd' | 'links' | 'images'>, verbose: true, noCache: true };
+      const options = { tenantId: 'legacy', url: `${base()}/pii`, mode: 'fast' as const, formats: ['markdown', 'html', 'rawHtml', 'jsonLd', 'links', 'images'] as Array<'markdown' | 'html' | 'rawHtml' | 'jsonLd' | 'links' | 'images'>, verbose: true, noCache: true };
       const plain = await scrapeUrl(options);
       // 元のページには、どの項目にもメールと電話番号がある（マスクで消えたと言えるように）
       expect(JSON.stringify(plain.jsonLd)).toContain(mail);
@@ -139,7 +139,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     });
 
     test('maskPii を付けなければ、そのまま返す', async () => {
-      const result = await scrapeUrl({ url: `${base()}/mask`, mode: 'fast', formats: ['rawHtml'], noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/mask`, mode: 'fast', formats: ['rawHtml'], noCache: true });
       expect(result.rawHtml).toContain(mail);
     });
   });
@@ -149,7 +149,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     const browserTest = chromium ? test : test.skip;
 
     browserTest('既定の auto で静的に取れるページでも、ブラウザで画像を取る（本文は静的な取得のまま）', async () => {
-      const result = await scrapeUrl({ url: `${base()}/shot`, formats: ['markdown', 'screenshot'], noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/shot`, formats: ['markdown', 'screenshot'], noCache: true });
       expect(result.renderedWithBrowser).toBe(false);
       expect(result.content).toContain('静的に取れる、十分に長い本文の文です。');
       expect(result.screenshot?.length).toBeGreaterThan(100);
@@ -157,14 +157,14 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     }, 60_000);
 
     browserTest('urls（scrapeBatchUrls）も同じ', async () => {
-      const batch = await scrapeBatchUrls({ urls: [`${base()}/shot-batch`], formats: ['screenshot'], noCache: true });
+      const batch = await scrapeBatchUrls({ tenantId: 'legacy', urls: [`${base()}/shot-batch`], formats: ['screenshot'], noCache: true });
       expect(batch.results[0].screenshot?.length).toBeGreaterThan(100);
     }, 60_000);
 
     browserTest('ブラウザだけが 403 の画面に飛ばされても、本文と HTTP の状態は静的な取得のまま（ブラウザからは画像だけ）', async () => {
-      const plain = await scrapeUrl({ url: `${base()}/bounce`, formats: ['markdown'], noCache: true });
+      const plain = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/bounce`, formats: ['markdown'], noCache: true });
       expect(plain.content).toContain('静的に取れる、十分に長い本文の文です。');
-      const shot = await scrapeUrl({ url: `${base()}/bounce`, formats: ['markdown', 'screenshot'], noCache: true });
+      const shot = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/bounce`, formats: ['markdown', 'screenshot'], noCache: true });
       expect(shot.content).toBe(plain.content);
       expect(shot.title).toBe(plain.title);
       expect(shot.contentStatus).toBe(plain.contentStatus);
@@ -179,7 +179,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
       const setSpy = spyOn(cache, 'setToCache');
       try {
         const url = `${base()}/shot-ttl-${Date.now()}`;
-        const result = await scrapeUrl({ url, formats: ['markdown', 'screenshot'] });
+        const result = await scrapeUrl({ tenantId: 'legacy', url, formats: ['markdown', 'screenshot'] });
         expect(result.warnings?.join('\n')).toContain('screenshot');
         expect(setSpy.mock.calls.filter(([key]) => String(key).startsWith(`scrape:v11:${url}:`)).map(([, , ttl]) => ttl)).toEqual([cache.CACHE_TTL_EMPTY]);
       } finally {
@@ -189,15 +189,15 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     }, 60_000);
 
     browserTest('clipSelector は、screenshot があるとき要素だけの画像を返す（auto でもブラウザで撮る）', async () => {
-      const result = await scrapeUrl({ url: `${base()}/clip`, formats: ['screenshot'], clipSelector: '#box', noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/clip`, formats: ['screenshot'], clipSelector: '#box', noCache: true });
       const png = Buffer.from(result.screenshot ?? '', 'base64');
       expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([200, 100]);
     }, 60_000);
 
     test('PDF は、screenshot を求めても本文のまま（画像は付けず、警告を付ける）', async () => {
-      const plain = await scrapeUrl({ url: `${base()}/doc.pdf`, formats: ['markdown'], noCache: true });
+      const plain = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/doc.pdf`, formats: ['markdown'], noCache: true });
       expect(plain.content).toContain(pdfText);
-      const result = await scrapeUrl({ url: `${base()}/doc.pdf`, formats: ['markdown', 'screenshot'], noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/doc.pdf`, formats: ['markdown', 'screenshot'], noCache: true });
       expect(result.content).toBe(plain.content);
       expect(result.contentType).toBe('application/pdf');
       expect(result.screenshot).toBeUndefined();
@@ -205,7 +205,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     }, 60_000);
 
     test('画像のファイルも、種類と大きさの本文のまま（画像は付けず、警告を付ける）', async () => {
-      const result = await scrapeUrl({ url: `${base()}/pic.png`, formats: ['markdown', 'screenshot'], noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/pic.png`, formats: ['markdown', 'screenshot'], noCache: true });
       expect(result.contentType).toBe('image/png');
       expect(result.content).toContain('種類: image/png');
       expect(result.content).toContain('大きさ: 70 バイト');
@@ -216,7 +216,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     browserTest('ブラウザが失敗したときは、静的に取れた本文を警告つきで返す', async () => {
       const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
       try {
-        const result = await scrapeUrl({ url: `${base()}/shot-fallback`, formats: ['markdown', 'screenshot'], noCache: true });
+        const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/shot-fallback`, formats: ['markdown', 'screenshot'], noCache: true });
         expect(spy).toHaveBeenCalledTimes(1);
         expect(result.renderedWithBrowser).toBe(false);
         expect(result.content).toContain('静的に取れる、十分に長い本文の文です。');
@@ -230,7 +230,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     browserTest('本文が 50 字未満の SPA でブラウザが失敗しても、screenshot を求めていれば静的な結果に警告を付けて返す', async () => {
       const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
       try {
-        const result = await scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown', 'screenshot'], noCache: true });
+        const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/spa-shell`, formats: ['markdown', 'screenshot'], noCache: true });
         expect(spy).toHaveBeenCalledTimes(1);
         expect(result.renderedWithBrowser).toBe(false);
         expect(result.title).toBe('アプリ');
@@ -238,7 +238,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
         expect(result.warnings?.join('\n')).toContain('screenshot');
         // screenshot を求めていない SPA の失敗は、今までどおり例外。expect(...).rejects には渡さずに待つ（Bun 1.4.2 では、渡した処理の中の
         // 同じ送り先への 2 回目の取得で本文の読み出しが進まず、取得の時間切れになる。ふつうに待てば進む）
-        const error = await scrapeUrl({ url: `${base()}/spa-shell`, formats: ['markdown'], noCache: true }).catch((e: unknown) => e);
+        const error = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/spa-shell`, formats: ['markdown'], noCache: true }).catch((e: unknown) => e);
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain('browser down');
       } finally {
@@ -248,7 +248,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
 
     test('mode に fast を明示したときはブラウザに切り替えず、画像を取れない旨の警告を付ける', async () => {
       for (const options of [{ mode: 'fast' as const }, { fastOnly: true }]) {
-        const result = await scrapeUrl({ url: `${base()}/shot-fast`, formats: ['markdown', 'screenshot'], noCache: true, ...options });
+        const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/shot-fast`, formats: ['markdown', 'screenshot'], noCache: true, ...options });
         expect(result.renderedWithBrowser).toBe(false);
         expect(result.screenshot).toBeUndefined();
         expect(result.warnings?.join('\n')).toContain('screenshot');
@@ -257,7 +257,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     });
 
     test('screenshot を求めていなければ、警告は付けない', async () => {
-      const result = await scrapeUrl({ url: `${base()}/shot-fast`, mode: 'fast', noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/shot-fast`, mode: 'fast', noCache: true });
       expect(result.warnings).toBeUndefined();
       expect('warnings' in formatCompactScrapeResult(result)).toBe(false);
     });
@@ -350,7 +350,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
 
     test('静的な取得では届く（今までどおり）', async () => {
       seen.length = 0;
-      await scrapeUrl({ url: `${base()}/static-headers`, mode: 'fast', headers, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${base()}/static-headers`, mode: 'fast', headers, noCache: true });
       expect(seen.at(-1)?.headers.get('x-test-header')).toBe('sora-1');
     });
 
@@ -358,7 +358,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
       browserTest(`ブラウザの経路（${name}）でも、取得先と同じオリジンへの要求に届く。ほかのオリジンへは付けない`, async () => {
         seen.length = 0;
         otherSeen.length = 0;
-        await scrapeUrl({ url: `${base()}/with-script`, ...options, headers: { ...headers, Authorization: 'Bearer secret-token' }, noCache: true });
+        await scrapeUrl({ tenantId: 'legacy', url: `${base()}/with-script`, ...options, headers: { ...headers, Authorization: 'Bearer secret-token' }, noCache: true });
         const page = seen.find((entry) => entry.path === '/with-script');
         expect(page?.headers.get('x-test-header')).toBe('sora-1');
         expect(page?.headers.get('accept-language')).toBe('fr');
@@ -374,7 +374,7 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     browserTest('別のオリジンへの転送には、資格情報でないヘッダーだけが付いてくる（Authorization は付かない）', async () => {
       seen.length = 0;
       otherSeen.length = 0;
-      const result = await scrapeUrl({ url: `${base()}/redirect`, mode: 'browser', headers: { ...headers, Authorization: 'Bearer secret-token', 'X-API-Key': 'k-1' }, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/redirect`, mode: 'browser', headers: { ...headers, Authorization: 'Bearer secret-token', 'X-API-Key': 'k-1' }, noCache: true });
       expect(result.content).toContain('転送先のページです。');
       const landing = otherSeen.find((entry) => entry.path === '/landing');
       expect(landing).toBeDefined();
@@ -391,17 +391,17 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     browserTest('User-Agent はブラウザでは送らない（navigator.userAgent と食い違うため）。静的な取得では送る', async () => {
       seen.length = 0;
       const ua = { 'User-Agent': 'caller-agent/1.0', 'X-Test-Header': 'sora-1' };
-      await scrapeUrl({ url: `${base()}/ua-browser`, mode: 'browser', headers: ua, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${base()}/ua-browser`, mode: 'browser', headers: ua, noCache: true });
       const page = seen.find((entry) => entry.path === '/ua-browser');
       expect(page?.headers.get('x-test-header')).toBe('sora-1');
       expect(page?.headers.get('user-agent')).not.toBe('caller-agent/1.0');
-      await scrapeUrl({ url: `${base()}/ua-static`, mode: 'fast', headers: ua, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${base()}/ua-static`, mode: 'fast', headers: ua, noCache: true });
       expect(seen.find((entry) => entry.path === '/ua-static')?.headers.get('user-agent')).toBe('caller-agent/1.0');
     }, 60_000);
 
     browserTest('headers を渡さない取得は、今までどおり（Accept-Language は日本語）', async () => {
       seen.length = 0;
-      await scrapeUrl({ url: `${base()}/no-headers`, mode: 'browser', noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${base()}/no-headers`, mode: 'browser', noCache: true });
       const page = seen.find((entry) => entry.path === '/no-headers');
       expect(page?.headers.get('x-test-header')).toBeNull();
       expect(page?.headers.get('accept-language')?.startsWith('ja')).toBe(true);

@@ -304,12 +304,12 @@ describe('crawl_site: 省略は巡回、listOnly: true は URL の一覧だけ�
     expect(map).not.toHaveBeenCalled();
   });
 
-  test('listOnly: true は mapSiteUrl に url・limit・since・until だけを渡し、応答は旧 map_site と同じ', async () => {
+  test('listOnly: true は mapSiteUrl に url・limit・since・until と、サーバーが決めた tenant だけを渡し、応答は旧 map_site と同じ', async () => {
     const { crawl, map } = mockBoth();
     const res: any = await withClient((client) => client.callTool({ name: 'crawl_site', arguments: { url: 'https://example.com/', listOnly: true, limit: 5, since: '2026-05-01', until: '2026-10-01' } }));
     expect(res.isError).toBeFalsy();
     expect(crawl).not.toHaveBeenCalled();
-    expect(map.mock.calls[0][0]).toEqual({ url: 'https://example.com/', limit: 5, since: '2026-05-01', until: '2026-10-01' });
+    expect(map.mock.calls[0][0]).toEqual({ url: 'https://example.com/', limit: 5, since: '2026-05-01', until: '2026-10-01', tenantId: 'legacy' });
     expect(JSON.parse(textOf(res))).toEqual(mapped);
   });
 
