@@ -203,6 +203,13 @@
   - いまは、登録のときに持ち主（認証が決めた tenant）を記録し、一覧・確認・削除は、持ち主の分だけに効きます。別の利用者の `id` は、存在しない `id` と同じ扱いです（確認は「見つからない」、削除は `success: false`）。`id` を省いた確認も、呼んだ利用者の分だけで、別の利用者の分は、取得も Webhook も動きません。MCP の `watch` も REST も同じです（API の形は変えていません。応答に、持ち主の記録は出ません）。
   - 確認のときの取得は、持ち主の tenant で行います（以前は、すべて `legacy` として動き、持ち主のサイトごとの保存済みのセッション（Cookie など）が使われませんでした）。
   - DB に、持ち主の列（`watch_targets.tenant_id`）を足す移行を入れました（起動のときに 1 回だけ。`schema_migrations` の 102）。v4 までに登録した行は、鍵なしの利用者（`legacy`）のものになります。鍵（`SORA_API_KEY`）を設定した運用の利用者は、鍵ごとの別の tenant なので、旧い行は一覧に出ず、確認も削除もできなくなります（行は DB に残ります）。付け替えるときは、`UPDATE watch_targets SET tenant_id = 'key:' || <鍵の SHA-256 の先頭 16 文字（16 進）> WHERE tenant_id = 'legacy'` を、DB に対して実行してください（鍵ファイルの利用者は `name:<name>`）。
+- **tenant を渡さずに取得していた経路をなくしました（#109。`standard` の挙動が変わるところがあります）。** 共有のサービスとして動かすための隔離の、段階 4 の 3 つ目の PR です。
+  - これまで、`map_site`（`crawl_site` の `listOnly`）・`search_web` の `formats`・GCC・trade・国の情報の取得は、呼んだ利用者を取得に渡さず、`legacy`（鍵なしの利用者）として動きました。取得は、`legacy` の保存済みの Cookie・localStorage を読み、サイトが出した Cookie・localStorage を `legacy` に書き、`map_site` と `search_web` の結果は、tenant を含まないキーで共有キャッシュに入りました。
+  - いまは、`map_site` の robots.txt・サイトマップ（索引の子も）・ページの取得と、`search_web` の `formats` で読む結果のページの取得は、呼んだ利用者の tenant で行います。結果は、4a の `scrape` と同じ規則で、保存済みの状態を使った分は、その利用者のキャッシュにだけ置きます。キャッシュのキーの版を上げました（`map:v2` → `map:v3`、`search:web:v2` → `search:web:v3`）。
+  - GCC の商品ページ・trade の商品ページ（`check_product_compliance` の `url`）・国の情報の記事は、Sora が自分の都合で読むページなので、新しい `public` の tenant で読みます。`public` は、保存済みの Cookie・localStorage を、読まず、書きません（`legacy` の保存済みの状態を、読んだり、書き換えたりしなくなります）。
+  - 取得の関数 `scrapeUrl`・`scrapeBatchUrls`・`crawlSiteUrl`・`integratedSearch`・`mapSiteUrl` の `tenantId` を、型で必須にしました（既定の `legacy` は外しました）。渡し忘れは、型検査で分かります。
+  - 影響: 鍵が 1 つか匿名だけの運用では、結果は変わりません。ただし、`map_site` と `search_web` の `formats` は、その利用者の保存済みのセッションで取るようになり、更新後の最初の呼び出しは、キャッシュに当たりません。GCC・trade・国の情報は、`legacy` の保存済みの Cookie を使わなくなります。
+  - この PR では変えないもの: Sora 自身の上流への取得（Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など）は、これまでどおり、共有の（`legacy` の）セッションと、その保存済みの Cookie を使います。利用者をまたぐ Cookie の共有は、`strict` の段階で扱います（設計書の未決）。
 - **運用の確認を足しました。** 週 1 回、リリースのイメージの Chromium・Bun・distroless の土台と CI の Bun を新しい版と比べ、遅れていれば issue で知らせます（#79）。CI の Bun を 1.4.2 から 1.4.4 に上げました（brotli の範囲外書き込みなど、2026-10 の勧告 3 件の修正を含む版、#80）。また、週 1 回、上流の wreq-util に、いまの上限より新しい Chrome のプロファイルが入ったかを見て、入っていれば、その rev で試しにイメージをビルドし、ブラウザと静的取得の ClientHello を比べて、通れば更新の PR を作ります（マージは人が決めます。手順は `docs/browser-alignment.md`、#87）。
 
 # Sora v4.2.0 — HTS の推測の判例を手元の索引から引くようにし、町名がローマ字の住所を読めるようにした

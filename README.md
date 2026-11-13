@@ -2500,6 +2500,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - 利用者ごとの状態の単位（tenant）は、認証のミドルウェアが決めたものだけを使います。MCP も REST も、生のヘッダーから別に作りません。`Authorization` の `Bearer` は、大文字小文字を区別せずに読み（RFC 7235）、`Bearer` があれば鍵はそれだけを読みます（誤った `Bearer` と正しい `X-API-Key` を併せても通りません）。
   - 取得した結果の共有キャッシュは、tenant の保存済みの状態（そのサイトが取得のときにセットした Cookie・localStorage）を使って得た結果を、その tenant のキャッシュにだけ置き、別の tenant に返しません（状態を使わずに得た結果だけを共有します）。Cookie か、`Accept-Language` などの無害なものを除くヘッダーを渡した取得は、共有キャッシュを読まず、書きません。
   - ウォッチ（`watch`・`/watch/*`）は、登録した利用者（tenant）のものだけが、一覧・確認・削除できます。`id` を省いた確認も、呼んだ利用者の分だけです。
+  - `map_site`（`crawl_site` の `listOnly`）と、`search_web` の `formats`（検索の結果のページを読む）も、呼んだ利用者の保存済みのセッションで取得し、結果は、共有キャッシュと同じ規則で置きます。Sora が自分の都合で読むページ（GCC・trade の商品ページ・国の情報の記事）は、`public` の tenant で読みます（保存済みの Cookie・localStorage を、読まず、書きません）。
   - 鍵を設定したら、ループバックからの接続でも鍵が要ります（接続元を、認証の代わりにしません。v4 の鍵なしのループバック通過の設定は、v5 で廃止しました）。ローカルの道具には、鍵を渡してください（`/health` は鍵なしで開きます）。
   - 複数の利用者が使うときは、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、鍵ごとに別の tenant で動かせます。鍵は SHA-256 で書けます（4.6）。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
@@ -2799,7 +2800,7 @@ docker run -d --name sora -p 3016:8000 \
 - 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。
 - 日次の上限（`SORA_AUTH_DAILY_LIMIT`）は、tenant ごとに数えます。拒否の回数は、`/metrics` の `sora_auth_rejected_missing_total`（鍵なし）と `sora_auth_rejected_invalid_total`（誤った鍵）で見られます。
 
-**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。`POST /cache/clear` は全員分のキャッシュを消します。`map_site`・`search_web` の formats・GCC・trade・国の情報の取得は、tenant を渡さず、共有の `legacy` として動きます。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
+**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。`POST /cache/clear` は全員分のキャッシュを消します。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使い、サイトが出した Cookie が、利用者をまたいで共有されます。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
 ---
 
