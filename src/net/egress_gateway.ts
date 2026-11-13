@@ -5,6 +5,8 @@
  * 名前の解決を**ここで 1 回だけ**行い、答えの IP がすべて公開の宛先であることを確かめ、**検査した IP に接続を固定する**
  * （検査と接続の間に、別の解決が入らない。DNS rebinding で、検査のあとに宛先を内部へ替えられない）。
  * 名前が解決できないときは、通さずに閉じる。宛先のポートは、許したものだけ（既定は 80・443）。
+ * 運用者が、`host:port` で挙げた宛先（allowDestinations）だけは、内部の IP・許していないポートにも通す（自前の内部のサーバーに届かせるため）。
+ * 挙げた宛先でも、名前の解決は 1 回・接続は検査した IP に固定は同じで、クラウドのメタデータ・リンクローカルなどは、挙げても通さない。
  */
 import dns from 'node:dns/promises';
 import net from 'node:net';
@@ -12,7 +14,7 @@ import tls from 'node:tls';
 import { SocksClient } from 'socks';
 import { errorMessage } from '../errors.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
-import { isBlockedHostname, isPrivateIp as defaultIsPrivateIp } from './ip_policy.js';
+import { canonicalHost, isAllowableInternalIp, isBlockedHostname, isMetadataHostname, isPrivateIp as defaultIsPrivateIp } from './ip_policy.js';
 
 /** 運用者の上流のプロキシ */
 export interface EgressUpstream {
@@ -29,9 +31,21 @@ export interface EgressUpstream {
 /** 拒否の理由。カウンター `sora_egress_denied_<理由>_total` の名前になる */
 export type DenyReason = 'bad_request' | 'port' | 'blocked_host' | 'private_ip' | 'dns' | 'limit';
 
+/** 運用者が、内部の宛先として挙げた `host:port`（SORA_EGRESS_ALLOW_HOSTS）。host は、名前（小文字・末尾のドットなし）か IP リテラル（IPv6 は [ ] なし） */
+export interface EgressAllowedDestination {
+  host: string;
+  port: number;
+}
+
 export interface EgressGatewayOptions {
   /** 許す宛先ポート。既定は 80・443 */
   allowedPorts?: readonly number[];
+  /**
+   * 運用者が、内部の宛先として挙げた `host:port`。これだけは、内部の IP（ループバック・プライベート・CGNAT・ULA）・許していないポート・内部の名前にも通す。
+   * 名前の解決は 1 回・接続は検査した IP に固定は、同じ。クラウドのメタデータ・リンクローカル・未指定・マルチキャスト・予約の IP と、メタデータの名前は、挙げても通さない。
+   * 挙げた宛先は、Sora を使う人が指定した URL でも届く（ゲートウェイは、呼び出し元を見分けない）。
+   */
+  allowDestinations?: readonly EgressAllowedDestination[];
   /** 名前を、IP（数値）の一覧に解決する。失敗か空なら、閉じる。既定は dns.lookup */
   resolve?: (host: string) => Promise<string[]>;
   /** 宛先の IP が、公開でない（内部・予約・メタデータなど）か。true なら拒否する。既定は ip_policy の isPrivateIp */
@@ -173,6 +187,11 @@ export function parseUpstreamProxyUrl(value: string): EgressUpstream {
 /** IPv6 リテラルは、URI・CONNECT の宛先では角括弧で囲む */
 const formatHost = (host: string): string => (net.isIPv6(host) ? `[${host}]` : host);
 
+/** 挙げた宛先の鍵。挙げた側も、要求から読んだ側も、同じ整え方（canonicalHost: 名前は小文字・末尾のドットなし、IPv6 は URL の正規形）にそろえてから比べる */
+function destinationKey(host: string, port: number): string {
+  return `${canonicalHost(host)}:${port}`;
+}
+
 function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => Error): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(onTimeout()), ms);
@@ -191,6 +210,8 @@ function withTimeout<T>(promise: Promise<T>, ms: number, onTimeout: () => Error)
 
 export class EgressGateway {
   private readonly allowedPorts: ReadonlySet<number>;
+  /** 運用者が、内部の宛先として挙げた `host:port`（host は整えた名前か IP リテラル） */
+  private readonly allowDestinations: ReadonlySet<string>;
   private readonly resolveName: (host: string) => Promise<string[]>;
   private readonly isPrivateIp: (ip: string) => boolean;
   private readonly limits: typeof DEFAULTS;
@@ -205,6 +226,7 @@ export class EgressGateway {
 
   constructor(options: EgressGatewayOptions = {}) {
     this.allowedPorts = new Set(options.allowedPorts ?? DEFAULT_PORTS);
+    this.allowDestinations = new Set((options.allowDestinations ?? []).map(({ host, port }) => destinationKey(host, port)));
     this.resolveName =
       options.resolve ?? (async (host) => (await dns.lookup(host, { all: true, verbatim: true })).map((entry) => entry.address));
     this.isPrivateIp = options.isPrivateIp ?? defaultIsPrivateIp;
@@ -425,9 +447,20 @@ export class EgressGateway {
     return { host, port };
   }
 
-  /** 解決の前の検査（安いものから）: ポート → 名前・IP リテラルが非公開でないか → 遮断する名前でないか */
+  /**
+   * 解決の前の検査（安いものから）: ポート → 名前・IP リテラルが非公開でないか → 遮断する名前でないか。
+   * 運用者が挙げた宛先（allowDestinations）は、ポートと、内部の名前・IP リテラルの検査を通す。ただし、挙げても通さない宛先
+   * （メタデータの名前・内部として通せない IP リテラル）は、通さない
+   */
   private checkDestination(host: string, port: number): void {
-    if (!this.allowedPorts.has(port)) throw new GatewayError(403, `許していないポート: ${port}`, 'port');
+    const listed = this.allowDestinations.has(destinationKey(host, port));
+    if (!listed && !this.allowedPorts.has(port)) throw new GatewayError(403, `許していないポート: ${port}`, 'port');
+    if (listed) {
+      if (isMetadataHostname(host)) throw new GatewayError(403, `遮断する名前: ${host}`, 'blocked_host');
+      // IP リテラルだけ見る（名前は、解決した IP を、dialDirect が見る。名前の書き方による推測は、挙げた名前には使わない）
+      if (net.isIP(host) && this.isPrivateIp(host) && !isAllowableInternalIp(host)) throw new GatewayError(403, `非公開の宛先: ${host}`, 'private_ip');
+      return;
+    }
     if (this.isPrivateIp(host)) throw new GatewayError(403, `非公開の宛先: ${host}`, 'private_ip');
     if (isBlockedHostname(host)) throw new GatewayError(403, `遮断する名前: ${host}`, 'blocked_host');
   }
@@ -435,9 +468,12 @@ export class EgressGateway {
   /** 名前を 1 回だけ解決し、答えの IP がすべて公開であることを確かめ、検査した IP に接続する */
   private async dialDirect(host: string, port: number): Promise<net.Socket> {
     const addresses = await this.addressesOf(host);
-    // 1 つでも非公開なら、全体を拒否する（公開の IP だけを選んで通すことはしない）
+    // 1 つでも非公開なら、全体を拒否する（公開の IP だけを選んで通すことはしない）。運用者が挙げた宛先は、通してよい内部の IP だけ、非公開でも通す
+    const listed = this.allowDestinations.has(destinationKey(host, port));
     for (const address of addresses) {
-      if (this.isPrivateIp(address)) throw new GatewayError(403, `非公開の IP に解決された: ${host} -> ${address}`, 'private_ip');
+      if (this.isPrivateIp(address) && !(listed && isAllowableInternalIp(address))) {
+        throw new GatewayError(403, `非公開の IP に解決された: ${host} -> ${address}`, 'private_ip');
+      }
     }
     return this.connectFirst(addresses, port);
   }

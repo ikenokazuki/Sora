@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import net from 'node:net';
 import { resetSecurityMetrics } from '../security/metrics.js';
-import { egressGatewayOptionsFromEnv, getEgressGateway, isEgressGatewayEnabled, stopEgressGateway } from './egress.js';
+import { egressChildProxyEnv, egressGatewayOptionsFromEnv, getEgressGateway, isEgressGatewayEnabled, isEgressGatewayStarted, stopEgressGateway } from './egress.js';
+import { childEnv } from '../security/child_env.js';
 import { connectHead, createEgressTestKit, fakeResolver, readBytes } from './egress_test_kit.js';
 
 const kit = createEgressTestKit();
@@ -212,5 +213,123 @@ describe('getEgressGateway: プロセスで 1 つの、出口のゲートウェ�
       if (previous === undefined) delete process.env.SORA_EGRESS_PORTS;
       else process.env.SORA_EGRESS_PORTS = previous;
     }
+  });
+});
+
+describe('isEgressGatewayStarted: ゲートウェイを始めたか', () => {
+  const proxyKeys = ['SORA_PROXY_URL', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy'];
+  let saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    saved = Object.fromEntries(proxyKeys.map((key) => [key, process.env[key]]));
+    for (const key of proxyKeys) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of proxyKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  test('使うまでは始めていない。getEgressGateway で始め、stopEgressGateway で止まる', async () => {
+    expect(isEgressGatewayStarted()).toBe(false);
+    await getEgressGateway();
+    expect(isEgressGatewayStarted()).toBe(true);
+    await stopEgressGateway();
+    expect(isEgressGatewayStarted()).toBe(false);
+  });
+});
+
+describe('egressChildProxyEnv: 子プロセス（Yahoo のバイナリ・住所データの構築）の通信も、ゲートウェイに通す（HTTP(S)_PROXY で渡す）', () => {
+  const keys = ['SORA_EGRESS_GATEWAY', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy'];
+  let saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  test('off のときは、何も足さず、ゲートウェイも始めない（子プロセスの環境は、これまでどおり）', async () => {
+    expect(await egressChildProxyEnv()).toEqual({});
+    expect(isEgressGatewayStarted()).toBe(false);
+  });
+
+  test('on のとき、HTTP_PROXY・HTTPS_PROXY（大文字・小文字）は、ゲートウェイの url。ALL_PROXY・NO_PROXY は、消す', async () => {
+    process.env.SORA_EGRESS_GATEWAY = 'on';
+    const endpoint = await getEgressGateway();
+
+    const extra = await egressChildProxyEnv();
+
+    expect(extra).toEqual({ HTTP_PROXY: endpoint.url, HTTPS_PROXY: endpoint.url, http_proxy: endpoint.url, https_proxy: endpoint.url });
+    for (const name of ['ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy']) expect(name in extra && extra[name] === undefined, name).toBe(true);
+  });
+
+  test('childEnv に重ねると、運用者の上流・ALL_PROXY・NO_PROXY は、子プロセスに残らず、ゲートウェイだけを指す', async () => {
+    process.env.SORA_EGRESS_GATEWAY = 'on';
+    const endpoint = await getEgressGateway();
+    const source = { PATH: '/bin', LANG: 'C', HTTPS_PROXY: 'http://upstream.example:3128', http_proxy: 'http://upstream.example:3128', ALL_PROXY: 'socks5://upstream.example:1080', NO_PROXY: 'localhost,.internal', no_proxy: 'localhost' };
+
+    const env = childEnv(await egressChildProxyEnv(), source);
+
+    expect(env).toEqual({ PATH: '/bin', LANG: 'C', HTTP_PROXY: endpoint.url, HTTPS_PROXY: endpoint.url, http_proxy: endpoint.url, https_proxy: endpoint.url });
+  });
+
+  test('on で、ゲートウェイを始められないとき（設定の誤り）は、失敗する（子プロセスに、直接の経路を、黙って渡さない）', async () => {
+    process.env.SORA_EGRESS_GATEWAY = 'on';
+    process.env.SORA_PROXY_LIST = 'http://proxy-a.example:8080';
+    await expect(egressChildProxyEnv()).rejects.toThrow('SORA_PROXY_LIST');
+  });
+
+  test('SORA_FETCH_ALLOW_PRIVATE_NETWORK=true のときは、ゲートウェイを使わないので、何も足さない', async () => {
+    const warn = spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      process.env.SORA_EGRESS_GATEWAY = 'on';
+      process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
+      expect(await egressChildProxyEnv()).toEqual({});
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe('SORA_EGRESS_ALLOW_HOSTS: 内部の宛先を、通す宛先として挙げる', () => {
+  test('host:port の一覧を、allowDestinations にする（名前は小文字・末尾のドットなし、IPv6 は [ ] を外す）。未設定・空は、何も指定しない', () => {
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'FxEmbed.Internal:3000, 10.0.0.5:8080 ,[fd00::5]:8443' }).allowDestinations).toEqual([
+      { host: 'fxembed.internal', port: 3000 },
+      { host: '10.0.0.5', port: 8080 },
+      { host: 'fd00::5', port: 8443 },
+    ]);
+    expect(egressGatewayOptionsFromEnv({}).allowDestinations).toBeUndefined();
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: '  ' }).allowDestinations).toBeUndefined();
+  });
+
+  test('公開の宛先（標準でないポート）も、挙げられる', () => {
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'api.example.com:8443,93.184.216.34:8443' }).allowDestinations).toEqual([
+      { host: 'api.example.com', port: 8443 },
+      { host: '93.184.216.34', port: 8443 },
+    ]);
+  });
+
+  test.each(['noport.internal', 'host:0', 'host:70000', '*.internal:80', 'http://host:80', '10.0.0.0/8:80', '0x7f.1:80', '2130706433:80', '127.1:80', '010.0.0.1:80', 'a b:80', '[::1:80', '[zz::1]:80', ':80', 'host:', 'host:80:90', '.internal:80', 'a..b:80', '[10.0.0.1]:80'])(
+    '書き方の誤り %j は、変数名と正しい形のエラー（黙って、無いものとして扱わない）',
+    (entry) => {
+      expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: entry })).toThrow('SORA_EGRESS_ALLOW_HOSTS の値');
+    },
+  );
+
+  test.each(['169.254.169.254:80', 'metadata.google.internal:80', 'instance-data:80', '[fe80::1]:80', '0.0.0.0:80', '224.0.0.1:80', '[::]:80', '192.0.2.5:80', '100.100.100.200:80', '[fd00:ec2::254]:80', '[FD00:EC2:0:0:0:0:0:254]:80'])(
+    '挙げても通さない宛先 %j は、理由を添えたエラー（黙って、通さないまま起動しない）',
+    (entry) => {
+      expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: entry })).toThrow('SORA_EGRESS_ALLOW_HOSTS に、挙げても通さない宛先があります');
+    },
+  );
+
+  test('通さない宛先の拒否の文には、どの宛先かを添える（登録簿が整えた形で）', () => {
+    expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000, 169.254.169.254:80' })).toThrow('169.254.169.254:80');
+    expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: '[FE80::1]:80' })).toThrow('[fe80::1]:80');
   });
 });

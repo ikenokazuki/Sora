@@ -178,9 +178,23 @@ export function isPrivateIp(ip: string): boolean {
   return false;
 }
 
+/**
+ * クラウドのメタデータの名前と IP。運用者が許す宛先に挙げても通さない。
+ * 169.254.169.254（AWS・GCP・Azure ほか。リンクローカルなので、どのみち内部として通さない）のほかに、通す範囲の中にあるものを挙げる:
+ * 100.100.100.200（Alibaba Cloud。CGNAT の範囲）と fd00:ec2::254（AWS の IPv6。ULA の範囲）
+ */
+const METADATA_HOSTNAMES: ReadonlySet<string> = new Set(['169.254.169.254', 'metadata.google.internal', 'metadata.internal', 'instance-data', '100.100.100.200', 'fd00:ec2::254']);
+
+const normalizeHostname = (hostname: string): string => hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+
+/** クラウドのメタデータの名前・IP か（IPv6 は、書き方が違っても、正規形で比べる） */
+export function isMetadataHostname(hostname: string): boolean {
+  return METADATA_HOSTNAMES.has(canonicalHost(hostname));
+}
+
 /** ブロック対象ホスト名判定ヘルパー */
 export function isBlockedHostname(hostname: string): boolean {
-  const h = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  const h = normalizeHostname(hostname);
   if (
     h === 'localhost' ||
     h === '127.0.0.1' ||
@@ -193,13 +207,63 @@ export function isBlockedHostname(hostname: string): boolean {
   ) {
     return true;
   }
-  if (
-    h === '169.254.169.254' ||
-    h === 'metadata.google.internal' ||
-    h === 'metadata.internal' ||
-    h === 'instance-data'
-  ) {
-    return true;
-  }
+  if (METADATA_HOSTNAMES.has(h)) return true;
   return isPrivateIp(h);
+}
+
+/**
+ * 正準な IP リテラルか。IPv4 は 10 進のドット表記（各 0〜255・先頭の 0 なし）、IPv6 は解釈できる表記（ゾーン ID なし。[ ] は付けない）。
+ * 4・6・どちらでもなければ 0（別の書き方の IPv4 〈0x7f.1・127.1・整数・8 進〉は、0）。
+ */
+export function ipLiteralVersion(host: string): 0 | 4 | 6 {
+  if (/^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/.test(host)) return 4;
+  const lower = host.toLowerCase();
+  return lower.includes(':') && !lower.includes('%') && parseIpv6(lower) !== null ? 6 : 0;
+}
+
+/**
+ * 照合のための、宛先の整え方（挙げた宛先の一覧も、要求の宛先も、これで整えてから比べる）。名前は小文字にして、末尾のドットと IPv6 の [ ] を外す。
+ * IPv6 は URL の正規形（0 の省略・小文字）にそろえる。IPv4 は 10 進のドット表記のまま（別の書き方は、そろえない。一覧には載らないので、挙げた宛先とは一致しない）。
+ */
+export function canonicalHost(host: string): string {
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  if (ipLiteralVersion(h) !== 6) return h;
+  try {
+    return new URL(`http://[${h}]/`).hostname.slice(1, -1);
+  } catch {
+    return h;
+  }
+}
+
+/** 運用者が許す宛先に挙げたとき、通してよい内部の IPv4（ループバック・プライベート・CGNAT） */
+function isAllowableInternalIpv4(num: number): boolean {
+  if (num === 0x646464c8) return false; // 100.100.100.200（Alibaba Cloud のメタデータ。CGNAT の範囲の中）
+  const b0 = (num >>> 24) & 0xff;
+  const b1 = (num >>> 16) & 0xff;
+  return b0 === 127 || b0 === 10 || (b0 === 172 && b1 >= 16 && b1 <= 31) || (b0 === 192 && b1 === 168) || (b0 === 100 && b1 >= 64 && b1 <= 127);
+}
+
+/**
+ * 運用者が、出口のゲートウェイの許す宛先（SORA_EGRESS_ALLOW_HOSTS）に挙げたとき、内部の IP として通してよいか。
+ * 通すのは、ループバック（127/8・::1）・プライベート（10/8・172.16/12・192.168/16）・CGNAT（100.64/10）・ULA（fc00::/7）だけ。
+ * リンクローカル（クラウドのメタデータの 169.254.169.254 を含む）・未指定・マルチキャスト・予約・ドキュメント用などは、挙げても通さない
+ * （通す範囲を挙げ、それ以外の内部の範囲は、既定で通さない。あとから増える予約の範囲も、通さない側に倒れる）。
+ * 通す範囲の中にある、Alibaba Cloud のメタデータ（100.100.100.200）と AWS の IPv6 のメタデータ（fd00:ec2::254）も、通さない。
+ * IPv4 射影（::ffff:a.b.c.d）は、中の IPv4 で判定する。NAT64・6to4 など、ほかの埋め込みは通さない。
+ * 公開の IP は、内部ではないので対象外（false）。公開の IP は、もともと通る。
+ */
+export function isAllowableInternalIp(ip: string): boolean {
+  const trimmed = ip.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (trimmed.includes(':')) {
+    const g = parseIpv6(trimmed);
+    if (!g) return false;
+    const [a, b, c, d, e, f, x, y] = g;
+    const upperFiveZero = a === 0 && b === 0 && c === 0 && d === 0 && e === 0;
+    if (upperFiveZero && f === 0 && x === 0 && y === 1) return true; // ::1
+    if (upperFiveZero && f === 0xffff) return isAllowableInternalIpv4(((x << 16) | y) >>> 0); // ::ffff:a.b.c.d
+    if (a === 0xfd00 && b === 0x0ec2 && c === 0 && d === 0 && e === 0 && f === 0 && x === 0 && y === 0x0254) return false; // fd00:ec2::254（AWS の IPv6 のメタデータ。ULA の範囲の中）
+    return (a & 0xfe00) === 0xfc00; // ULA fc00::/7
+  }
+  const num = parseIpv4ToUint32(trimmed);
+  return num !== null && isAllowableInternalIpv4(num);
 }
