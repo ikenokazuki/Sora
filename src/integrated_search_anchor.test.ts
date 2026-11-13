@@ -21,7 +21,7 @@ test('deep search の公式枠は、X 検索で判定した固有名詞の公式
     return { items: [{ id: '2', text: 'イコラブ ライブ 予定', url: 'https://x.com/fan/status/2' }], anchorTerm: '=LOVE', aliasTerms: ['イコラブ'], missingTerms: [] } as any;
   });
   try {
-    const result: any = await integratedSearch({ query: 'ライブ 予定 =LOVE', limit: 1, scrapeContent: false, noCache: true });
+    const result: any = await integratedSearch({ tenantId: 'legacy', query: 'ライブ 予定 =LOVE', limit: 1, scrapeContent: false, noCache: true });
     expect(result.realtime.officialAccountId).toBe('Equal_LOVE_12');
     expect(result.realtime.aliasTerms).toEqual(['イコラブ']);
     expect(result.realtime.items.filter((i: any) => i.isOfficial).map((i: any) => i.id)).toEqual(['Equal_LOVE_12-1']);
@@ -46,7 +46,7 @@ test('評判を調べる時は本人以外の投稿を先に並べ、本人の�
     return { items: [xPost('p1', 'fan1', 'fan1', '内山優花さん可愛い'), xPost('p2', 'fan2', 'fan2', '内山優花さんの歌が好き')], focus: opts.focus } as any;
   });
   try {
-    const result: any = await integratedSearch({ query: '内山優花 評判', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 15 });
+    const result: any = await integratedSearch({ tenantId: 'legacy', query: '内山優花 評判', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 15 });
     expect(seen[0]).toMatchObject({ focus: 'public', maxItems: 15 });
     expect(result.realtime.focus).toBe('public');
     expect(result.realtime.items.map((i: any) => i.id)).toEqual(['p1', 'p2', 'o1', 'o2']);
@@ -64,7 +64,7 @@ test('自動で見つけた公式が、クエリと関係の無いアカウン�
     return { items: [xPost('p1', 'fan1', 'fan1', '=LOVE 予定')], focus: 'official' } as any;
   });
   try {
-    const result: any = await integratedSearch({ query: '=LOVE 予定', limit: 1, scrapeContent: false, noCache: true });
+    const result: any = await integratedSearch({ tenantId: 'legacy', query: '=LOVE 予定', limit: 1, scrapeContent: false, noCache: true });
     expect(result.realtime.officialAccountId).toBeUndefined();
     expect(result.realtime.items.map((i: any) => i.id)).toEqual(['p1']);
   } finally {
@@ -81,9 +81,9 @@ test('realtimeLimit を既定（20）より大きくした時だけ、X への�
     return { items: [xPost('p1', 'fan1', 'fan1', '内山優花さん')], focus: 'official' } as any;
   });
   try {
-    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true });
-    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 30 });
-    await integratedSearch({ query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 100 });
+    await integratedSearch({ tenantId: 'legacy', query: '内山優花', limit: 1, scrapeContent: false, noCache: true });
+    await integratedSearch({ tenantId: 'legacy', query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 30 });
+    await integratedSearch({ tenantId: 'legacy', query: '内山優花', limit: 1, scrapeContent: false, noCache: true, realtimeLimit: 100 });
     expect(seen[0].limit).toBeUndefined();
     expect(seen[1]).toMatchObject({ limit: 30, maxItems: 30 });
     // Yahoo の1回の取得は40件まで。上限だけ100にして、複数の検索の結果から選ぶ

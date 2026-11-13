@@ -131,7 +131,7 @@ searchRoutes.post('/search/web', async (c) => {
     if (rawBody instanceof Response) return rawBody;
     const parsed = SearchWebRequestSchema.safeParse(rawBody);
     if (!parsed.success) return formatError(c, 'invalid search_web request', 'INVALID_INPUT', 400, false, parsed.error.format());
-    return c.json(await searchWebForRest(parsed.data));
+    return c.json(await searchWebForRest(parsed.data, c.get('tenant')?.tenantId ?? 'legacy'));
   } catch (err) { return formatError(c, errorMessage(err) || 'Web search failed', 'SEARCH_ERROR', 500); }
 });
 

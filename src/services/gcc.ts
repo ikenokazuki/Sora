@@ -3,6 +3,7 @@
 import { createHash } from 'node:crypto';
 import { envError, envJson } from '../config.js';
 import { errorMessage } from '../errors.js';
+import { PUBLIC_TENANT_ID } from '../security/tenant_context.js';
 import { GccPartySchema } from '../types.js';
 import { type GccRenderItem, NO_STATE, PARTY_FIELDS, renderGccPackageHtml } from './gcc_html.js';
 import { BATTERY_CONTRADICTION, type SECTION_1610_1_D, TradeInputError, checkCpscCertificate, checkFdaRegulated, findCpscListCategory, section1610cExclusionFor } from './trade.js';
@@ -352,7 +353,7 @@ async function readItemPage({ input, summary }: ItemDecision): Promise<void> {
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('10 秒以内に読めませんでした')), PAGE_READ_MS);
     });
-    const page = await Promise.race([scrapeUrl({ url: input.url, fastOnly: true, timeoutMs: PAGE_READ_MS, formats: ['jsonLd'], onlyMainContent: true, maxChars: 2_000 }), deadline]);
+    const page = await Promise.race([scrapeUrl({ url: input.url, tenantId: PUBLIC_TENANT_ID, fastOnly: true, timeoutMs: PAGE_READ_MS, formats: ['jsonLd'], onlyMainContent: true, maxChars: 2_000 }), deadline]);
     // 4xx・5xx のページ（scrape は投げずに unavailable で返す）の構造化データは、商品のものとは限らない
     if (page.contentStatus === 'unavailable') return warn('商品ページを読めませんでした（HTTP エラーか、本文のないページです）');
     const wantedVariant = new URL(input.url).searchParams.get('variant');

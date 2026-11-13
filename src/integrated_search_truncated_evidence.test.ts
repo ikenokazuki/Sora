@@ -37,7 +37,7 @@ async function search(paths: string[], extra: Record<string, unknown>) {
     if (previous === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
     else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previous;
   });
-  return integratedSearch({ query: '開場時間 料金', limit: 1, maxChars: 2000, includeRealtime: false, noCache: true, ...extra });
+  return integratedSearch({ tenantId: 'legacy', query: '開場時間 料金', limit: 1, maxChars: 2000, includeRealtime: false, noCache: true, ...extra });
 }
 
 test.each([

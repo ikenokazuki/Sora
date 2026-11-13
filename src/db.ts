@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { envPath, envStr } from './config.js';
 import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
 import { SECURITY_MIGRATIONS } from './security/migrations.js';
+import { PUBLIC_TENANT_ID } from './security/tenant_context.js';
 
 let dbInstance: Database | null = null;
 
@@ -468,7 +469,9 @@ export interface PersistedCookie {
   expiresAtMs?: number;
 }
 
+/** public の tenant（利用者を持たない取得）は、保存済みの Cookie・localStorage を、読まず、書かない */
 export function dbSaveTenantCookies(tenantId: string, domain: string, cookies: PersistedCookie[], scope = 'default'): void {
+  if (tenantId === PUBLIC_TENANT_ID) return;
   try {
     const db = getDb();
     db.query(`
@@ -496,6 +499,7 @@ export function dbDeleteTenantSession(tenantId: string, domain: string, scope = 
 }
 
 export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default'): PersistedCookie[] | undefined {
+  if (tenantId === PUBLIC_TENANT_ID) return undefined;
   try {
     const db = getDb();
     const row = db.query<{ cookies_json: string }, [string, string, string]>(
@@ -515,6 +519,7 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
 }
 
 export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default'): void {
+  if (tenantId === PUBLIC_TENANT_ID) return;
   try {
     const db = getDb();
     db.query(`
@@ -532,6 +537,7 @@ export function dbSaveDomainStorage(domain: string, storage: Record<string, stri
 }
 
 export function dbGetTenantStorage(tenantId: string, domain: string, scope = 'default'): Record<string, string> | undefined {
+  if (tenantId === PUBLIC_TENANT_ID) return undefined;
   try {
     const db = getDb();
     const row = db.query<{ storage_json: string }, [string, string, string]>(

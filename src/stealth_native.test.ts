@@ -253,7 +253,7 @@ describe.skipIf(!resolveChromiumPath())('ブラウザの偽装は Chromium 本�
   test('fetchWithStealthBrowser（scrapeUrl の renderJs）でも同じく native のまま揃う', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: probePage() }));
     try {
-      const result = await scrapeUrl({ url: `${server.base}/render`, renderJs: true, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${server.base}/render`, renderJs: true, noCache: true });
       expect(result.content).toContain('done=1');
       expectNativeTokens(result.content, await chromiumMajor());
     } finally {
@@ -338,7 +338,7 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
   test('既定では Google の Referer と、それに合う Sec-Fetch-Site: cross-site を付ける', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
     try {
-      await scrapeUrl({ url: `${server.base}/ref-default`, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${server.base}/ref-default`, noCache: true });
       const seen = server.last('/ref-default');
       expect(headerValue(seen, 'referer')).toBe(GOOGLE);
       expect(headerValue(seen, 'sec-fetch-site')).toBe('cross-site');
@@ -354,7 +354,7 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
   test('呼び出し側が Referer を指定したら、そちらを優先する', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
     try {
-      await scrapeUrl({ url: `${server.base}/ref-caller`, noCache: true, headers: { referer: 'https://example.com/mine' } });
+      await scrapeUrl({ tenantId: 'legacy', url: `${server.base}/ref-caller`, noCache: true, headers: { referer: 'https://example.com/mine' } });
       const seen = server.last('/ref-caller');
       expect(headerValue(seen, 'referer')).toBe('https://example.com/mine');
       expect(headerValue(seen, 'sec-fetch-site')).toBe('none');
@@ -366,7 +366,7 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
   test('Cookie などの資格情報を運ぶ取得には付けない', async () => {
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
     try {
-      await scrapeUrl({ url: `${server.base}/ref-cred`, noCache: true, cookies: [{ name: 'sid', value: 'abc', domain: '127.0.0.1', path: '/' }] });
+      await scrapeUrl({ tenantId: 'legacy', url: `${server.base}/ref-cred`, noCache: true, cookies: [{ name: 'sid', value: 'abc', domain: '127.0.0.1', path: '/' }] });
       expect(headerValue(server.last('/ref-cred'), 'referer')).toBeUndefined();
     } finally {
       server.close();
@@ -377,7 +377,7 @@ describe('ページ取得の 1 回目は、検索経由の閲覧に見せる Ref
     const server = await rawServer(() => ({ type: 'text/html; charset=utf-8', text: STATIC_PAGE }));
     process.env.SORA_FETCH_DEFAULT_REFERER = 'off';
     try {
-      await scrapeUrl({ url: `${server.base}/ref-off`, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `${server.base}/ref-off`, noCache: true });
       expect(headerValue(server.last('/ref-off'), 'referer')).toBeUndefined();
     } finally {
       delete process.env.SORA_FETCH_DEFAULT_REFERER;

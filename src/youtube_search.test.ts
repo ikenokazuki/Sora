@@ -102,7 +102,7 @@ describe('scrapeUrl with a YouTube video URL', () => {
   test('reads the captions instead of the watch page, and highlights the paragraphs for the query', async () => {
     const stub = stubYoutube();
     restore = stub.restore;
-    const r = await scrapeUrl({ url: `https://www.youtube.com/watch?v=${vid()}`, query: '特異値分解', noCache: true });
+    const r = await scrapeUrl({ tenantId: 'legacy', url: `https://www.youtube.com/watch?v=${vid()}`, query: '特異値分解', noCache: true });
     expect(r).toMatchObject({ title: '特異値分解の講義', siteName: 'YouTube', author: '講義チャンネル', contentStatus: 'body', source: 'web' });
     expect(r.content).toContain('#### 1m30s');
     expect(r.media?.type).toBe('youtube');
@@ -130,7 +130,7 @@ describe('search_deep (integratedSearch) with videos', () => {
   test('adds the top YouTube videos as results with source youtube', async () => {
     restore = stubYoutube().restore;
     const { video, ytA } = stubSearches();
-    const r = await integratedSearch({ query: '特異値分解 動画テスト', videos: 1, includeRealtime: false, noCache: true }) as any;
+    const r = await integratedSearch({ tenantId: 'legacy', query: '特異値分解 動画テスト', videos: 1, includeRealtime: false, noCache: true }) as any;
     expect(video).toHaveBeenCalledTimes(1);
     const videos = r.results.filter((x: any) => x.source === 'youtube');
     expect(videos.map((x: any) => x.url)).toEqual([`https://www.youtube.com/watch?v=${ytA}`]);
@@ -141,7 +141,7 @@ describe('search_deep (integratedSearch) with videos', () => {
   test('stops waiting for videos at scrapeDeadlineMs and does not cache the cut-short answer', async () => {
     restore = stubYoutube({ delayMs: 1500 }).restore;
     const { video } = stubSearches();
-    const ask = () => integratedSearch({ query: '特異値分解 締切テスト', videos: 1, includeRealtime: false, scrapeDeadlineMs: 300 }) as Promise<any>;
+    const ask = () => integratedSearch({ tenantId: 'legacy', query: '特異値分解 締切テスト', videos: 1, includeRealtime: false, scrapeDeadlineMs: 300 }) as Promise<any>;
     const started = Date.now();
     const first = await ask();
     expect(Date.now() - started).toBeLessThan(1400);
@@ -154,7 +154,7 @@ describe('search_deep (integratedSearch) with videos', () => {
   test('does not search videos unless asked', async () => {
     restore = stubYoutube().restore;
     const { video } = stubSearches();
-    await integratedSearch({ query: '特異値分解 動画なし', includeRealtime: false, noCache: true });
+    await integratedSearch({ tenantId: 'legacy', query: '特異値分解 動画なし', includeRealtime: false, noCache: true });
     expect(video).not.toHaveBeenCalled();
   });
 });

@@ -347,7 +347,7 @@ describe('検索', () => {
       const items = ['a', 'b', 'c'].map((p) => ({ title: p, url: `http://127.0.0.1:${server.port}/${run}/${p}`, snippet: `${p} の抜粋` }));
       run++;
       webSpy.mockResolvedValue({ items, count: items.length } as never);
-      const result = await integratedSearch({ query: '締切 確認', limit: 3, includeRealtime: false, noCache: true });
+      const result = await integratedSearch({ tenantId: 'legacy', query: '締切 確認', limit: 3, includeRealtime: false, noCache: true });
       return (result.results as { deadlineExceeded?: boolean }[]).some((r) => r.deadlineExceeded === true);
     });
     try {

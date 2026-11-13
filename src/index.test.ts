@@ -644,12 +644,12 @@ describe('web-fetcher Core Functions', () => {
   });
 
   it('scrapeUrl should include source: "web" in the response', async () => {
-    const result = await withExamplePage((url) => scrapeUrl({ url, mode: 'fast', noCache: true }));
+    const result = await withExamplePage((url) => scrapeUrl({ tenantId: 'legacy', url, mode: 'fast', noCache: true }));
     expect(result.source).toBe('web');
   });
 
   it('scrapeUrl with responseMode: evidence should replace full content with only matched highlights', async () => {
-    const result = await withExamplePage((url) => scrapeUrl({
+    const result = await withExamplePage((url) => scrapeUrl({ tenantId: 'legacy',
       url,
       query: 'Domain',
       responseMode: 'evidence',
@@ -662,7 +662,7 @@ describe('web-fetcher Core Functions', () => {
 
   it('scrapeUrl should reject when both fastOnly: true and renderJs: true are specified', async () => {
     expect(
-      scrapeUrl({
+      scrapeUrl({ tenantId: 'legacy',
         url: 'https://example.com',
         fastOnly: true,
         renderJs: true,
@@ -1525,7 +1525,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const restoreLocalFetch = setLocalFetch('true');
     try {
-      const res = await scrapeUrl({
+      const res = await scrapeUrl({ tenantId: 'legacy',
         url: `http://127.0.0.1:${server.port}/long-page`,
         mode: 'browser',
         formats: ['screenshot'],
@@ -1893,13 +1893,13 @@ describe('Sora REST & MCP Endpoints', () => {
       await cleanupPage.close();
 
       // 1回目: サーバーが Set-Cookie を返す。DBに永続化されるはず
-      const first = await scrapeUrl({ url, renderJs: true, noCache: true });
+      const first = await scrapeUrl({ tenantId: 'legacy', url, renderJs: true, noCache: true });
       expect(first.content).toContain('seen-cookie:false');
       const saved = dbGetDomainCookies(domain);
       expect(saved?.some((c) => c.name === 'sora_persist_test' && c.value === 'abc123')).toBe(true);
 
       // 2回目: 保存済みCookieが復元され、サーバーへ送り返されるはず
-      const second = await scrapeUrl({ url, renderJs: true, noCache: true });
+      const second = await scrapeUrl({ tenantId: 'legacy', url, renderJs: true, noCache: true });
       expect(second.content).toContain('seen-cookie:true');
     } finally {
       restoreLocalFetch();
@@ -1929,7 +1929,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const restoreLocalFetch = setLocalFetch('true');
     try {
-      const result = await scrapeUrl({
+      const result = await scrapeUrl({ tenantId: 'legacy',
         url: `http://127.0.0.1:${server.port}/lang-consistency`,
         renderJs: true,
         noCache: true,
@@ -1965,7 +1965,7 @@ describe('Sora REST & MCP Endpoints', () => {
     try {
       const before = getBotDetectionMetrics().upgradeCount;
 
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/spa-metrics`, noCache: true });
 
       expect(result.renderedWithBrowser).toBe(true);
       expect(getBotDetectionMetrics().upgradeCount).toBe(before + 1);
@@ -2010,14 +2010,14 @@ describe('Sora REST & MCP Endpoints', () => {
       dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
 
       // 1回目: localStorageは空。ページ側で値をセットする。DBに永続化されるはず
-      const first = await scrapeUrl({ url, renderJs: true, noCache: true });
+      const first = await scrapeUrl({ tenantId: 'legacy', url, renderJs: true, noCache: true });
       expect(first.content).toContain('seen-storage:none');
       const saved = dbGetDomainStorage(domain);
       expect(saved?.sora_storage_test).toBe('persisted_value');
 
       // 2回目: 保存済みlocalStorageがページロード前に復元されているはず
       // (markdown変換で "_" が "\_" にエスケープされることがあるため正規表現で許容する)
-      const second = await scrapeUrl({ url, renderJs: true, noCache: true });
+      const second = await scrapeUrl({ tenantId: 'legacy', url, renderJs: true, noCache: true });
       expect(second.content).toMatch(/seen-storage:persisted\\?_value/);
     } finally {
       restoreLocalFetch();
@@ -2064,7 +2064,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const restoreLocalFetch = setLocalFetch('true');
     try {
-      const res = await scrapeUrl({ url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
+      const res = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${server.port}/spa-gaps`, renderJs: true, noCache: true });
 
       expect(res.content).toContain('TOP-CONTENT-VISIBLE');
       // IntersectionObserver は画面内に入らないと発火しないため自動スクロールが必要
@@ -2112,7 +2112,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const restoreLocalFetch = setLocalFetch('true');
     try {
-      const result = await scrapeUrl({
+      const result = await scrapeUrl({ tenantId: 'legacy',
         url: `http://127.0.0.1:${server.port}/passive-mouse-trail`,
         renderJs: true,
         noCache: true,
@@ -3991,12 +3991,12 @@ describe('Sora REST & MCP Endpoints', () => {
     try {
       dbSaveDomainCookies('127.0.0.1', []); // 他テストのDB永続化分をクリア
 
-      await scrapeUrl({ url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
+      await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${serverA.port}/set-cookie`, renderJs: true, noCache: true });
       // 今回実装したDB経由の正規の永続化(同一ドメインへの意図した引き継ぎ)ではなく、
       // ブラウザの生CookieJarが独立しているか（BrowserContext分離）だけを見たいので、
       // 1回目で書き込まれたDBの永続化分をここで明示的に消してから2回目を実行する。
       dbSaveDomainCookies('127.0.0.1', []);
-      const result = await scrapeUrl({ url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${serverB.port}/check-cookie`, renderJs: true, noCache: true });
       expect(result.content).toContain('leaked:false');
     } finally {
       restoreLocalFetch();
@@ -4920,7 +4920,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should extract highlights when extractHighlights: true is passed alongside query', async () => {
-      const result = await withExamplePage((url) => scrapeUrl({
+      const result = await withExamplePage((url) => scrapeUrl({ tenantId: 'legacy',
         url,
         query: 'domain',
         extractHighlights: true,
@@ -4934,7 +4934,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should automatically extract highlights when query is passed even if extractHighlights is omitted', async () => {
-      const result = await withExamplePage((url) => scrapeUrl({
+      const result = await withExamplePage((url) => scrapeUrl({ tenantId: 'legacy',
         url,
         query: 'illustrative examples',
         noCache: true,
@@ -4946,7 +4946,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     it('scrapeUrl should NOT extract highlights when extractHighlights: false is explicitly passed even if query is present', async () => {
-      const result = await withExamplePage((url) => scrapeUrl({
+      const result = await withExamplePage((url) => scrapeUrl({ tenantId: 'legacy',
         url,
         query: 'illustrative examples',
         extractHighlights: false,
@@ -5486,7 +5486,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     itLive('integratedSearch should return 9/6 live information in realtime and results for user exact problem query', async () => {
-      const res = await integratedSearch({
+      const res = await integratedSearch({ tenantId: 'legacy',
         query: '君と見るそら 明日 ライブ 2026年9月6日 ライブ予定',
         limit: 5,
         scrapeContent: true,
@@ -5698,7 +5698,7 @@ describe('Sora REST & MCP Endpoints', () => {
     });
 
     itLive('scrapeUrl should extract full content from note.com SSR articles without browser timeout', async () => {
-      const res = await scrapeUrl({
+      const res = await scrapeUrl({ tenantId: 'legacy',
         url: 'https://note.com/kimisora_mix/n/nd94f3a06fe8f',
         timeoutMs: 12000,
         noCache: true,
@@ -5833,7 +5833,7 @@ describe('Sora REST & MCP Endpoints', () => {
       });
 
       itLive('integratedSearch should support officialAccountId and hybrid merge', async () => {
-        const res = await integratedSearch({
+        const res = await integratedSearch({ tenantId: 'legacy',
           query: '君と見るそら 強化月間ライブ',
           officialAccountId: 'kimisora_JPN',
           includeRealtime: true,

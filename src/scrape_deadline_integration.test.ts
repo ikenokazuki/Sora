@@ -18,7 +18,7 @@ test('scrapeDeadlineMs also stops adaptive extra waves once the deadline fired',
   process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
     const started = Date.now();
-    const result = await integratedSearch({ query: '存在しない語ほげ 料金', limit: 3, includeRealtime: false, noCache: true, scrapeDeadlineMs: 1500, adaptiveScrape: true, scrapeBudget: 5 });
+    const result = await integratedSearch({ tenantId: 'legacy', query: '存在しない語ほげ 料金', limit: 3, includeRealtime: false, noCache: true, scrapeDeadlineMs: 1500, adaptiveScrape: true, scrapeBudget: 5 });
     const elapsed = Date.now() - started;
     expect(result.results.some((r: any) => r.deadlineExceeded)).toBe(true);
     expect(result.results.some((r: any) => r.selectionReason === 'scrape_refill')).toBe(false);
@@ -44,10 +44,10 @@ test('contextSufficiency is omitted when neither markdown nor highlights were re
   const previous = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
   try {
-    const htmlOnly = await integratedSearch({ query: `http://127.0.0.1:${server.port}/a`, limit: 3, includeRealtime: false, noCache: true, formats: ['html'] });
+    const htmlOnly = await integratedSearch({ tenantId: 'legacy', query: `http://127.0.0.1:${server.port}/a`, limit: 3, includeRealtime: false, noCache: true, formats: ['html'] });
     expect(htmlOnly.count).toBe(1);
     expect(htmlOnly.contextSufficiency).toBeUndefined();
-    const normal = await integratedSearch({ query: '駐車場 料金', limit: 3, includeRealtime: false, noCache: true });
+    const normal = await integratedSearch({ tenantId: 'legacy', query: '駐車場 料金', limit: 3, includeRealtime: false, noCache: true });
     expect(normal.contextSufficiency?.level).toBe('no_gap_detected');
   } finally {
     webSpy.mockRestore();

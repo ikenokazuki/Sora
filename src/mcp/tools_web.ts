@@ -219,7 +219,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
       const { url, listOnly, limit, since, until, ...crawl } = args;
       if (listOnly) {
         try {
-          return { content: [{ type: 'text', text: toolJson(await mapSiteUrl({ url, limit, since, until })) }] };
+          return { content: [{ type: 'text', text: toolJson(await mapSiteUrl({ url, limit, since, until, tenantId: serverTenantId })) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: `Map site error: ${errorMessage(err) || err}` }] };
         }
@@ -244,7 +244,7 @@ export function registerWebTools(context: ToolRegistrationContext): void {
     SEARCH_WEB_INPUT_SHAPE,
     async (options) => {
       try {
-        const result = await searchWebWithFormats(options);
+        const result = await searchWebWithFormats(options, serverTenantId);
         return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
         return { isError: true, content: [{ type: 'text', text: `Search error: ${errorMessage(err) || err}` }] };

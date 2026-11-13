@@ -111,7 +111,7 @@ describe('the period and platform reach the video search', () => {
     const web = spyOn(yahoo, 'searchYahooWeb').mockResolvedValue({ items: [], count: 0 } as never);
     cleanups.push(() => web.mockRestore());
     const video = spyVideo();
-    await integratedSearch({ query: '特異値分解 期間テスト', videos: 1, updated: 'week', includeRealtime: false, noCache: true });
+    await integratedSearch({ tenantId: 'legacy', query: '特異値分解 期間テスト', videos: 1, updated: 'week', includeRealtime: false, noCache: true });
     expect(video).toHaveBeenCalledWith(expect.objectContaining({ platform: 'youtube', updated: 'week' }));
   });
 

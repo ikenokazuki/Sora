@@ -85,7 +85,7 @@ describe('crawl_site の listOnly（mapSiteUrl）: 日付で絞ってから件�
   test('limit 2 と since を一緒に指定しても、新しい 2 件が残る', async () => {
     const { server, base } = startSite({ sitemap: true });
     try {
-      const r = await mapSiteUrl({ url: base + '/', limit: 2, since: '2026-05-01', noCache: true });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 2, since: '2026-05-01', noCache: true });
       expect(r.source).toBe('sitemap');
       expect(r.links).toEqual([`${base}/new1`, `${base}/new2`]);
       expect(r.count).toBe(2);
@@ -97,7 +97,7 @@ describe('crawl_site の listOnly（mapSiteUrl）: 日付で絞ってから件�
   test('日付の絞り込みの後に残る件数が limit より多ければ、limit 件で切る（先頭から）', async () => {
     const { server, base } = startSite({ sitemap: true });
     try {
-      const r = await mapSiteUrl({ url: base + '/', limit: 1, until: '2026-09-15', noCache: true });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 1, until: '2026-09-15', noCache: true });
       expect(r.links).toEqual([`${base}/old1`]);
       expect(r.count).toBe(1);
     } finally {
@@ -108,7 +108,7 @@ describe('crawl_site の listOnly（mapSiteUrl）: 日付で絞ってから件�
   test('日付を指定しないときは、今までどおり limit 件', async () => {
     const { server, base } = startSite({ sitemap: true });
     try {
-      const r = await mapSiteUrl({ url: base + '/', limit: 2, noCache: true });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 2, noCache: true });
       expect(r.links).toEqual([`${base}/old1`, `${base}/old2`]);
     } finally {
       server.stop(true);
@@ -151,7 +151,7 @@ describe('crawl_site の listOnly（mapSiteUrl）: 日付で絞ってから件�
       const key = `map:${base}/:2:false:2026-05-01:`;
       const { setToCache } = await import('./cache.js');
       setToCache(key, { url: base + '/', links: [], count: 0, source: 'sitemap' });
-      const r = await mapSiteUrl({ url: base + '/', limit: 2, since: '2026-05-01' });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 2, since: '2026-05-01' });
       expect(r.links).toEqual([`${base}/new1`, `${base}/new2`]);
     } finally {
       server.stop(true);
@@ -178,11 +178,11 @@ describe('crawl_site の listOnly（mapSiteUrl）: サイトマップの読み�
     });
     try {
       const base = `http://127.0.0.1:${server.port}`;
-      const r = await mapSiteUrl({ url: base + '/', limit: 1000, since: '2026-05-01', noCache: true });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 1000, since: '2026-05-01', noCache: true });
       expect(r.source).toBe('sitemap');
       expect(r.links).toEqual([`${base}/p4999`]);
       // 日付を指定しなければ、limit 件までを先頭から
-      const plain = await mapSiteUrl({ url: base + '/', limit: 3, noCache: true });
+      const plain = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit: 3, noCache: true });
       expect(plain.links).toEqual([`${base}/p0`, `${base}/p1`, `${base}/p2`]);
     } finally {
       server.stop(true);
@@ -230,7 +230,7 @@ describe('crawl_site の listOnly（mapSiteUrl）: サイトマップの読み�
       waiting = new Map();
       maxInFlight = 0;
       const base = `http://127.0.0.1:${server.port}`;
-      const r = await mapSiteUrl({ url: base + '/', limit, noCache: true });
+      const r = await mapSiteUrl({ tenantId: 'legacy', url: base + '/', limit, noCache: true });
       return { links: r.links, fetched: events.filter((e) => e.startsWith('start ')).map((e) => e.slice(6)), base };
     };
     try {
@@ -296,7 +296,7 @@ describe('crawl_site: pages は scrape と同じ整形（links は formats で�
   test('既定の formats では links も内部の項目も付かない', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 3, maxDepth: 1, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 3, maxDepth: 1, noCache: true });
       expect(r.pages.length).toBe(3);
       for (const p of r.pages) {
         expect(p.url).toBeString();
@@ -313,7 +313,7 @@ describe('crawl_site: pages は scrape と同じ整形（links は formats で�
   test('formats に links を求めたときは links が付く（たどる動作は同じ）', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 3, maxDepth: 1, formats: ['markdown', 'links'], noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 3, maxDepth: 1, formats: ['markdown', 'links'], noCache: true });
       expect(r.pages.length).toBe(3);
       expect(r.pages[0].links).toContain(`${base}/a`);
       for (const k of internal) expect(r.pages[0][k], k).toBeUndefined();
@@ -352,7 +352,7 @@ describe('crawl_site: 各ページの warnings は応答に残る', () => {
     // 画像を撮るブラウザを失敗させる（取れなかった旨の warnings が、ページごとに付く）
     const spy = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 3, maxDepth: 1, formats: ['markdown', 'screenshot'], noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 3, maxDepth: 1, formats: ['markdown', 'screenshot'], noCache: true });
       expect(r.pages.length).toBe(3);
       for (const p of r.pages) {
         expect(p.screenshot).toBeUndefined();
@@ -377,7 +377,7 @@ describe('crawl_site: 各ページの warnings は応答に残る', () => {
   test('screenshot を求めなければ、warnings は付かない', async () => {
     const { server, base } = startSite();
     try {
-      const r = await crawlSiteUrl({ url: base + '/', maxPages: 2, maxDepth: 1, noCache: true });
+      const r = await crawlSiteUrl({ tenantId: 'legacy', url: base + '/', maxPages: 2, maxDepth: 1, noCache: true });
       for (const p of r.pages) expect(p.warnings).toBeUndefined();
     } finally {
       server.stop(true);
