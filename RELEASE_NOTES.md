@@ -191,6 +191,13 @@
   - 消したもの: `SORA_AUTH_LOOPBACK_NO_KEY`（v4 の `ALLOW_LOCAL_NO_AUTH`）、`SORA_AUTH_TRUST_PROXY`（v4 の `TRUST_PROXY`）、`SORA_AUTH_PROXY_HOPS`、`internal` の tenant、接続元（`Bun.serve` の `requestIP`）を認証に渡す受け渡し。どの名前も、設定が残っていても読まず、起動時に「廃止」の警告を出します。`TRUST_PROXY` は、ほかのプログラムも使う名前なので、警告は「Sora のための設定なら消してください」と添えます。
   - 実測（設計書 E24。rootless Podman 5.7.0・Bun 1.4.4）: IPv6 を無効にしたコンテナでも、Bun は IPv4 の `127.0.0.1` を `::ffff:127.0.0.1` と報告します（この設定は IPv4 の直接接続に効きません）。公開したポートへの接続は、中ではループバックに見えません（pasta ではホストの IP、slirp4netns では `10.0.2.100`・`10.0.2.2`、bridge では `10.88.0.2`）。残る危険は、同じホストのリバースプロキシ（`X-Forwarded-For` を足さない）とホストネットワークです。
   - `X-Forwarded-For` を読む必要が出たとき（段階 5 の認証失敗の絞りなど）は、使い道と一緒に足し直します。
+- **取得結果の共有キャッシュが、tenant の保存済みの状態を使って得た結果を、別の tenant に返さないようにしました（#107。`standard` の挙動が変わるところがあります）。** 共有のサービスとして動かすための隔離の、段階 4 の最初の PR です。
+  - これまで、`scrape` などの結果は、tenant を含まないキーで共有キャッシュに入り、その tenant が持つ保存済みの Cookie・localStorage（そのサイトが、以前の取得のときにセットしたもの。言語・地域・同意・閲覧履歴・カートなど）で見えた内容も、同じ URL を取った別の tenant に、`cached: true` で返りました（手元の再現は設計書 E25。有効期間は 30 分で、SQLite にも残ります）。
+  - いまは、取得が、Cookie を持つセッション（保存済みの Cookie を戻したもの、前の取得で受け取ったもの）か、保存済みの localStorage で始まったなら、結果をその tenant のキーにだけ置き、状態を使わなかった結果だけを共有のキーに置きます。読むのは、tenant のキー、共有のキーの順です。同時の取得をまとめるのも、同じ tenant の中だけです。`search_deep` の応答も、読んだページが tenant の状態を使ったなら、同じように tenant のキーにだけ置きます。
+  - Cookie か、無害と決めたもの（`Accept`・`Accept-Language`・`User-Agent`・`Referer`・`Cache-Control`・`Pragma`・`DNT`）以外のヘッダーを渡した取得は、共有キャッシュを読まず、書きません（以前は、`Authorization`・`Cookie`・`X-API-Key` など 6 つの名前だけでした。`X-Auth`・`Api-Key`・`X-CSRF-Token` などで運ばれた内容も、共有しません）。
+  - キャッシュのキーの版を上げました（`scrape:v10` → `v11`、`search:integrated:v13` → `v14`）。以前のキーの、状態で見える内容が入っているかもしれない行は、読まれなくなります（更新後の最初の取得は、キャッシュに当たりません）。tenant のキャッシュの回数は、`/metrics` の `sora_tenant_cache_write_total` で見られます。
+  - 影響: 鍵が 1 つか、匿名だけの運用（tenant が 1 つ）では、結果は変わりません。サイトが Cookie を出すと、その tenant の以降の取得の結果は、tenant のキーに置くので、別の tenant は、同じ URL を取り直します（安全側の動きで、同じ tenant の繰り返しの取得は、いままでどおりキャッシュに当たります）。
+  - `map_site`・`search_web` の formats・GCC・trade・国の情報の取得は、tenant を渡さず `legacy` として動くので、この PR の対象外です（段階 4 の次の PR で、tenant を必須にします）。
 - **運用の確認を足しました。** 週 1 回、リリースのイメージの Chromium・Bun・distroless の土台と CI の Bun を新しい版と比べ、遅れていれば issue で知らせます（#79）。CI の Bun を 1.4.2 から 1.4.4 に上げました（brotli の範囲外書き込みなど、2026-10 の勧告 3 件の修正を含む版、#80）。また、週 1 回、上流の wreq-util に、いまの上限より新しい Chrome のプロファイルが入ったかを見て、入っていれば、その rev で試しにイメージをビルドし、ブラウザと静的取得の ClientHello を比べて、通れば更新の PR を作ります（マージは人が決めます。手順は `docs/browser-alignment.md`、#87）。
 
 # Sora v4.2.0 — HTS の推測の判例を手元の索引から引くようにし、町名がローマ字の住所を読めるようにした
