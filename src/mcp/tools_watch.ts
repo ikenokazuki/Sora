@@ -8,7 +8,7 @@ import type { ToolRegistrationContext } from './registry.js';
 
 /** 👁️ Category 6: Watch & Diff Monitoring (モジュール: 'watch') */
 export function registerWatchTools(context: ToolRegistrationContext): void {
-  const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
+  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId } = context;
   // Tool 19: watch (Webページの差分監視。action で登録・確認・一覧・削除) - DEFERRED
   const WATCH_USAGE = '使い方: action で選ぶ（register: url（必須）・title・selector・webhookUrl で登録。check: id の対象を確認、id を省くと全件。list: 引数なし。delete: id（必須）の対象を削除）。';
   // onlyForMode に渡す語句。エラーの文にそのまま出る
@@ -40,12 +40,12 @@ export function registerWatchTools(context: ToolRegistrationContext): void {
       // 応答とエラーの文は、統合前の 4 ツールのまま（REST の 4 ルートと同じサービス）
       try {
         const result = action === 'register'
-          ? await registerWatchTarget({ url: url!, title, selector, webhookUrl: webhookUrl || undefined })
+          ? await registerWatchTarget({ url: url!, title, selector, webhookUrl: webhookUrl || undefined, tenantId: serverTenantId })
           : action === 'check'
-            ? (id ? await checkWatchTarget(id) : await checkAllWatchTargets())
+            ? (id ? await checkWatchTarget(id, serverTenantId) : await checkAllWatchTargets(serverTenantId))
             : action === 'list'
-              ? listWatchTargets()
-              : { success: deleteWatchTarget(id!), id };
+              ? listWatchTargets(serverTenantId)
+              : { success: deleteWatchTarget(id!, serverTenantId), id };
         return { content: [{ type: 'text', text: toolJson(result) }] };
       } catch (err) {
         return { isError: true, content: [{ type: 'text', text: `Watch ${action} error: ${errorMessage(err) || err}` }] };

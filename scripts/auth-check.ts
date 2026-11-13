@@ -7,6 +7,7 @@
  *  (3) ループバックは特別ではない: 鍵を設定したら、ループバックからでも鍵が要る。鍵なしの通過（廃止した設定）は、廃止した名前を残らず置いても、
  *      X-Forwarded-For・X-Real-IP を付けても付けなくても、効かない（設計書 E24。旧名は、登録簿とそのテスト以外に書かない）
  *  (5) 共有キャッシュと tenant（設計 5。E25）: 保存済みのセッション（Cookie）で得たページを、別の tenant に返さない。ログインしていない tenant どうしは共有する
+ *  (6) ウォッチと tenant（設計 5。穴 2・18）: ある tenant が登録したウォッチは、別の tenant の一覧に出ず（通知先・取得した内容も）、確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -134,9 +135,13 @@ const SHARED_ALICE_1 = 'shared-alice-key-0123456789abcdef';
 const SHARED_ALICE_2 = 'shared-alice-second-key-0123456789';
 const SHARED_BOB = 'shared-bob-key-0123456789abcdefgh';
 const SHARED_CAROL = 'shared-carol-key-0123456789abcdefg';
+// (6) 用。同じ name の 2 つの鍵（alice）と、別の name（bob）
+const WATCH_ALICE_1 = 'watch-alice-key-0123456789abcdef';
+const WATCH_ALICE_2 = 'watch-alice-second-key-0123456789';
+const WATCH_BOB = 'watch-bob-key-0123456789abcdefgh';
 const keyDir = mkdtempSync(join(tmpdir(), 'sora-auth-check-'));
 const keyPath = join(keyDir, 'keys.json');
-writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }] }), { mode: 0o600 });
+writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }, { name: 'watch-alice', key: WATCH_ALICE_1 }, { name: 'watch-alice', key: WATCH_ALICE_2 }, { name: 'watch-bob', key: WATCH_BOB }] }), { mode: 0o600 });
 chmodSync(keyPath, 0o600);
 
 const seenCookies: Array<string | undefined> = [];
@@ -216,6 +221,55 @@ await scenario('共有キャッシュと tenant', { SORA_AUTH_KEYS_FILE: keyPath
 });
 personalizedSite.close();
 
+// (6) ウォッチと tenant。alice が登録したウォッチは、bob の一覧に出ず、bob は確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
+let watchHits = 0;
+const watchSite = createServer((request, response) => {
+  watchHits++;
+  response.writeHead(200, { 'content-type': 'text/html' });
+  response.end(`<html><head><title>監視</title></head><body><main><h1>監視</h1><p>${request.url}: 監視するページの本文です。変化を調べるのに足りる長さの文章を、ここに置いておきます。</p></main></body></html>`);
+});
+await new Promise<void>((resolve) => watchSite.listen(0, '127.0.0.1', () => resolve()));
+const watchBase = `http://127.0.0.1:${(watchSite.address() as { port: number }).port}`;
+const watchApi = async (key: string, method: string, path: string, body?: object) => {
+  const response = await fetch(`${base}${path}`, { method, headers: { 'Content-Type': 'application/json', 'X-API-Key': key }, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await response.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { status: response.status, json, text };
+};
+await scenario('ウォッチと tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  const registered = await watchApi(WATCH_ALICE_1, 'POST', '/watch/register', { url: `${watchBase}/alice`, title: 'alice のウォッチ', webhookUrl: 'https://hooks.example.com/alice-secret-token' });
+  const aliceId: unknown = registered.json?.target?.id;
+  check(registered.status === 200 && typeof aliceId === 'string', `ウォッチ: alice の登録が通らない: ${registered.status} ${registered.text.slice(0, 200)}`);
+  if (typeof aliceId !== 'string') return;
+  // 一覧: alice（別の鍵でも同じ name）には出る。bob には、登録も、通知先も、取得した内容も出ない
+  const aliceList = await watchApi(WATCH_ALICE_2, 'GET', '/watch/list');
+  check(aliceList.json?.count === 1 && aliceList.json?.targets?.[0]?.id === aliceId, `ウォッチ: alice の別の鍵（同じ name）の一覧に、alice のウォッチが出ない: ${aliceList.text.slice(0, 200)}`);
+  const bobList = await watchApi(WATCH_BOB, 'GET', '/watch/list');
+  check(bobList.status === 200 && bobList.json?.count === 0 && !bobList.text.includes(aliceId) && !bobList.text.includes('alice-secret-token') && !bobList.text.includes('/alice:'), `ウォッチ: bob の一覧に、alice のウォッチが出た: ${bobList.text.slice(0, 200)}`);
+  // 確認: bob は、alice の id を使えない（存在しない id と同じ失敗）。alice のページを取りに行かない。id を省いても、bob の分だけ（0 件）
+  const hitsBefore = watchHits;
+  const bobCheck = await watchApi(WATCH_BOB, 'POST', '/watch/check', { id: aliceId });
+  const noneCheck = await watchApi(WATCH_BOB, 'POST', '/watch/check', { id: 'wt_nothing' });
+  check(bobCheck.status !== 200 && bobCheck.status === noneCheck.status && bobCheck.json?.code === noneCheck.json?.code, `ウォッチ: bob が alice の id を確認できた、または、存在しない id と失敗の形が違う: ${bobCheck.status} ${bobCheck.text.slice(0, 120)} / ${noneCheck.status}`);
+  const bobAll = await watchApi(WATCH_BOB, 'POST', '/watch/check', {});
+  check(bobAll.status === 200 && bobAll.json?.results?.length === 0, `ウォッチ: bob の全件の確認に、alice の分が入った: ${bobAll.text.slice(0, 200)}`);
+  check(watchHits === hitsBefore, `ウォッチ: bob の確認で、alice のページを取りに行った（${watchHits - hitsBefore} 回）`);
+  // 削除: bob は、alice のウォッチを消せない
+  const bobDelete = await watchApi(WATCH_BOB, 'DELETE', `/watch/${aliceId}`);
+  check(bobDelete.status === 200 && bobDelete.json?.success === false, `ウォッチ: bob が alice のウォッチを削除できた: ${bobDelete.text.slice(0, 120)}`);
+  // alice 自身（別の鍵でも）は、確認も削除もできる
+  const aliceCheck = await watchApi(WATCH_ALICE_1, 'POST', '/watch/check', { id: aliceId });
+  check(aliceCheck.status === 200 && aliceCheck.json?.result?.targetId === aliceId, `ウォッチ: alice が自分のウォッチを確認できない: ${aliceCheck.status} ${aliceCheck.text.slice(0, 200)}`);
+  const aliceDelete = await watchApi(WATCH_ALICE_2, 'DELETE', `/watch/${aliceId}`);
+  check(aliceDelete.json?.success === true, `ウォッチ: alice の別の鍵（同じ name）が、alice のウォッチを削除できない: ${aliceDelete.text.slice(0, 120)}`);
+  const afterDelete = await watchApi(WATCH_ALICE_1, 'GET', '/watch/list');
+  check(afterDelete.json?.count === 0, `ウォッチ: 削除したあとも、alice の一覧に残る: ${afterDelete.text.slice(0, 200)}`);
+});
+watchSite.close();
+
 // 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にしない
 await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
   const originalError = console.error;
@@ -236,5 +290,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない');
 process.exit(0);

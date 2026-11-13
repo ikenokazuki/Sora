@@ -35,4 +35,14 @@ export const SECURITY_MIGRATIONS: readonly DbMigration[] = [
         SELECT 'legacy', domain, 'default', storage_json, updated_at FROM domain_storage`);
     },
   },
+  {
+    version: 102,
+    name: 'tenant watch targets',
+    up(database) {
+      // 持ち主（tenant）を記録する。旧い行は legacy（鍵なしの利用者）のものになる（見せ分けの互換の規則は作らない）。
+      // watch_history には列を足さない: 履歴は対象の id でだけ引かれ（対象は、持ち主を確かめてから読む）、公開された読み口が無い
+      database.run(`ALTER TABLE watch_targets ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'legacy'`);
+      database.run('CREATE INDEX IF NOT EXISTS idx_watch_targets_tenant ON watch_targets(tenant_id, created_at)');
+    },
+  },
 ];

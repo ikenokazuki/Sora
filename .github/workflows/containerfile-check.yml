@@ -39,6 +39,11 @@ on:
       - src/security/credential_scope.ts
       - src/cache.ts
       - src/scraper.ts
+      - src/db.ts
+      - src/security/migrations.ts
+      - src/services/watch.ts
+      - src/routes/watch.ts
+      - src/mcp/tools_watch.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

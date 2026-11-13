@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import {
   registerWatchTarget as defaultRegisterWatchTarget,
   checkWatchTarget as defaultCheckWatchTarget,
@@ -30,6 +30,8 @@ export function createWatchRoutes(deps: WatchRouteDeps = {}) {
     deleteWatchTarget = defaultDeleteWatchTarget,
   } = deps;
   const watchRoutes = new Hono();
+  // 持ち主は、認証のミドルウェアが決めた tenant（鍵なし・認証のない組み立てでは legacy）。ウォッチは、この tenant の分だけに効く
+  const tenantOf = (c: Context) => c.get('tenant')?.tenantId ?? 'legacy';
 
 // 監視ターゲット登録 (POST /watch/register)
 watchRoutes.post('/watch/register', async (c) => {
@@ -46,7 +48,7 @@ watchRoutes.post('/watch/register', async (c) => {
   }
 
   try {
-    const result = await registerWatchTarget(parsed.data);
+    const result = await registerWatchTarget({ ...parsed.data, tenantId: tenantOf(c) });
     return c.json(result);
   } catch (err) {
     return formatError(c, errorMessage(err) || 'Watch target registration failed', 'WATCH_ERROR', 500);
@@ -69,9 +71,9 @@ watchRoutes.post('/watch/check', async (c) => {
 
   try {
     if (parsed.data.id) {
-      return c.json({ result: await checkWatchTarget(parsed.data.id) });
+      return c.json({ result: await checkWatchTarget(parsed.data.id, tenantOf(c)) });
     }
-    return c.json({ results: await checkAllWatchTargets() });
+    return c.json({ results: await checkAllWatchTargets(tenantOf(c)) });
   } catch (err) {
     if (errorCode(err) === 'WATCH_SELECTOR_NOT_FOUND') {
       return formatError(c, errorMessage(err) || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);
@@ -83,7 +85,7 @@ watchRoutes.post('/watch/check', async (c) => {
 // 監視ターゲット一覧 (GET /watch/list)
 watchRoutes.get('/watch/list', (c) => {
   try {
-    const targets = listWatchTargets();
+    const targets = listWatchTargets(tenantOf(c));
     return c.json({ count: targets.length, targets });
   } catch (err) {
     return formatError(c, errorMessage(err) || 'Watch list failed', 'WATCH_ERROR', 500);
@@ -96,7 +98,7 @@ watchRoutes.delete('/watch/:id', (c) => {
   if (!id) {
     return formatError(c, 'Target id is required', 'INVALID_INPUT', 400);
   }
-  const deleted = deleteWatchTarget(id);
+  const deleted = deleteWatchTarget(id, tenantOf(c));
   return c.json({ success: deleted, id });
 });
 

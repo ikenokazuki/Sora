@@ -1418,6 +1418,7 @@ URL またはピンポイント CSS セレクタの内容を、`POST /watch/chec
   - 差分検知時に Webhook（SSRF 保護済み）へペイロード送信。応答の `webhookSent` は、送信の結果を待って、2xx で受け取られたときだけ `true`、送れなかったとき（つながらない・2xx 以外・SSRF 保護で止めた）は `false`。Webhook の無い監視と差分の無い確認では付かない。
 - **ターゲット一覧 (`GET /watch/list`)**
 - **ターゲット削除 (`DELETE /watch/:id`)**
+- **持ち主**: 登録したのは、認証が決めた利用者（tenant。4.2）で、一覧・確認・削除は、その利用者の分だけに効きます。別の利用者の `id` は、存在しない `id` と同じ扱いです（確認は「見つからない」、削除は `success: false`）。`id` を省いた確認も、呼んだ利用者の分だけです（別の利用者の分は、取得も Webhook も動きません）。確認のときの取得は、持ち主の利用者の保存済みのセッション（Cookie など）で行います。v4 までに登録した行は、鍵なしの利用者（`legacy`）のものになり、鍵を設定した運用の利用者には見えません。
 
 ---
 
@@ -2498,6 +2499,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
   - 利用者ごとの状態の単位（tenant）は、認証のミドルウェアが決めたものだけを使います。MCP も REST も、生のヘッダーから別に作りません。`Authorization` の `Bearer` は、大文字小文字を区別せずに読み（RFC 7235）、`Bearer` があれば鍵はそれだけを読みます（誤った `Bearer` と正しい `X-API-Key` を併せても通りません）。
   - 取得した結果の共有キャッシュは、tenant の保存済みの状態（そのサイトが取得のときにセットした Cookie・localStorage）を使って得た結果を、その tenant のキャッシュにだけ置き、別の tenant に返しません（状態を使わずに得た結果だけを共有します）。Cookie か、`Accept-Language` などの無害なものを除くヘッダーを渡した取得は、共有キャッシュを読まず、書きません。
+  - ウォッチ（`watch`・`/watch/*`）は、登録した利用者（tenant）のものだけが、一覧・確認・削除できます。`id` を省いた確認も、呼んだ利用者の分だけです。
   - 鍵を設定したら、ループバックからの接続でも鍵が要ります（接続元を、認証の代わりにしません。v4 の鍵なしのループバック通過の設定は、v5 で廃止しました）。ローカルの道具には、鍵を渡してください（`/health` は鍵なしで開きます）。
   - 複数の利用者が使うときは、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、鍵ごとに別の tenant で動かせます。鍵は SHA-256 で書けます（4.6）。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
@@ -2797,7 +2799,7 @@ docker run -d --name sora -p 3016:8000 \
 - 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。
 - 日次の上限（`SORA_AUTH_DAILY_LIMIT`）は、tenant ごとに数えます。拒否の回数は、`/metrics` の `sora_auth_rejected_missing_total`（鍵なし）と `sora_auth_rejected_invalid_total`（誤った鍵）で見られます。
 
-**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。監視対象とその履歴（`watch`）は tenant で分かれず、全員に見えます。`POST /cache/clear` は全員分のキャッシュを消します。`map_site`・`search_web` の formats・GCC・trade・国の情報の取得は、tenant を渡さず、共有の `legacy` として動きます。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
+**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。`POST /cache/clear` は全員分のキャッシュを消します。`map_site`・`search_web` の formats・GCC・trade・国の情報の取得は、tenant を渡さず、共有の `legacy` として動きます。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
 ---
 

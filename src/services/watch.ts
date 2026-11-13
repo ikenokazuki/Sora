@@ -38,8 +38,9 @@ export function computeContentHash(content: string): string {
   return createHash('sha256').update(content.trim()).digest('hex');
 }
 
-/** 監視ターゲットの登録 (新規または更新) */
+/** 監視ターゲットの登録 (新規または更新)。持ち主は tenantId。別の tenant が持つ id への登録は断る */
 export async function registerWatchTarget(options: {
+  tenantId: string;
   id?: string;
   url: string;
   title?: string;
@@ -49,6 +50,7 @@ export async function registerWatchTarget(options: {
 }, scrapeImpl: typeof scrapeUrl = scrapeUrl
 ): Promise<{ target: WatchTargetRecord; initialResult?: WatchCheckResult; initialError?: { code: string; message: string } }> {
   let target = dbSaveWatchTarget({
+    tenantId: options.tenantId,
     id: options.id,
     url: options.url,
     title: options.title,
@@ -61,8 +63,8 @@ export async function registerWatchTarget(options: {
   // 初期フェッチによるハッシュベースライン作成
   if (options.initialFetch !== false) {
     try {
-      initialResult = await checkWatchTarget(target.id, scrapeImpl);
-      target = dbGetWatchTarget(target.id) || target;
+      initialResult = await checkWatchTarget(target.id, options.tenantId, scrapeImpl);
+      target = dbGetWatchTarget(target.id, options.tenantId) || target;
     } catch (err) {
       console.warn(`[Sora/Watch] Initial fetch for watch target ${target.id} failed:`, errorMessage(err));
       const code = errorCode(err) ?? 'WATCH_INITIAL_FETCH_FAILED';
@@ -73,9 +75,9 @@ export async function registerWatchTarget(options: {
   return { target, initialResult };
 }
 
-/** 単一ターゲットの差分スキャン & Webhook 通知 */
-export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult> {
-  const { result, sendWebhook } = await checkAndStore(targetId, scrapeImpl);
+/** 単一ターゲットの差分スキャン & Webhook 通知。tenant が違う id は、存在しない id と同じに「見つからない」 */
+export async function checkWatchTarget(targetId: string, tenantId: string, scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult> {
+  const { result, sendWebhook } = await checkAndStore(targetId, tenantId, scrapeImpl);
   if (sendWebhook) result.webhookSent = await sendWebhook();
   return result;
 }
@@ -83,19 +85,21 @@ export async function checkWatchTarget(targetId: string, scrapeImpl: typeof scra
 /** 差分の検出と保存まで行い、Webhook は送らずに送る関数として返す (保存してから送る順を守る) */
 async function checkAndStore(
   targetId: string,
+  tenantId: string,
   scrapeImpl: typeof scrapeUrl,
 ): Promise<{ result: WatchCheckResult; sendWebhook?: () => Promise<boolean> }> {
-  const target = dbGetWatchTarget(targetId);
+  const target = dbGetWatchTarget(targetId, tenantId);
   if (!target) {
     throw new Error(`Watch target not found: ${targetId}`);
   }
 
-  // スクレイピング実行
+  // スクレイピング実行。持ち主の tenant で取得する（保存済みのセッションも、持ち主のものを使う）
   const scraped = await scrapeImpl({
     url: target.url,
     selectors: target.selector ? { content: target.selector } : undefined,
     onlyMainContent: true,
     noCache: true,
+    tenantId,
   });
 
   if (target.selector && typeof scraped.extracted?.content !== 'string') {
@@ -169,9 +173,9 @@ async function checkAndStore(
 /** 一括チェックで同時に送る Webhook の上限 */
 const WEBHOOK_CONCURRENCY = 5;
 
-/** 全登録ターゲットの一括差分チェック */
-export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult[]> {
-  const targets = dbListWatchTargets();
+/** その tenant の全登録ターゲットの一括差分チェック（別の tenant の分は、取得も Webhook もしない） */
+export async function checkAllWatchTargets(tenantId: string, scrapeImpl: typeof scrapeUrl = scrapeUrl): Promise<WatchCheckResult[]> {
+  const targets = dbListWatchTargets(tenantId);
   const results: WatchCheckResult[] = [];
   const deliveries: Promise<void>[] = [];
   // 送信は同時に WEBHOOK_CONCURRENCY 件まで。空きを渡す順 (queue) は先に待った順
@@ -191,7 +195,7 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
 
   for (const t of targets) {
     try {
-      const { result, sendWebhook } = await checkAndStore(t.id, scrapeImpl);
+      const { result, sendWebhook } = await checkAndStore(t.id, tenantId, scrapeImpl);
       results.push(result);
       // 保存したらすぐ送り始め、次の確認を待たせない。全部の返事は最後にまとめて待つ。
       // 送信が例外を投げても、ほかの対象の結果を失わない (その対象だけ false)
@@ -219,10 +223,10 @@ export async function checkAllWatchTargets(scrapeImpl: typeof scrapeUrl = scrape
   return results;
 }
 
-export function listWatchTargets(): WatchTargetRecord[] {
-  return dbListWatchTargets();
+export function listWatchTargets(tenantId: string): WatchTargetRecord[] {
+  return dbListWatchTargets(tenantId);
 }
 
-export function deleteWatchTarget(targetId: string): boolean {
-  return dbDeleteWatchTarget(targetId);
+export function deleteWatchTarget(targetId: string, tenantId: string): boolean {
+  return dbDeleteWatchTarget(targetId, tenantId);
 }
