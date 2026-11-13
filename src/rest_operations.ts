@@ -8,6 +8,7 @@
  * 一覧に載せるのは「正本」の操作だけ。別名・GET で呼ぶ形・進行状況の SSE・システムの経路は、正本の定義の
  * alternatives に載せる（GET /tools/<name>）か、一覧に出さない。
  */
+import { isModuleActive } from './mcp/registry.js';
 import { isPublicPath } from './security/public_paths.js';
 
 export type RestMethod = 'GET' | 'POST' | 'DELETE';
@@ -132,6 +133,28 @@ export const operationKey = (method: string, path: string) => `${method.toUpperC
 const TOOL_BY_KEY = new Map(REST_TOOLS.map((tool) => [operationKey(tool.method, tool.path), tool]));
 const TOOL_BY_ID = new Map(REST_TOOLS.map((tool) => [tool.id, tool]));
 
+/**
+ * 経路が属するモジュール（台帳のカテゴリ）。別名・GET の形・進行状況の SSE は、正本のカテゴリ。
+ * システム・ページ（モジュールに属さない経路）と、台帳に無い経路は undefined。path は、台帳の書き方（/watch/{id}）でも、
+ * Hono の書き方（/watch/:id）でもよい
+ */
+export function moduleOfOperation(method: string, path: string): string | undefined {
+  const key = operationKey(method, path.replace(/:([A-Za-z_]\w*)/g, '{$1}'));
+  const tool = TOOL_BY_KEY.get(key);
+  if (tool) return tool.category;
+  const other = OTHER_OPERATIONS[key];
+  return other?.of ? TOOL_BY_ID.get(other.of)?.category : undefined;
+}
+
+/**
+ * モジュールが有効か（SORA_MODULES）。MCP のツールの登録と同じ規則: media は、media か web のどちらかで有効
+ * （画像の確認は、web の取得の一部として使えるため）
+ */
+export function isRestModuleActive(module: string): boolean {
+  if (module === 'media') return isModuleActive('media') || isModuleActive('web');
+  return isModuleActive(module as Parameters<typeof isModuleActive>[0]);
+}
+
 /** 台帳に無い操作（これから足す経路など）にも、重ならない operationId を付ける。テストが台帳の漏れを見つける。 */
 function fallbackId(method: string, path: string): string {
   return `${method.toLowerCase()}_${path.replace(/[{}]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
@@ -176,6 +199,8 @@ export function finalizeOpenApi<T extends { paths: object }>(doc: T): Omit<T, 'p
       const other = OTHER_OPERATIONS[key];
       const canonical = other?.of ? TOOL_BY_ID.get(other.of) : undefined;
       const category = tool?.category ?? canonical?.category ?? 'system';
+      // SORA_MODULES で絞ったモジュールの経路は、REST で 404 になる（routes/module_guard.ts）ので、文書にも載せない
+      if (category !== 'system' && !isRestModuleActive(category)) continue;
       const responses: Json = {};
       for (const [code, response] of Object.entries<Json>(op.responses ?? {})) {
         responses[code] = code.startsWith('2') || response.content || other?.kind === 'page' ? response : { ...response, content: ERROR_CONTENT };
@@ -198,6 +223,7 @@ export function finalizeOpenApi<T extends { paths: object }>(doc: T): Omit<T, 'p
         responses,
       };
     }
+    if (Object.keys(paths[path]).length === 0) delete paths[path];
   }
   return {
     ...doc,
