@@ -9,6 +9,8 @@ export interface TenantContext {
   tenantId: string;
   requestId: string;
   authMode: TenantAuthMode;
+  /** 鍵ファイル（SORA_AUTH_KEYS_FILE）の name。名前つきの鍵の tenant だけ */
+  name?: string;
 }
 
 export const LEGACY_TENANT_ID = 'legacy';
@@ -22,8 +24,18 @@ export function tenantIdForApiKey(key: string): string {
   return 'key:' + createHash('sha256').update(key).digest('hex').slice(0, 16);
 }
 
+/**
+ * 鍵ファイルの name から作る tenant の ID。鍵でなく名前から作る（鍵を入れ替えても、tenant の状態が消えない）。
+ * 前置きの `name:` が付くので、legacy・internal・key:<鍵のハッシュ> と同じ ID にならない。
+ */
+export function tenantIdForName(name: string): string {
+  return 'name:' + name;
+}
+
 export function resolveTenantContext(options: {
   apiKey?: string;
+  /** 鍵ファイルの name（認証が、鍵から引いたもの） */
+  tenantName?: string;
   internal?: boolean;
   requestId?: string;
 }): TenantContext {
@@ -32,6 +44,14 @@ export function resolveTenantContext(options: {
       tenantId: 'internal',
       requestId: options.requestId ?? randomUUID(),
       authMode: 'internal',
+    };
+  }
+  if (options.tenantName) {
+    return {
+      tenantId: tenantIdForName(options.tenantName),
+      requestId: options.requestId ?? randomUUID(),
+      authMode: 'api_key',
+      name: options.tenantName,
     };
   }
   if (options.apiKey) {

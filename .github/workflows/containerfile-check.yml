@@ -33,6 +33,8 @@ on:
       - src/auth.ts
       - src/mcp.ts
       - src/routes/mcp_route.ts
+      - src/security/api_keys.ts
+      - src/security/tenant_context.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

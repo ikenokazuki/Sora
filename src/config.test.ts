@@ -117,8 +117,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 10 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(63);
+  test('counts match the design (53 + 11 settings, 13 standard names, 40 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(64);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(40);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -186,7 +186,7 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the ten settings added after the design are registered', () => {
+  test('the eleven settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
@@ -204,6 +204,9 @@ describe('registry', () => {
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).not.toHaveProperty('default');
     // 信頼するリバースプロキシの段数（X-Forwarded-For を右から数える）。1〜10、既定は 1 段
     expect(SETTINGS.SORA_AUTH_PROXY_HOPS).toMatchObject({ area: 'auth', kind: 'int', default: 1, min: 1, max: 10 });
+    // 名前つきの複数の鍵のファイル。パスだけで、既定は無い（無ければ、従来どおり SORA_API_KEY か認証なし）
+    expect(SETTINGS.SORA_AUTH_KEYS_FILE).toMatchObject({ area: 'auth', kind: 'path' });
+    expect(SETTINGS.SORA_AUTH_KEYS_FILE).not.toHaveProperty('default');
   });
 
   test('names follow the naming rules and do not collide', () => {
@@ -797,6 +800,30 @@ describe('checkEnv', () => {
       expect(errors, raw).toHaveLength(1);
       expect(errors[0]).toContain('SORA_AUTH_PROXY_HOPS');
     }
+  });
+
+  test('SORA_AUTH_KEYS_FILE と SORA_API_KEY は併用できない: 起動を止める（どちらの鍵で認証するか曖昧にしない）', () => {
+    const message = 'SORA_API_KEY と SORA_AUTH_KEYS_FILE は併用できません。鍵ファイルを使うときは SORA_API_KEY を消してください（鍵ファイルは、名前つきの複数の鍵を持ちます）';
+    expect(checkEnv({ SORA_AUTH_KEYS_FILE: '/run/secrets/sora-keys.json', SORA_API_KEY: 'single-key-0123456789' })).toEqual({ errors: [message], warnings: [] });
+    expect(checkEnv({ SORA_AUTH_KEYS_FILE: '/run/secrets/sora-keys.json' })).toEqual({ errors: [], warnings: [] });
+    expect(checkEnv({ SORA_API_KEY: 'single-key-0123456789' })).toEqual({ errors: [], warnings: [] });
+    // 空白だけは未設定
+    expect(checkEnv({ SORA_AUTH_KEYS_FILE: '  ', SORA_API_KEY: 'single-key-0123456789' }).errors).toEqual([]);
+    expect(checkEnv({ SORA_AUTH_KEYS_FILE: '/run/secrets/sora-keys.json', SORA_API_KEY: '  ' }).errors).toEqual([]);
+    // 鍵の値は、誤りの文に出さない
+    expect(message).not.toContain('single-key');
+  });
+
+  test('SORA_ALLOW_ANONYMOUS は、SORA_AUTH_KEYS_FILE があるとき効かない: 真にしていれば警告して起動する', () => {
+    const warning = 'SORA_ALLOW_ANONYMOUS は、SORA_AUTH_KEYS_FILE があるとき効きません（鍵ファイルがあると、匿名は認めません）。この設定を消してください';
+    for (const raw of ['true', '1', 'yes', 'on', 'TRUE']) {
+      expect(checkEnv({ SORA_AUTH_KEYS_FILE: '/run/secrets/sora-keys.json', SORA_ALLOW_ANONYMOUS: raw }), raw).toEqual({ errors: [], warnings: [warning] });
+    }
+    for (const raw of ['false', '0', 'no', 'off', '', '  ']) {
+      expect(checkEnv({ SORA_AUTH_KEYS_FILE: '/run/secrets/sora-keys.json', SORA_ALLOW_ANONYMOUS: raw }).warnings, raw).toEqual([]);
+    }
+    expect(checkEnv({ SORA_ALLOW_ANONYMOUS: 'true' }).warnings).toEqual([]);
+    expect(checkEnv({ SORA_AUTH_KEYS_FILE: ' ', SORA_ALLOW_ANONYMOUS: 'true' }).warnings).toEqual([]);
   });
 
   test('the output is deterministic', () => {

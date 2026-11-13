@@ -7,13 +7,19 @@
  *  (3) X-Forwarded-For（SORA_AUTH_TRUST_PROXY=true）: 利用者が左に書いた 127.0.0.1 では、鍵なしの通過（SORA_AUTH_LOOPBACK_NO_KEY）に入れない。
  *      右から SORA_AUTH_PROXY_HOPS 番目だけを見る。X-Forwarded-For を 2 行に分けて送っても同じ（Bun が行を束ねる順序の確認）
  *  (4) SORA_AUTH_TRUST_PROXY なしでは、X-Forwarded-For が付いた要求は、直接の接続ではない
+ *  (5) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
+ *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 待ち受けを 127.0.0.1 に固定するのは、接続元を IPv4 の 127.0.0.1 にそろえるため。src/index.ts の既定の待ち受け（hostname 無し）は、IPv4 の接続を
  * ::ffff:127.0.0.1 と報告し、isLoopbackAddress はその形をループバックと認めない（SORA_AUTH_LOOPBACK_NO_KEY は IPv4 の直接接続に効かない。設計書 E21）。
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
  *           --entrypoint /usr/local/bin/bun <イメージ> /app/scripts/auth-check.ts
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md（設計 4。E20・E21）
  */
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { connect } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { app, mcpSessionManager } from '../src/index.js';
 
 const failures: string[] = [];
@@ -34,7 +40,7 @@ const server = Bun.serve({
 const port = server.port as number;
 const base = `http://127.0.0.1:${port}`;
 
-const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_LOOPBACK_NO_KEY', 'SORA_AUTH_TRUST_PROXY', 'SORA_AUTH_PROXY_HOPS'];
+const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_LOOPBACK_NO_KEY', 'SORA_AUTH_TRUST_PROXY', 'SORA_AUTH_PROXY_HOPS', 'SORA_AUTH_KEYS_FILE', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK'];
 
 /** 認証の環境変数を、この場面のものに替えて fn を回す（認証は、要求のたびに環境を読む）。終わったら、セッションを捨てる */
 async function scenario(label: string, vars: Record<string, string>, fn: () => Promise<void>): Promise<void> {
@@ -174,10 +180,72 @@ await scenario('プロキシを信頼しない', { SORA_API_KEY: KEY, SORA_AUTH_
   check((await tools({ 'X-Real-IP': '127.0.0.1' })) === 401, 'プロキシを信頼しない: X-Real-IP つきの要求が、鍵なしで通った');
 });
 
+// (5) 鍵ファイル。鍵ごとに別の tenant。サイトごとの Cookie の入れ物（tenant ごと）を、REST の /scrape で確かめる
+const ALICE_1 = 'alice-key-0123456789abcdef';
+const ALICE_2 = 'alice-second-key-0123456789';
+const BOB = 'bob-key-0123456789abcdefgh';
+const keyDir = mkdtempSync(join(tmpdir(), 'sora-auth-check-'));
+const keyPath = join(keyDir, 'keys.json');
+writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }] }), { mode: 0o600 });
+chmodSync(keyPath, 0o600);
+
+const seenCookies: Array<string | undefined> = [];
+let siteHits = 0;
+const site = createServer((request, response) => {
+  siteHits++;
+  seenCookies.push(request.headers.cookie);
+  response.writeHead(200, { 'content-type': 'text/html', 'Set-Cookie': `sess=${siteHits}; Path=/` });
+  response.end('<html><head><title>t</title></head><body><p>hello world content here and more text for the extractor</p></body></html>');
+});
+await new Promise<void>((resolve) => site.listen(0, '127.0.0.1', () => resolve()));
+const siteBase = `http://127.0.0.1:${(site.address() as { port: number }).port}`;
+const scrape = (headers: Record<string, string>) =>
+  fetch(`${base}/scrape`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: `${siteBase}/jar`, mode: 'fast', noCache: true }) }).then((response) => response.status);
+
+await scenario('鍵ファイル', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  // MCP: 同じ name の 2 つの鍵は同じ tenant、別の name は別
+  const alice = await open({ 'X-API-Key': ALICE_1 }, '鍵ファイル alice');
+  for (const headers of [{ 'X-API-Key': ALICE_2 }, { Authorization: `bearer ${ALICE_1}` }, { Authorization: `BEARER ${ALICE_2}` }] as Record<string, string>[]) {
+    const response = await mcp(headers, listTools, alice);
+    check(response.status === 200, `鍵ファイル: alice の別の鍵で、alice のセッションを続けられない: ${JSON.stringify(headers)} → ${response.status}`);
+  }
+  const bob = await open({ 'X-API-Key': BOB }, '鍵ファイル bob');
+  check((await mcp({ 'X-API-Key': BOB }, listTools, alice)).status === 404, '鍵ファイル: bob が alice のセッションを使えた');
+  check((await mcp({ 'X-API-Key': ALICE_1 }, listTools, bob)).status === 404, '鍵ファイル: alice が bob のセッションを使えた');
+  // 匿名・誤った鍵は 401（SORA_ALLOW_ANONYMOUS=true でも）
+  process.env.SORA_ALLOW_ANONYMOUS = 'true';
+  for (const [label, headers] of [['鍵なし', {}], ['知らない鍵', { 'X-API-Key': 'unknown-key-0123456789abcdef' }], ['誤った bearer と正しい X-API-Key', { Authorization: 'bearer wrong', 'X-API-Key': ALICE_1 }]] as [string, Record<string, string>][]) {
+    check((await mcp(headers, initialize)).status === 401, `鍵ファイル: ${label}が、SORA_ALLOW_ANONYMOUS=true で通った`);
+    check((await tools(headers)) === 401, `鍵ファイル: ${label}の GET /tools が、SORA_ALLOW_ANONYMOUS=true で通った`);
+  }
+  delete process.env.SORA_ALLOW_ANONYMOUS;
+  // サイトごとの Cookie（REST の /scrape）: alice の 2 つの鍵は引き継ぎ、bob には見せない
+  check((await scrape({ 'X-API-Key': ALICE_1 })) === 200, '鍵ファイル: alice の /scrape が 200 でない');
+  check((await scrape({ 'X-API-Key': ALICE_2 })) === 200, '鍵ファイル: alice の別の鍵の /scrape が 200 でない');
+  check((await scrape({ 'X-API-Key': BOB })) === 200, '鍵ファイル: bob の /scrape が 200 でない');
+  check((await scrape({ Authorization: `Bearer ${ALICE_1}` })) === 200, '鍵ファイル: alice の 3 回目の /scrape が 200 でない');
+  check(JSON.stringify(seenCookies) === JSON.stringify([undefined, 'sess=1', undefined, 'sess=2']), `鍵ファイル: サイトごとの Cookie が name ごとに分かれていない: ${JSON.stringify(seenCookies)}`);
+});
+
+// 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にも、鍵なしの通過にもしない
+await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true', SORA_AUTH_LOOPBACK_NO_KEY: 'true' }, async () => {
+  const originalError = console.error;
+  console.error = () => {}; // 理由のログ（1 回）は、この確認の出力に混ぜない
+  try {
+    check((await tools()) === 503, '鍵ファイルを読めない: 鍵なしの要求が 503 でない');
+    check((await tools({ 'X-API-Key': ALICE_1 })) === 503, '鍵ファイルを読めない: 鍵つきの要求が 503 でない');
+    check((await mcp({}, initialize)).status === 503, '鍵ファイルを読めない: MCP の要求が 503 でない');
+  } finally {
+    console.error = originalError;
+  }
+});
+site.close();
+rmSync(keyDir, { recursive: true, force: true });
+
 await server.stop(true);
 if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。X-Forwarded-For は右から数え、利用者が左に書いた 127.0.0.1 では鍵なしの通過に入れない');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。X-Forwarded-For は右から数え、利用者が左に書いた 127.0.0.1 では鍵なしの通過に入れない。鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503');
 process.exit(0);

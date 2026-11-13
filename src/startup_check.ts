@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { checkEnv, envList, envPath, LEGACY, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import { egressGatewayOptionsFromEnv, isEgressGatewayEnabled } from './net/egress.js';
+import { loadApiKeyStore } from './security/api_keys.js';
 
 /** 同梱の実行ファイルのパスと、ファイルが無いときに起きること。 */
 const BUNDLED = {
@@ -43,6 +44,14 @@ export function checkStartupEnv({
 } = {}): void {
   const env = transport === 'stdio' ? Object.fromEntries(Object.entries(given).filter(([name]) => !NOT_USED_BY_STDIO.includes(name))) : given;
   const { errors, warnings } = checkEnv(env);
+  // 鍵ファイル（名前つきの複数の鍵）。読めない・誤りがあるときは、匿名にせず、起動を止める（鍵が 1 つも無い状態は、認証なしと同じになる）。
+  // 読んだ表は覚えるので、認証は要求のたびに読み直さない。stdio は認証を通らないので、読まない
+  const keysFile = transport === 'http' ? envPath('SORA_AUTH_KEYS_FILE', env) : undefined;
+  if (keysFile) {
+    const loaded = loadApiKeyStore(keysFile);
+    errors.push(...loaded.errors.map((error) => `SORA_AUTH_KEYS_FILE: ${error}`));
+    warnings.push(...loaded.warnings.map((warning) => `SORA_AUTH_KEYS_FILE: ${warning}`));
+  }
   // 出口のゲートウェイを使うときの、ほかの設定との食い違い（SORA_PROXY_LIST との併用・対応していない上流のプロキシの方式）は、ゲートウェイを作るとき（最初の通信）にも分かるが、
   // そのときは、すべての外向きの通信（Bun の fetch・子プロセスを含む）が失敗する。起動で止める。書き方の誤りは、checkEnv が数えているので、重ねない
   if (errors.length === 0) {
