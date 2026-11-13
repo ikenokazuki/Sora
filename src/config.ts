@@ -141,7 +141,7 @@ export const SETTINGS = {
   SORA_MODULES: {
     area: 'core', kind: 'list', default: ['all'], allowAll: true, item: moduleName, legacy: ['ENABLED_MODULES'], legacyOnly: 'error',
     form: `カンマ区切りのモジュール名（${MODULE_NAMES.join('・')}）か all`,
-    doc: `有効にするモジュール（カンマ区切り: \`${MODULES_IN_ALL}\` または \`all\`）。自己責任の \`lyrics\`・楽曲認識の \`shazam\`・HTS の版の保存の \`hts-archive\` は \`all\` に含まれず、\`all,lyrics\` のように名前を挙げたときだけ有効。知らない名前があると起動しません`,
+    doc: `有効にするモジュール（カンマ区切り: \`${MODULES_IN_ALL}\` または \`all\`）。自己責任の \`lyrics\`・楽曲認識の \`shazam\`・HTS の版の保存の \`hts-archive\` は \`all\` に含まれず、\`all,lyrics\` のように名前を挙げたときだけ有効。絞ったモジュールは、MCP のツールだけでなく、REST の経路も閉じます（404・\`code: MODULE_DISABLED\`。\`/openapi.json\` と \`GET /tools\` にも載りません）。\`media\` は \`media\` か \`web\` のどちらかで有効です。システム（\`/health\` など）と公開の文書は、絞っても開いています。知らない名前があると起動しません`,
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',

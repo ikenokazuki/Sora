@@ -11,6 +11,7 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { createAuthMiddleware } from './auth.js';
+import { restModuleGuard } from './routes/module_guard.js';
 import { envEnum, envList } from './config.js';
 import { installEgressFetch } from './net/egress_fetch.js';
 import { checkStartupEnv } from './startup_check.js';
@@ -127,6 +128,8 @@ app.use('*', async (c, next) => {
 });
 
 app.use('*', createAuthMiddleware());
+// SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求には、設定を教えない）
+app.use('*', restModuleGuard);
 
 // ==========================================
 // 3. サブルーターのマウント
