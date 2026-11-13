@@ -166,21 +166,9 @@ export const SETTINGS = {
   },
 
   // --- 認証 ---
-  SORA_AUTH_LOOPBACK_NO_KEY: {
-    area: 'auth', kind: 'bool', default: false, legacy: ['ALLOW_LOCAL_NO_AUTH'], legacyOnly: 'warn',
-    doc: '`true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください**',
-  },
-  SORA_AUTH_TRUST_PROXY: {
-    area: 'auth', kind: 'bool', default: false, legacy: ['TRUST_PROXY'], legacyOnly: 'warn',
-    doc: '`true` で、`X-Forwarded-For` から接続元を読みます（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。読むのは、右から `SORA_AUTH_PROXY_HOPS` 番目のアドレスです（先頭の値は、利用者が書けるので信じません）。前段のリバースプロキシが、自分の見た接続元を右端に足す（または、その値に置き換える）構成が前提です。プロキシを通らずに Sora へつなげる経路があるなら、設定しないでください（その経路から `X-Forwarded-For` を書かれます）。v5 より前は先頭の値を読んでいたので、プロキシが 2 段以上のときは `SORA_AUTH_PROXY_HOPS` も設定してください',
-  },
   SORA_AUTH_KEYS_FILE: {
     area: 'auth', kind: 'path',
     doc: '名前つきの複数の鍵のファイルのパス（JSON。`{"keys": [{"name": "alice", "key": "…"}, {"name": "bob", "keyHash": "sha256:…"}]}`）。設定すると、共有のサービスとして、鍵ごとに別の tenant（`name:<name>`）で動きます。`name` は英小文字・数字・`-`・`_` の 1〜64 字、`key` は 16〜256 字の空白を含まない ASCII、`keyHash` は `sha256:` と鍵の SHA-256（64 桁の 16 進）です。同じ `name` を複数の行に書くと、どちらの鍵も同じ tenant です（鍵の入れ替えの移行期に使います）。匿名は認めず（`SORA_ALLOW_ANONYMOUS` は効きません）、`SORA_API_KEY` とは併用できません。ファイルが無い・読めない・誤りがある・鍵が 1 つも無いときは、起動しません。起動のときに 1 回読むので、鍵を足す・消すときは再起動してください。平文の `key` を書いたファイルは `chmod 600` にしてください（所有者以外も読めるときは警告します）。詳しくは README の「4.6 複数のユーザーで使う」',
-  },
-  SORA_AUTH_PROXY_HOPS: {
-    area: 'auth', kind: 'int', min: 1, max: 10, default: 1,
-    doc: '`SORA_AUTH_TRUST_PROXY=true` のときの、`X-Forwarded-For` を足す、信頼するリバースプロキシの段数（1〜10）。右から数えて、この番目のアドレスを接続元とします。1 は、いちばん右（Sora の手前のプロキシが見た相手。nginx が 1 台ならこれ）、2 は、CDN とロードバランサーが続く構成です。`X-Forwarded-For` の長さがこの段数に足りない要求は、ループバックとみなしません',
   },
   SORA_AUTH_DAILY_LIMIT: {
     area: 'auth', kind: 'int', min: 1, legacy: ['DAILY_REQUEST_LIMIT'], legacyOnly: 'error',
@@ -483,7 +471,13 @@ type Values<N extends EnvName> = Table[N] extends { values: readonly (infer V)[]
 const TABLE: Readonly<Record<string, Setting>> = { ...SETTINGS, ...EXTERNAL };
 
 /** 廃止した名前（置き換え先は無い。旧名だけのときは警告）。 */
-const REMOVED = ['SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR'];
+const REMOVED = [
+  'SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR',
+  // 鍵なしのループバック通過（v4 の ALLOW_LOCAL_NO_AUTH）と、その判定にしか使わない X-Forwarded-For の読み方（v4 の TRUST_PROXY）。
+  // 「接続元がループバック」を認証の代わりにすると、同じホストのリバースプロキシが X-Forwarded-For を足さないだけで、外からの全要求が鍵なしで通る（隔離の設計 4・E21〜E24）。
+  // SORA_AUTH_* の 3 つは、v5 の開発中にだけあった名前（リリースされていない）で、イメージの latest を使った人のために残す
+  'ALLOW_LOCAL_NO_AUTH', 'TRUST_PROXY', 'SORA_AUTH_LOOPBACK_NO_KEY', 'SORA_AUTH_TRUST_PROXY', 'SORA_AUTH_PROXY_HOPS',
+];
 
 /** 旧名 → 置き換え先（廃止は to が無い）と、旧名だけのときの扱い。checkEnv だけが使う（別名としては読まない）。 */
 export const LEGACY: Readonly<Record<string, { to?: SettingName; policy: 'error' | 'warn' }>> = Object.fromEntries([
@@ -688,7 +682,7 @@ const OTHER_PROGRAMS = 'ほかのプログラムのものなら、そのまま�
  * (a) 未知の SORA_* は警告 (b) 旧名は警告（置き換え先つき。新名があれば旧名は無視）
  * (c) 旧名だけで新名が無いとき、拒否の 10 個は errors (d) 不正な値は errors（秘密は「設定済み、長さ N」）
  * (e) 組の片方だけ（判例の索引の URL と SHA-256 は errors、運送会社の ID と秘密は警告）。
- * (f) 効かない設定（SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効く。鍵ファイルがあるとき SORA_ALLOW_ANONYMOUS は効かない）は警告。
+ * (f) 効かない設定（鍵ファイルがあるとき SORA_ALLOW_ANONYMOUS は効かない）は警告。
  * (g) 併用できない設定（SORA_API_KEY と SORA_AUTH_KEYS_FILE）は errors。
  * キーも SORA_ALLOW_ANONYMOUS も無いのはエラーにしない（Fail-Open）。ファイルの有無は見ない（起動の処理の startup_check.ts が見る）。
  */
@@ -707,7 +701,7 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
   for (const [old, { to, policy }] of Object.entries(LEGACY)) {
     if (isBlank(env[old])) continue;
     const generic = !old.startsWith('SORA_');
-    if (!to) warnings.push(`${old} は v5.0.0 で廃止しました（読みません）。設定を消してください`);
+    if (!to) warnings.push(`${old} は v5.0.0 で廃止しました（読みません）。${generic ? `Sora のための設定なら消してください（${OTHER_PROGRAMS}）` : '設定を消してください'}`);
     else if (!isBlank(env[to])) {
       warnings.push(`${old} は ${to} に変わりました。${to} が設定されているので、${old} は無視します。${generic ? `Sora のための設定なら消してください（${OTHER_PROGRAMS}）` : `${old} を消してください`}`);
     } else if (old === 'API_KEY') {
@@ -717,11 +711,6 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
     } else {
       warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください${generic ? `（${OTHER_PROGRAMS}）` : ''}`);
     }
-  }
-
-  // 段数は、X-Forwarded-For を読むときだけ効く。効かない設定を、黙って抱えさせない
-  if (!isBlank(env.SORA_AUTH_PROXY_HOPS) && !envBool('SORA_AUTH_TRUST_PROXY', env)) {
-    warnings.push('SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効きます。いまは効きません（SORA_AUTH_TRUST_PROXY=true にするか、この設定を消してください）');
   }
 
   // 鍵ファイル（名前つきの複数の鍵）は、単一の鍵と併用できない（どちらの鍵で認証するか曖昧にしない）。匿名も認めないので、真にした SORA_ALLOW_ANONYMOUS は効かない

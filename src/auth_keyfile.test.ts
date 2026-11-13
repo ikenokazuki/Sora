@@ -9,7 +9,7 @@ import { browserRoutes } from './routes/browser.js';
 import * as scraper from './scraper.js';
 import { ApiKeyStore, parseApiKeyFile, resetApiKeyStoreCache } from './security/api_keys.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
-import { withEnv } from './test_fixtures/env.js';
+import { removedSettings, withEnv } from './test_fixtures/env.js';
 
 /**
  * 鍵ファイル（SORA_AUTH_KEYS_FILE）での認証: 鍵ごとに別の tenant（`name:<name>`）。匿名は認めない（設計 4）。
@@ -36,7 +36,7 @@ function keyFile(keys: unknown[], mode = 0o600): string {
   return path;
 }
 
-const clean = { SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined, SORA_AUTH_TRUST_PROXY: undefined, SORA_AUTH_DAILY_LIMIT: undefined };
+const clean = { SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_DAILY_LIMIT: undefined };
 const app = () => {
   const a = new Hono();
   a.use('*', createAuthMiddleware());
@@ -116,20 +116,19 @@ describe('鍵ファイルでの認証', () => {
     });
   });
 
-  test('SORA_AUTH_LOOPBACK_NO_KEY: 直接のループバックは鍵なしで internal。外部は 401。鍵があれば、ループバックでも鍵の tenant', async () => {
+  test('ループバックからでも、鍵が要る（鍵なしの通過は、v5 で廃止した。旧い設定が残っていても効かない）。鍵があれば、ループバックでも鍵の tenant', async () => {
     const path = keyFile([{ name: 'alice', key: 'alice-key-0123456789abcdef' }]);
-    await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: path, SORA_AUTH_LOOPBACK_NO_KEY: 'true' }, async () => {
-      const local = await get({}, '127.0.0.1');
-      expect(local.status).toBe(200);
-      expect(await tenantOf(local)).toMatchObject({ tenantId: 'internal', authMode: 'internal' });
-      expect((await get({}, '203.0.113.5')).status).toBe(401);
-      expect((await get({ 'X-API-Key': 'wrong-key-0123456789abcdef' }, '203.0.113.5')).status).toBe(401);
+    await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: path, ...removedSettings() }, async () => {
+      for (const remoteAddr of ['127.0.0.1', '::1', '::ffff:127.0.0.1', null]) {
+        expect((await get({}, remoteAddr)).status, String(remoteAddr)).toBe(401);
+      }
+      // 接続元を示すヘッダーも、認証の代わりにならない
+      const peerHeaders: Record<string, string>[] = [{ 'X-Forwarded-For': '127.0.0.1' }, { 'X-Forwarded-For': '203.0.113.9, 127.0.0.1' }, { 'X-Real-IP': '127.0.0.1' }];
+      for (const headers of peerHeaders) {
+        expect((await get(headers, '127.0.0.1')).status, JSON.stringify(headers)).toBe(401);
+      }
       const keyed = await get({ 'X-API-Key': 'alice-key-0123456789abcdef' }, '127.0.0.1');
-      expect(await tenantOf(keyed)).toMatchObject({ tenantId: 'name:alice' });
-    });
-    // 設定しなければ、ループバックでも鍵が要る
-    await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: path }, async () => {
-      expect((await get({}, '127.0.0.1')).status).toBe(401);
+      expect(await tenantOf(keyed)).toMatchObject({ tenantId: 'name:alice', authMode: 'api_key' });
     });
   });
 
@@ -176,7 +175,7 @@ describe('鍵ファイルでの認証', () => {
   test('鍵ファイルを読めないときは、すべての要求を 503 で断る（匿名にも、鍵なしの通過にもしない）。理由は 1 回だけログに出す', async () => {
     const error = spyOn(console, 'error').mockImplementation(() => {});
     try {
-      await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: join(dir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true', SORA_AUTH_LOOPBACK_NO_KEY: 'true' }, async () => {
+      await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: join(dir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
         for (const [headers, remoteAddr] of [[{}, '127.0.0.1'], [{ 'X-API-Key': 'alice-key-0123456789abcdef' }, null], [{}, '203.0.113.5']] as [Record<string, string>, string | null][]) {
           const res = await get(headers, remoteAddr);
           expect(res.status, JSON.stringify(headers)).toBe(503);

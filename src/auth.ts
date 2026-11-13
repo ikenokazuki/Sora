@@ -2,7 +2,6 @@ import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
 import { envBool, envInt, envStr } from './config.js';
 import { dbIncrementApiUsage } from './db.js';
-import { ipLiteralVersion } from './net/ip_policy.js';
 import { getApiKeyStore, type ApiKeyStore } from './security/api_keys.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { isPublicPath } from './security/public_paths.js';
@@ -36,54 +35,6 @@ export function extractAuthToken(c: any): string | undefined {
 
 export function hashApiKey(key: string): string {
   return createHash('sha256').update(key).digest('hex').slice(0, 16);
-}
-
-/** Socket peer address injected by the server wrapper (never client-controlled). */
-export function getPeerAddress(c: any): string | undefined {
-  const env = (c as any)?.env;
-  const raw = env?.remoteAddr ?? env?.remoteAddress;
-  if (typeof raw === 'string' && raw.length > 0) return raw;
-  return undefined;
-}
-
-/** Loopback check for peer IPs (RFC P1-SEC-04). Zone IDs and brackets stripped. */
-export function isLoopbackAddress(ip: string): boolean {
-  const v = ip.trim().replace(/^\[/, '').split('%')[0].split(']')[0].toLowerCase();
-  if (v === 'localhost' || v === '::1' || v === '0:0:0:0:0:0:0:1') return true;
-  const m = v.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const octets = m.slice(1, 5).map((x) => parseInt(x, 10));
-    if (octets.every((x) => x >= 0 && x <= 255) && octets[0] === 127) return true;
-  }
-  return false;
-}
-
-/**
- * X-Forwarded-For の値から、信頼するプロキシの段数 hops だけ右へ数えた位置の接続元を返す。
- * hops=1 は、いちばん右（Sora の手前のプロキシが見た相手）。左の値は、利用者が書けるので使わない。
- * 段数に足りないとき（プロキシを通っていない）と、IP アドレスでないときは undefined（信じない）。
- */
-export function forwardedClientAddress(header: string, hops: number): string | undefined {
-  const chain = header.split(',');
-  if (chain.length < hops) return undefined;
-  const address = chain[chain.length - hops].trim();
-  return ipLiteralVersion(address) !== 0 ? address : undefined;
-}
-
-export function resolvePeerLocal(c: any): boolean {
-  const forwardedFor = c.req.header('x-forwarded-for');
-  const realIp = c.req.header('x-real-ip');
-  const directConnection = !forwardedFor && !realIp;
-  const peer = getPeerAddress(c);
-  if (envBool('SORA_AUTH_TRUST_PROXY')) {
-    // X-Forwarded-For があれば、信頼するプロキシの段数から数えた値だけで決める（足りなければ信じない）。無ければ、ソケットの相手
-    const clientIp = forwardedFor ? forwardedClientAddress(forwardedFor, envInt('SORA_AUTH_PROXY_HOPS')) : peer;
-    return clientIp !== undefined && isLoopbackAddress(clientIp);
-  }
-  if (!directConnection) return false;
-  // Peer unknown (unit tests, non-Bun runtimes): legacy header heuristic.
-  if (peer === undefined) return true;
-  return isLoopbackAddress(peer);
 }
 
 let warnedNoKeyMode = false;
@@ -156,18 +107,12 @@ function authenticateWithSingleKey(c: any, expectedApiKey: string | undefined): 
 
   // 3. API キーの照合 (定数時間比較)
   const providedToken = extractAuthToken(c);
-  const isDirectLocal = resolvePeerLocal(c) && envBool('SORA_AUTH_LOOPBACK_NO_KEY');
   const allowAnonymous = envBool('SORA_ALLOW_ANONYMOUS');
 
   if (providedToken && isSecureEqual(providedToken, apiKey)) {
     tokenHash = hashApiKey(providedToken);
     try {
       c.set('tenant', resolveTenantContext({ apiKey: providedToken }));
-    } catch {}
-  } else if (isDirectLocal) {
-    tokenHash = 'local_direct';
-    try {
-      c.set('tenant', resolveTenantContext({ internal: true }));
     } catch {}
   } else if (allowAnonymous) {
     try {
@@ -190,10 +135,6 @@ function authenticateWithKeyFile(c: any, store: ApiKeyStore): string | Response 
     const tenant = resolveTenantContext({ tenantName: name });
     c.set('tenant', tenant);
     return tenant.tenantId;
-  }
-  if (resolvePeerLocal(c) && envBool('SORA_AUTH_LOOPBACK_NO_KEY')) {
-    c.set('tenant', resolveTenantContext({ internal: true }));
-    return 'local_direct';
   }
   return unauthorized(c, providedToken);
 }

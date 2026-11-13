@@ -13,9 +13,8 @@ describe('tenant_context (P1-SEC-01)', () => {
   test('anonymous shares legacy scope for single-user compat', () => {
     expect(resolveTenantContext({}).tenantId).toBe(LEGACY_TENANT_ID);
   });
-  test('anonymous and internal modes', () => {
+  test('anonymous mode', () => {
     expect(resolveTenantContext({}).authMode).toBe('anonymous');
-    expect(resolveTenantContext({ internal: true }).tenantId).toBe('internal');
   });
   test('legacy constant exists for single-user default', () => {
     expect(LEGACY_TENANT_ID).toBe('legacy');
@@ -24,7 +23,7 @@ describe('tenant_context (P1-SEC-01)', () => {
     const t = resolveTenantContext({ tenantName: 'alice' });
     expect(t).toMatchObject({ tenantId: 'name:alice', authMode: 'api_key', name: 'alice' });
     expect(tenantIdForName('alice')).toBe('name:alice');
-    // legacy・internal・key:<ハッシュ> と同じ ID にならない（name は英小文字・数字・-・_ だけで、前置きの name: が付く）
+    // legacy・key:<ハッシュ> と同じ ID にならない（name は英小文字・数字・-・_ だけで、前置きの name: が付く）
     for (const name of ['legacy', 'internal', 'key']) expect(tenantIdForName(name)).not.toBe(name);
     expect(tenantIdForName('legacy')).not.toBe(LEGACY_TENANT_ID);
     expect(tenantIdForName('alice')).not.toBe(tenantIdForApiKey('alice'));
@@ -32,8 +31,7 @@ describe('tenant_context (P1-SEC-01)', () => {
     expect(resolveTenantContext({ apiKey: 'secret-1' })).not.toHaveProperty('name');
     expect(resolveTenantContext({})).not.toHaveProperty('name');
   });
-  test('internal wins over a name, and a name wins over a raw key', () => {
-    expect(resolveTenantContext({ internal: true, tenantName: 'alice' }).tenantId).toBe('internal');
+  test('a name wins over a raw key', () => {
     expect(resolveTenantContext({ tenantName: 'alice', apiKey: 'secret-1' }).tenantId).toBe('name:alice');
   });
 });

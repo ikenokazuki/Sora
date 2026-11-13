@@ -4,7 +4,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { createAuthMiddleware, resolvePeerLocal } from './auth.js';
+import { createAuthMiddleware } from './auth.js';
 import { browserIdleTtlMs, closeSharedBrowser, defaultBrowserConcurrency, detectMemoryLimitBytes, getProxyConfig, resolveChromiumPath, validateHostIpDns } from './browser_engine.js';
 import { handleBrowserSessionAction } from './browser_session.js';
 import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
@@ -158,7 +158,7 @@ describe('認証の旧名は読まない（新しい名前の動きは auth.test
     a.get('/p', (c) => c.json({ ok: true }));
     return a;
   };
-  const clean = { SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined, SORA_AUTH_TRUST_PROXY: undefined, SORA_AUTH_DAILY_LIMIT: undefined };
+  const clean = { SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_DAILY_LIMIT: undefined };
 
   test('WEB_FETCHER_API_KEY・API_KEY だけでは認証を掛けない（Fail-Open。起動の拒否は起動時の検査）', async () => {
     const warn = spyOn(console, 'warn').mockImplementation(() => {});
@@ -171,12 +171,9 @@ describe('認証の旧名は読まない（新しい名前の動きは auth.test
     }
   });
 
-  test('ALLOW_LOCAL_NO_AUTH・TRUST_PROXY・DAILY_REQUEST_LIMIT は効かない', async () => {
+  test('ALLOW_LOCAL_NO_AUTH（鍵なしのループバック通過は、v5 で廃止した）・DAILY_REQUEST_LIMIT は効かない', async () => {
     await withEnv({ ...clean, ALLOW_LOCAL_NO_AUTH: 'true' }, async () => {
       expect((await app('secret-test-key').fetch(new Request('http://localhost/p'), { remoteAddr: '127.0.0.1' })).status).toBe(401);
-    });
-    await withEnv({ ...clean, TRUST_PROXY: 'true' }, () => {
-      expect(resolvePeerLocal({ req: { header: (n: string) => (n === 'x-forwarded-for' ? '127.0.0.1' : undefined) }, env: { remoteAddr: '203.0.113.5' } })).toBe(false);
     });
     await withEnv({ ...clean, DAILY_REQUEST_LIMIT: '1' }, async () => {
       const key = `old-limit-${randomUUID()}`;
