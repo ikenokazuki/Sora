@@ -11,7 +11,7 @@
 #   8. ブラウザの通信を、出口のゲートウェイ（SORA_EGRESS_GATEWAY=on）に通すと、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/browser-egress-check.ts）
 #   9. 8 を、7 と同じ硬化した運用（サンドボックス有効）でも確かめる
 #  10. 静的取得（wreq-js。イメージの自前の native）の通信を、出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/static-egress-check.ts）
-#  11. Bun の fetch と、通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築）の通信を、出口のゲートウェイに通すと、内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決する（scripts/fetch-egress-check.ts）
+#  11. Bun の fetch と、通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築）の通信を、出口のゲートウェイに通すと、内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決し、許す宛先の一覧（SORA_EGRESS_ALLOW_HOSTS）に挙げた宛先だけが内部の IP でも届く（scripts/fetch-egress-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail

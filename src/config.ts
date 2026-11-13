@@ -7,6 +7,7 @@
  * - README §4.3 の表は renderEnvTable() で作る（この登録簿が正本）。
  */
 import { EXPLICIT_ONLY_MODULES, MODULE_NAMES } from './modules.js';
+import { canonicalHost, ipLiteralVersion, parseIpv4ToUint32 } from './net/ip_policy.js';
 import { normalizeHost, normalizeOrigin } from './security/host_origin.js';
 
 export type Env = Record<string, string | undefined>;
@@ -99,6 +100,23 @@ const providerId = (value: string) => (/^[a-z0-9_-]+$/.test(value) ? value : und
 const did = (value: string) => (/^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/.test(value) ? value : undefined);
 /** TCP のポート（1〜65535。先頭の 0 は外す） */
 const port = (value: string) => (/^\d{1,5}$/.test(value) && Number(value) >= 1 && Number(value) <= 65535 ? String(Number(value)) : undefined);
+
+/**
+ * `host:port`（出口のゲートウェイの許す宛先）。host は、名前（英数字・`.`・`-`・`_`。小文字にして、末尾のドットを外す）か、IP リテラル
+ * （IPv4 は 10 進のドット表記だけ。IPv6 は `[ ]` で囲む）。ポートは 1〜65535（先頭の 0 は外す）。
+ * ワイルドカード・CIDR・スキーム・パス・ポートなし・IP の別の書き方（16 進・8 進・短縮・整数）は不正。
+ */
+const hostPort = (value: string): string | undefined => {
+  const m = /^(?:\[([0-9A-Fa-f:.]+)\]|([A-Za-z0-9._-]+)):(\d{1,5})$/.exec(value);
+  const p = m && port(m[3]);
+  if (!m || p === undefined) return undefined;
+  if (m[1] !== undefined) return ipLiteralVersion(m[1]) === 6 ? `[${canonicalHost(m[1])}]:${p}` : undefined;
+  const host = m[2].toLowerCase().replace(/\.+$/, '');
+  if (!host || host.startsWith('.') || host.includes('..')) return undefined;
+  if (ipLiteralVersion(host) === 4) return `${host}:${p}`;
+  // getaddrinfo は、0x7f.1・127.1・2130706433・010.0.0.1 を IPv4 として読む。名前に見せかけた別の書き方は、受けない
+  return parseIpv4ToUint32(host) === null ? `${host}:${p}` : undefined;
+};
 
 const PARTY_FIELDS = ['name', 'street', 'city', 'state', 'country', 'email', 'phone'];
 const isParty = (value: unknown) =>
@@ -262,13 +280,18 @@ export const SETTINGS = {
   SORA_EGRESS_GATEWAY: {
     area: 'egress', kind: 'bool', default: false,
     defaultDoc: '*(未設定 = off)*',
-    doc: '外向きの通信（ブラウザ（Chromium）・静的取得（wreq-js）・Bun の `fetch`（固定の提供元・webhook など）・通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築））を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先や、取得先の応答が決める URL を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。Bun は、`NO_PROXY` が挙げた宛先には、指定したプロキシも使わず直接つなぐので、最初の通信のあとに、Sora のプロセスの環境から `NO_PROXY` を外します。子プロセスには、`HTTP_PROXY`・`HTTPS_PROXY` でゲートウェイを指し、`ALL_PROXY`・`NO_PROXY` は渡しません（環境変数に従わない子プロセスは、止められません）。ゲートウェイを有効にすると、内部の宛先・許していないポートへは、運用者が設定した宛先（`SORA_X_DETAIL_BASE_URL` に指定した自前のサーバーなど）も届かなくなります。書き方の誤りと、`SORA_PROXY_LIST`（リクエストごとに替えるプロキシの一覧。ゲートウェイの上流は 1 つなので、一緒には使えません）との併用、対応していない上流のプロキシの方式は、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。',
+    doc: '外向きの通信（ブラウザ（Chromium）・静的取得（wreq-js）・Bun の `fetch`（固定の提供元・webhook など）・通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築））を、Sora の中の出口のゲートウェイ（ループバックの 1 ポート。有効にしたとき、最初に使うときに起動します）に通します。`on`（`true`・`1`・`yes` も可）で有効、未設定・`off` は従来どおり直接つなぎます。ゲートウェイは、名前を 1 回だけ解決し、答えに内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータなど）が 1 つでもあれば全体を断り、検査した IP にだけつなぎます。ページの遷移先や、取得先の応答が決める URL を DNS rebinding で内部に替えられても、届きません。解決できないときは、つなぎません。ブラウザ自身の名前解決と HTTP/3（QUIC）は止めます（HTTP/3 は使えなくなります）。静的取得の TLS は端から端のままで、ClientHello は変わりません（平文の `http://` の要求は、ヘッダーの順序・表記はそのままで、末尾に `Connection: close` が付きます）。`SORA_PROXY_URL` などの運用者のプロキシは、ゲートウェイの上流になります（`NO_PROXY` の宛先は、上流を通さず、ゲートウェイが直接つなぎます。どちらも、宛先の検査は受けます）。Bun は、`NO_PROXY` が挙げた宛先には、指定したプロキシも使わず直接つなぐので、最初の通信のあとに、Sora のプロセスの環境から `NO_PROXY` を外します。子プロセスには、`HTTP_PROXY`・`HTTPS_PROXY` でゲートウェイを指し、`ALL_PROXY`・`NO_PROXY` は渡しません（環境変数に従わない子プロセスは、止められません）。ゲートウェイを有効にすると、内部の宛先・許していないポートへは、運用者が設定した宛先（`SORA_X_DETAIL_BASE_URL` に指定した自前のサーバーなど）も届かなくなります（届かせるには、`SORA_EGRESS_ALLOW_HOSTS` に挙げます）。書き方の誤りと、`SORA_PROXY_LIST`（リクエストごとに替えるプロキシの一覧。ゲートウェイの上流は 1 つなので、一緒には使えません）との併用、対応していない上流のプロキシの方式は、起動のときにエラーにして止めます。`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（内部への取得を許す設定）のときは、on でも使いません（警告）。',
   },
   SORA_EGRESS_PORTS: {
     area: 'egress', kind: 'list', item: port,
     form: 'カンマ区切りの 1〜65535 のポート（例: `80,443`）',
     defaultDoc: '`80,443`',
     doc: '出口のゲートウェイが通す、宛先のポートです（カンマ区切り、1〜65535）。これ以外のポートへの接続は、403 で断ります。書き方の誤りは、起動のときにエラーにして止めます。`SORA_EGRESS_GATEWAY` が有効なときだけ効きます。',
+  },
+  SORA_EGRESS_ALLOW_HOSTS: {
+    area: 'egress', kind: 'list', item: hostPort,
+    form: 'カンマ区切りの `host:port`（例: `fxembed.internal:3000,10.0.0.5:8080`。IPv6 は `[fd00::5]:8080`）',
+    doc: '出口のゲートウェイが、内部の宛先（プライベートな IP・ループバック・内部の名前）や、`SORA_EGRESS_PORTS` にないポートにも通す宛先の一覧です（カンマ区切りの `host:port`。例: `fxembed.internal:3000,10.0.0.5:8080`。IPv6 は `[fd00::5]:8080`。名前は小文字にして、末尾のドットを外します）。自前のサーバー（`SORA_X_DETAIL_BASE_URL` や `SORA_OPENPOI_BASE_URL` に指定した、社内の FxEmbed など）に、ゲートウェイ越しで届かせるためのものです。挙げた宛先でも、名前を 1 回だけ解決して、検査した IP につなぐことは同じです。挙げた宛先は、Sora を使う人が指定した URL（`scrape` など）でも届きます（ゲートウェイは、呼び出し元を見分けません）。必要な宛先だけを、1 つずつ挙げてください（ワイルドカード・CIDR・ポートなしは使えません）。内部の IP のうち、通すのは、ループバック・プライベート（10/8・172.16/12・192.168/16）・100.64/10・IPv6 の `::1` と `fc00::/7` だけです。リンクローカル（クラウドのメタデータの 169.254.169.254 を含む）・未指定・マルチキャスト・予約の IP と、メタデータの名前・IP（Alibaba Cloud の 100.100.100.200、AWS の IPv6 の `fd00:ec2::254` を含む）は、挙げても通しません（挙げると、起動のときにエラーで止めます。名前が、そうした IP に解決されたときは、断ります）。運用者のプロキシ（`SORA_PROXY_URL` など）があるときは、挙げた宛先も、そのプロキシに回ります（名前の解決はプロキシが行うので、内部の IP の検査はできず、名前・IP リテラル・ポートだけを検査します）。内部のサーバーに直接つなぐには、同じ宛先を `NO_PROXY` にも挙げてください（ゲートウェイが、プロキシを通さず、通してよい内部の IP にだけ直接つなぎます）。書き方の誤りも、起動のときにエラーにして止めます。`SORA_EGRESS_GATEWAY` が有効なときだけ効きます（無効のときは、起動のときに警告します）。',
   },
 
   // --- 検索 ---

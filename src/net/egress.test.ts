@@ -295,3 +295,41 @@ describe('egressChildProxyEnv: 子プロセス（Yahoo のバイナリ・住所�
     }
   });
 });
+
+describe('SORA_EGRESS_ALLOW_HOSTS: 内部の宛先を、通す宛先として挙げる', () => {
+  test('host:port の一覧を、allowDestinations にする（名前は小文字・末尾のドットなし、IPv6 は [ ] を外す）。未設定・空は、何も指定しない', () => {
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'FxEmbed.Internal:3000, 10.0.0.5:8080 ,[fd00::5]:8443' }).allowDestinations).toEqual([
+      { host: 'fxembed.internal', port: 3000 },
+      { host: '10.0.0.5', port: 8080 },
+      { host: 'fd00::5', port: 8443 },
+    ]);
+    expect(egressGatewayOptionsFromEnv({}).allowDestinations).toBeUndefined();
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: '  ' }).allowDestinations).toBeUndefined();
+  });
+
+  test('公開の宛先（標準でないポート）も、挙げられる', () => {
+    expect(egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'api.example.com:8443,93.184.216.34:8443' }).allowDestinations).toEqual([
+      { host: 'api.example.com', port: 8443 },
+      { host: '93.184.216.34', port: 8443 },
+    ]);
+  });
+
+  test.each(['noport.internal', 'host:0', 'host:70000', '*.internal:80', 'http://host:80', '10.0.0.0/8:80', '0x7f.1:80', '2130706433:80', '127.1:80', '010.0.0.1:80', 'a b:80', '[::1:80', '[zz::1]:80', ':80', 'host:', 'host:80:90', '.internal:80', 'a..b:80', '[10.0.0.1]:80'])(
+    '書き方の誤り %j は、変数名と正しい形のエラー（黙って、無いものとして扱わない）',
+    (entry) => {
+      expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: entry })).toThrow('SORA_EGRESS_ALLOW_HOSTS の値');
+    },
+  );
+
+  test.each(['169.254.169.254:80', 'metadata.google.internal:80', 'instance-data:80', '[fe80::1]:80', '0.0.0.0:80', '224.0.0.1:80', '[::]:80', '192.0.2.5:80', '100.100.100.200:80', '[fd00:ec2::254]:80', '[FD00:EC2:0:0:0:0:0:254]:80'])(
+    '挙げても通さない宛先 %j は、理由を添えたエラー（黙って、通さないまま起動しない）',
+    (entry) => {
+      expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: entry })).toThrow('SORA_EGRESS_ALLOW_HOSTS に、挙げても通さない宛先があります');
+    },
+  );
+
+  test('通さない宛先の拒否の文には、どの宛先かを添える（登録簿が整えた形で）', () => {
+    expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000, 169.254.169.254:80' })).toThrow('169.254.169.254:80');
+    expect(() => egressGatewayOptionsFromEnv({ SORA_EGRESS_ALLOW_HOSTS: '[FE80::1]:80' })).toThrow('[fe80::1]:80');
+  });
+});

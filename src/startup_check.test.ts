@@ -240,3 +240,30 @@ describe('出口のゲートウェイを使うとき（SORA_EGRESS_GATEWAY=on）
     expect(lines.filter((line) => line.includes('SORA_EGRESS_GATEWAY'))).toHaveLength(1);
   });
 });
+
+describe('出口のゲートウェイの許す宛先（SORA_EGRESS_ALLOW_HOSTS）は、起動のときに検査する', () => {
+  test.each(['169.254.169.254:80', 'metadata.google.internal:80', '[fe80::1]:80'])('挙げても通さない宛先 %j は、止める', (entry) => {
+    const { lines, exits } = run({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_ALLOW_HOSTS: entry });
+    expect(exits).toEqual([1]);
+    expect(lines.filter((line) => line.startsWith(`${PREFIX} エラー: SORA_EGRESS_ALLOW_HOSTS`))).toHaveLength(1);
+  });
+
+  test('使わないとき（off）は、挙げても通さない宛先でも、止めない（書き方の誤りだけは、レジストリが止める）', () => {
+    expect(run({ SORA_EGRESS_ALLOW_HOSTS: '169.254.169.254:80' }).exits).toEqual([]);
+    expect(run({ SORA_EGRESS_ALLOW_HOSTS: 'noport' }).exits).toEqual([1]);
+  });
+
+  // SORA_FETCH_ALLOW_PRIVATE_NETWORK=true のときも、ゲートウェイは使わない（isEgressGatewayEnabled が false）ので、同じ警告になる。
+  // ただし、その警告は、プロセスで 1 回だけ出す作りで、egress.test.ts の確認と順序で食い合うので、ここでは試さない
+  test('ゲートウェイを使わないとき（未設定・off）は、効かないことを、警告で知らせる（止めない）', () => {
+    for (const gateway of [{}, { SORA_EGRESS_GATEWAY: 'off' }]) {
+      const { lines, exits } = run({ ...gateway, SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000' });
+      expect(exits).toEqual([]);
+      expect(lines.filter((line) => line.startsWith(`${PREFIX} 警告: SORA_EGRESS_ALLOW_HOSTS は、出口のゲートウェイが有効なときだけ効きます`))).toHaveLength(1);
+    }
+  });
+
+  test('正しい宛先は、止めず、何も出さない', () => {
+    expect(run({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000,10.0.0.5:8080,[fd00::5]:8443' })).toEqual({ lines: [], exits: [], asked: [] });
+  });
+});

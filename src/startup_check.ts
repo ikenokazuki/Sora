@@ -3,7 +3,7 @@
  * 出力は標準エラーだけ（stdio では標準出力が MCP の JSON-RPC の流れ）。秘密の値は checkEnv が「設定済み、長さ N」にする。
  */
 import { existsSync } from 'node:fs';
-import { checkEnv, envPath, LEGACY, type Env } from './config.js';
+import { checkEnv, envList, envPath, LEGACY, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import { egressGatewayOptionsFromEnv, isEgressGatewayEnabled } from './net/egress.js';
 
@@ -48,6 +48,10 @@ export function checkStartupEnv({
   if (errors.length === 0) {
     try {
       if (isEgressGatewayEnabled(env)) egressGatewayOptionsFromEnv(env);
+      // 許す宛先の一覧は、ゲートウェイを使うときだけ効く（使わないなら、内部の宛先には、もともと直接つなぐ）。効かない設定を、黙って抱えさせない
+      else if (envList('SORA_EGRESS_ALLOW_HOSTS', env).length > 0) {
+        warnings.push('SORA_EGRESS_ALLOW_HOSTS は、出口のゲートウェイが有効なときだけ効きます。いまは、ゲートウェイを使わないので、効きません（SORA_EGRESS_GATEWAY=on にするか、この設定を外してください。SORA_FETCH_ALLOW_PRIVATE_NETWORK=true のときも、ゲートウェイは使いません）');
+      }
     } catch (error) {
       errors.push(errorMessage(error) ?? String(error));
     }

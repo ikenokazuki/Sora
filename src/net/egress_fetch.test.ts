@@ -9,7 +9,7 @@ import { createEgressTestKit, fakeResolver } from './egress_test_kit.js';
 // テストの事前設定（test_preload.ts）は、外へ出ないよう、プロキシの環境変数に、閉じたポートの架空のプロキシを入れている。
 // ゲートウェイは、それを運用者の上流として読むので、このファイルの間だけ外す
 const kit = createEgressTestKit();
-const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_EGRESS_GATEWAY'];
+const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_EGRESS_GATEWAY', 'SORA_EGRESS_ALLOW_HOSTS'];
 const realFetch = globalThis.fetch;
 let saved: Record<string, string | undefined> = {};
 
@@ -116,6 +116,20 @@ describe('installEgressFetch: on のとき、fetch は、出口のゲートウ�
     expect(await viaUpstream.text()).toBe('up');
     expect(upstream.heads).toHaveLength(1);
     expect(upstream.heads[0].split('\r\n')[0]).toBe(`GET http://other.test:${origin.port}/o HTTP/1.1`);
+  });
+
+  test('SORA_EGRESS_ALLOW_HOSTS に挙げた宛先は、内部の IP でも届く。挙げていない宛先は、これまでどおり断られる（環境変数 → ゲートウェイの設定 → fetch）', async () => {
+    const origin = await kit.startOrigin('svc-ok');
+    process.env.SORA_EGRESS_ALLOW_HOSTS = `svc.test:${origin.port}`;
+    const { resolve } = fakeResolver({ 'svc.test': ['127.0.0.1'], 'other.test': ['127.0.0.1'] });
+    installEgressFetch({ resolve }); // 判定と、許すポートは、既定のまま（内部の IP・80 と 443 以外のポートは断る）
+
+    const listed = await fetch(`http://svc.test:${origin.port}/a`);
+    const unlisted = await fetch(`http://other.test:${origin.port}/b`);
+
+    expect(await listed.text()).toBe('svc-ok');
+    expect(unlisted.status).toBe(403);
+    expect(origin.requests).toHaveLength(1);
   });
 
   test('POST の本文（文字列・FormData）は、そのまま届く', async () => {

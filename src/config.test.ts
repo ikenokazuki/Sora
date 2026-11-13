@@ -116,8 +116,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 8 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(61);
+  test('counts match the design (53 + 9 settings, 13 standard names, 40 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(62);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(40);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -185,7 +185,7 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the eight settings added after the design are registered', () => {
+  test('the nine settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
@@ -199,6 +199,8 @@ describe('registry', () => {
     expect(SETTINGS.SORA_EGRESS_GATEWAY).toMatchObject({ area: 'egress', kind: 'bool', default: false });
     expect(SETTINGS.SORA_EGRESS_PORTS).toMatchObject({ area: 'egress', kind: 'list' });
     expect(SETTINGS.SORA_EGRESS_PORTS).not.toHaveProperty('default');
+    expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).toMatchObject({ area: 'egress', kind: 'list' });
+    expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).not.toHaveProperty('default');
   });
 
   test('names follow the naming rules and do not collide', () => {
@@ -356,6 +358,24 @@ describe('the egress gateway settings (SORA_EGRESS_GATEWAY, SORA_EGRESS_PORTS)',
 
   test('both are known names, so checkEnv does not warn about them', () => {
     expect(checkEnv({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_PORTS: '80,443,8443' })).toEqual({ errors: [], warnings: [] });
+  });
+
+  test('SORA_EGRESS_ALLOW_HOSTS: comma-separated host:port (names lowercased without a trailing dot, IPv6 in brackets, ports 1-65535 without leading zeros, duplicates merged); unset reads an empty list', () => {
+    const name = 'SORA_EGRESS_ALLOW_HOSTS';
+    expect(envList(name, {})).toEqual([]);
+    expect(envList(name, { [name]: ' FxEmbed.Internal:3000 , 10.0.0.5:8080,[FD00::5]:08080,fxembed.internal.:3000,,' })).toEqual(['fxembed.internal:3000', '10.0.0.5:8080', '[fd00::5]:8080']);
+    for (const raw of ['noport.internal', 'host:0', 'host:70000', '*.internal:80', 'http://host:80', '10.0.0.0/8:80', '0x7f.1:80', '2130706433:80', '127.1:80', '010.0.0.1:80', 'a b:80', '[::1:80', '[zz::1]:80', ':80', 'host:', 'host:80:90', '.internal:80', 'a..b:80', '[10.0.0.1]:80']) {
+      expect(envError(name, { [name]: raw }), raw).toContain('SORA_EGRESS_ALLOW_HOSTS の値');
+    }
+    // IPv6 は URL の正規形にそろえる（要求の宛先も同じ整え方なので、書き方が違っても一致する）
+    expect(envList(name, { [name]: '[FD00:0:0:0:0:0:0:5]:80,[fd00::5]:080,[::ffff:10.0.0.1]:80' })).toEqual(['[fd00::5]:80', '[::ffff:a00:1]:80']);
+    expect(checkEnv({ [name]: 'noport' }).errors).toEqual([
+      'SORA_EGRESS_ALLOW_HOSTS の値（"noport"）は不正です。正しい形: カンマ区切りの `host:port`（例: `fxembed.internal:3000,10.0.0.5:8080`。IPv6 は `[fd00::5]:8080`）',
+    ]);
+  });
+
+  test('SORA_EGRESS_ALLOW_HOSTS is a known name, so checkEnv does not warn about it', () => {
+    expect(checkEnv({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000' })).toEqual({ errors: [], warnings: [] });
   });
 });
 

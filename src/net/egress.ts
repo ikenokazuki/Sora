@@ -8,7 +8,8 @@
  *   ゲートウェイが直接つなぐ（検査は、同じに受ける）
  */
 import { envBool, envError, envList, type Env } from '../config.js';
-import { EgressGateway, type EgressGatewayOptions, parseUpstreamProxyUrl } from './egress_gateway.js';
+import { type EgressAllowedDestination, EgressGateway, type EgressGatewayOptions, parseUpstreamProxyUrl } from './egress_gateway.js';
+import { canonicalHost, ipLiteralVersion, isAllowableInternalIp, isMetadataHostname, isPrivateIp } from './ip_policy.js';
 import { isProxyBypassed } from './no_proxy.js';
 import { getProxyConfig } from './proxy_config.js';
 
@@ -24,7 +25,7 @@ function warnOnce(message: string): void {
  * （打ち間違いで、ゲートウェイが off になる・ポートが既定になる・運用者のプロキシを迂回して直接つなぐ、を防ぐ）。
  * 登録簿と同じ文（変数名と正しい形。秘密の値は出さない）で、エラーにする。
  */
-function rejectInvalid(env: Env | undefined, ...names: ('SORA_EGRESS_GATEWAY' | 'SORA_EGRESS_PORTS' | 'SORA_PROXY_URL' | 'SORA_PROXY_LIST')[]): void {
+function rejectInvalid(env: Env | undefined, ...names: ('SORA_EGRESS_GATEWAY' | 'SORA_EGRESS_PORTS' | 'SORA_EGRESS_ALLOW_HOSTS' | 'SORA_PROXY_URL' | 'SORA_PROXY_LIST')[]): void {
   for (const name of names) {
     const problem = envError(name, env);
     if (problem) throw new Error(problem);
@@ -57,16 +58,33 @@ export function browserResolvesLocally(host: string, env?: Env): boolean {
 }
 
 /**
+ * SORA_EGRESS_ALLOW_HOSTS の要素（`host:port`。登録簿が、書式を検査して、整えてある）を、宛先にする。
+ * 挙げても通さない宛先（メタデータの名前・内部として通せない IP リテラル）は、黙って通さないままにせず、エラーにする。
+ */
+function parseAllowedDestination(entry: string): EgressAllowedDestination {
+  const colon = entry.lastIndexOf(':');
+  const host = canonicalHost(entry.slice(0, colon));
+  const port = Number(entry.slice(colon + 1));
+  const neverAllowed = isMetadataHostname(host) || (ipLiteralVersion(host) !== 0 && isPrivateIp(host) && !isAllowableInternalIp(host));
+  if (neverAllowed) {
+    throw new Error(`SORA_EGRESS_ALLOW_HOSTS に、挙げても通さない宛先があります: ${entry}（クラウドのメタデータの名前・IP、リンクローカル・未指定・マルチキャスト・予約の IP は、通せません）`);
+  }
+  return { host, port };
+}
+
+/**
  * 環境変数から、ゲートウェイの設定を作る。運用者のプロキシは、上流にする（http・https・socks5 に対応。ほかは、エラー: 黙って、上流なしにしない）。
  * NO_PROXY の宛先は、上流を使わない。SORA_EGRESS_PORTS が未設定なら、ポートはゲートウェイの既定（80・443）。env を省略すると、プロセスの環境を読む。
  */
 export function egressGatewayOptionsFromEnv(env?: Env): EgressGatewayOptions {
-  rejectInvalid(env, 'SORA_EGRESS_PORTS', 'SORA_PROXY_URL', 'SORA_PROXY_LIST');
+  rejectInvalid(env, 'SORA_EGRESS_PORTS', 'SORA_EGRESS_ALLOW_HOSTS', 'SORA_PROXY_URL', 'SORA_PROXY_LIST');
   // SORA_PROXY_LIST は、静的取得が、リクエストごとに替える一覧。ゲートウェイの上流は 1 つなので、黙って無視すると、替えているつもりで 1 つに偏る
   if (envList('SORA_PROXY_LIST', env).length > 0) throw new Error('SORA_PROXY_LIST（リクエストごとに替えるプロキシの一覧）は、SORA_EGRESS_GATEWAY=on のときは使えない（ゲートウェイの上流は、SORA_PROXY_URL などの 1 つ）');
   const options: EgressGatewayOptions = {};
   const allowedPorts = envList('SORA_EGRESS_PORTS', env).map(Number);
   if (allowedPorts.length > 0) options.allowedPorts = allowedPorts;
+  const allowDestinations = envList('SORA_EGRESS_ALLOW_HOSTS', env).map(parseAllowedDestination);
+  if (allowDestinations.length > 0) options.allowDestinations = allowDestinations;
   const { proxyServer, proxyBypassList } = getProxyConfig(env);
   if (proxyServer) {
     options.upstream = parseUpstreamProxyUrl(proxyServer);

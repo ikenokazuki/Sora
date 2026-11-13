@@ -4,6 +4,8 @@
  *      （Bun は、NO_PROXY の宛先には、指定したプロキシも使わず、直接つなぐ）。名前は、ゲートウェイが解決して、宛先に届く（OS では解決できない名前でも届く）
  *  (2) 同梱の Yahoo 検索バイナリ（Rust）の通信が、ゲートウェイを通る: 名前をゲートウェイが解決し、内部の IP は断られる。NO_PROXY に挙げても、直接つながない
  *  (3) 住所データの構築の子プロセス（Bun）の fetch が、ゲートウェイを通る: 名前をゲートウェイが解決して、宛先に届く。NO_PROXY に挙げても、直接つながない
+ *  (4) 許す宛先の一覧（SORA_EGRESS_ALLOW_HOSTS。環境変数から読む）: 既定の方針（内部の IP は断る）で、挙げた宛先だけが、内部の IP でも、許していないポートでも届く。
+ *      挙げていない内部の宛先は断られる。挙げた名前が、メタデータの IP（通さない範囲）に解決されたら、挙げても断られる
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
  *           --entrypoint /usr/local/bin/bun <イメージ> /app/scripts/fetch-egress-check.ts
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md（設計 1。E17・E18）
@@ -114,6 +116,39 @@ const deniedInternal = () => deniedPrivate() + (getSecurityMetrics().sora_egress
   check(resolved.includes('web.test'), `構築の子プロセスの通信が、ゲートウェイを通っていない（名前を、ゲートウェイが解決していない）: ${resolved.join(', ')}`);
 }
 
+// (4) 許す宛先の一覧。判定は、既定（本物の IP の方針）に戻す: 127.0.0.1 は内部の IP なので、挙げた宛先だけが届く
+{
+  await stopEgressGateway();
+  hits.length = 0;
+  process.env.SORA_EGRESS_ALLOW_HOSTS = `internal.test:${webPort},meta.test:80`;
+  await getEgressGateway({
+    allowedPorts: [443], // 一覧の宛先は、許していないポートでも通る
+    resolve: async (host) => {
+      if (host === 'internal.test' || host === 'other.test') return ['127.0.0.1'];
+      if (host === 'meta.test') return ['169.254.169.254'];
+      throw new Error(`ENOTFOUND ${host}`);
+    },
+  });
+  const listed = await fetch(`http://internal.test:${webPort}/allowed`).then(
+    async (response) => ({ status: response.status, body: await response.text() }),
+    (error: unknown) => ({ error: String(error) }),
+  );
+  check('status' in listed && listed.status === 200 && listed.body === 'web-ok', `挙げた宛先（内部の IP に解決される名前）に届かない: ${JSON.stringify(listed)}`);
+  check(hits.includes('GET /allowed'), `挙げた宛先のサーバーが、要求を受けていない: ${hits.join(', ')}`);
+  const unlisted = await fetch(`http://other.test:${webPort}/x`).then(
+    (response) => ({ status: response.status, deny: response.headers.get('x-sora-egress-deny') }),
+    (error: unknown) => ({ error: String(error) }),
+  );
+  check('status' in unlisted && unlisted.status === 403 && unlisted.deny === 'port', `挙げていない宛先（許していないポート）が、断られていない: ${JSON.stringify(unlisted)}`);
+  const metadata = await fetch('http://meta.test/computeMetadata/v1/').then(
+    (response) => ({ status: response.status, deny: response.headers.get('x-sora-egress-deny') }),
+    (error: unknown) => ({ error: String(error) }),
+  );
+  check('status' in metadata && metadata.status === 403 && metadata.deny === 'private_ip', `挙げた名前が、メタデータの IP に解決されたのに、断られていない: ${JSON.stringify(metadata)}`);
+  check(hits.length === 1, `挙げていない宛先のサーバーに、要求が届いた: ${hits.join(', ')}`);
+  delete process.env.SORA_EGRESS_ALLOW_HOSTS;
+}
+
 await stopEgressGateway();
 web.close();
 
@@ -121,5 +156,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: Bun の fetch と、通信する子プロセス（Yahoo のバイナリ・住所データの構築）の通信は、すべて出口のゲートウェイを通る。内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決する');
+console.log('ok: Bun の fetch と、通信する子プロセス（Yahoo のバイナリ・住所データの構築）の通信は、すべて出口のゲートウェイを通る。内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決する。許す宛先の一覧に挙げた宛先だけが、内部の IP でも届き、メタデータの IP は挙げても断られる');
 process.exit(0);
