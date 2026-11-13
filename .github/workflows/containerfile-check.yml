@@ -44,6 +44,8 @@ on:
       - src/services/watch.ts
       - src/routes/watch.ts
       - src/mcp/tools_watch.ts
+      - src/routes/scrape.ts
+      - src/security/tenant_cache.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

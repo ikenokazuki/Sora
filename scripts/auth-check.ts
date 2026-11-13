@@ -8,6 +8,7 @@
  *      X-Forwarded-For・X-Real-IP を付けても付けなくても、効かない（設計書 E24。旧名は、登録簿とそのテスト以外に書かない）
  *  (5) 共有キャッシュと tenant（設計 5。E25）: 保存済みのセッション（Cookie）で得たページを、別の tenant に返さない。ログインしていない tenant どうしは共有する
  *  (6) ウォッチと tenant（設計 5。穴 2・18）: ある tenant が登録したウォッチは、別の tenant の一覧に出ず（通知先・取得した内容も）、確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
+ *  (7) map_site と tenant（設計 5。穴 17）: robots.txt・サイトマップを、呼んだ tenant の保存済みのセッションで取り、保存済みのセッションで見えた map を、別の tenant に返さない
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -139,9 +140,14 @@ const SHARED_CAROL = 'shared-carol-key-0123456789abcdefg';
 const WATCH_ALICE_1 = 'watch-alice-key-0123456789abcdef';
 const WATCH_ALICE_2 = 'watch-alice-second-key-0123456789';
 const WATCH_BOB = 'watch-bob-key-0123456789abcdefgh';
+// (7) 用。map_site の結果を、tenant ごとに分けて確かめる
+const MAP_ALICE_1 = 'map-alice-key-0123456789abcdefg';
+const MAP_ALICE_2 = 'map-alice-second-key-0123456789';
+const MAP_BOB = 'map-bob-key-0123456789abcdefghij';
+const MAP_CAROL = 'map-carol-key-0123456789abcdefghi';
 const keyDir = mkdtempSync(join(tmpdir(), 'sora-auth-check-'));
 const keyPath = join(keyDir, 'keys.json');
-writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }, { name: 'watch-alice', key: WATCH_ALICE_1 }, { name: 'watch-alice', key: WATCH_ALICE_2 }, { name: 'watch-bob', key: WATCH_BOB }] }), { mode: 0o600 });
+writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }, { name: 'watch-alice', key: WATCH_ALICE_1 }, { name: 'watch-alice', key: WATCH_ALICE_2 }, { name: 'watch-bob', key: WATCH_BOB }, { name: 'map-alice', key: MAP_ALICE_1 }, { name: 'map-alice', key: MAP_ALICE_2 }, { name: 'map-bob', key: MAP_BOB }, { name: 'map-carol', key: MAP_CAROL }] }), { mode: 0o600 });
 chmodSync(keyPath, 0o600);
 
 const seenCookies: Array<string | undefined> = [];
@@ -270,6 +276,51 @@ await scenario('ウォッチと tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FE
 });
 watchSite.close();
 
+// (7) map_site と tenant。alice は、このサイトの保存済みのセッション（Cookie）を持つ。サイトマップは、Cookie の値で、返す URL の一覧を変える
+let mapHits = 0;
+const mapSite = createServer((request, response) => {
+  const kind = (request.headers.cookie ?? '').includes('sess=ALICE') ? 'private' : 'public';
+  const origin = `http://127.0.0.1:${(mapSite.address() as { port: number }).port}`;
+  if (request.url === '/robots.txt') {
+    response.writeHead(200, { 'content-type': 'text/plain' });
+    response.end(`User-agent: *\nSitemap: ${origin}/sitemap.xml\n`);
+    return;
+  }
+  if (request.url === '/sitemap.xml') {
+    mapHits++;
+    response.writeHead(200, { 'content-type': 'application/xml' });
+    response.end(`<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${origin}/${kind}-1</loc></url><url><loc>${origin}/${kind}-2</loc></url></urlset>`);
+    return;
+  }
+  response.writeHead(404);
+  response.end('not found');
+});
+await new Promise<void>((resolve) => mapSite.listen(0, '127.0.0.1', () => resolve()));
+const mapUrl = `http://127.0.0.1:${(mapSite.address() as { port: number }).port}/`;
+const mapAs = async (key: string) => {
+  const response = await fetch(`${base}/map`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': key }, body: JSON.stringify({ url: mapUrl, limit: 10 }) });
+  const body = await response.text();
+  return { status: response.status, private: body.includes('private-'), public: body.includes('public-'), cached: body.includes('"cached":true') };
+};
+await scenario('map_site と tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  const tenantIds = ['name:map-alice', 'name:map-bob', 'name:map-carol'];
+  dbSaveTenantCookies('name:map-alice', '127.0.0.1', [{ name: 'sess', value: 'ALICE', path: '/' }]);
+  const alice = await mapAs(MAP_ALICE_1);
+  check(alice.status === 200 && alice.private && !alice.public, `map_site: alice が、保存済みの Cookie で、自分の map を取れない: ${JSON.stringify(alice)}`);
+  const bob = await mapAs(MAP_BOB);
+  check(bob.status === 200 && bob.public && !bob.private && !bob.cached, `map_site: bob に、alice の map が返った（またはキャッシュから返った）: ${JSON.stringify(bob)}`);
+  const carol = await mapAs(MAP_CAROL);
+  check(carol.status === 200 && carol.public && !carol.private && carol.cached, `map_site: ログインしていない carol が、bob の公開の map を、共有のキャッシュから読めない: ${JSON.stringify(carol)}`);
+  const aliceAgain = await mapAs(MAP_ALICE_2);
+  check(aliceAgain.private && !aliceAgain.public && aliceAgain.cached, `map_site: alice の 2 回目（同じ name の別の鍵）が、alice 自身のキャッシュから返らない: ${JSON.stringify(aliceAgain)}`);
+  check(mapHits === 2, `map_site: サイトマップへの要求が 2 回でない（alice と bob の 1 回ずつ。あとは、キャッシュ）: ${mapHits}`);
+  for (const tenantId of tenantIds) {
+    await closeHttpSession('127.0.0.1', tenantId).catch(() => {});
+    dbSaveTenantCookies(tenantId, '127.0.0.1', []);
+  }
+});
+mapSite.close();
+
 // 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にしない
 await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
   const originalError = console.error;
@@ -290,5 +341,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない');
 process.exit(0);
