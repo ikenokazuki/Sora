@@ -2830,7 +2830,7 @@ robots.txt の本文は 512KiB まで、crawl でたどるリンクの URL は 8
 
 **ブラウザの枠。** 同時に動かせるブラウザの数（メモリから決まる 1〜5。`SORA_BROWSER_MAX_CONCURRENCY` で変えられます）は、利用者（tenant）ごとに公平に渡します。待っている利用者を順番に回し、1 回に 1 つずつ渡すので、先に大量に並べた利用者の後ろで、ほかの利用者が、その全部が終わるまで待たされることはありません（利用者が 1 人なら、これまでどおり待った順です）。表の上限を超えると、`scrape`・`browser_action` などは、429 を返します（`Retry-After` は秒数。MCP ではエラーの文）。`scrape` の `renderJs: auto` は、静的な取得で先に本文が取れていれば、ブラウザが使えなくても、その本文を返します。断った回数は、`/metrics` の `sora_browser_busy_tenant_queue_full_total`（その利用者の待ちが上限）・`sora_browser_busy_queue_full_total`（全体の待ちが上限）・`sora_browser_busy_queue_timeout_total`（待つ時間が上限）で見られます。
 
-**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使い、サイトが出した Cookie が、利用者をまたいで共有されます。`/health?detailed=true` と `/metrics` は鍵なしで開き、全利用者の合計の数字（キャッシュの件数・ブラウザのセッション数など）が見えます（`/health?detailed=true` が外部へ通信するのは、1 分に 1 回までです）。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
+**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使い、サイトが出した Cookie が、利用者をまたいで共有されます。`/health?detailed=true` と `/metrics` は鍵なしで開き、全利用者の合計の数字（キャッシュの件数・ブラウザのセッション数など）が見えます（`/health?detailed=true` が外部へ通信するのは、1 分に 1 回までです）。ブラウザのセッション数・メモリは全員で共有で、tenant ごとの上限がありません（同時実行枠は、上の「ブラウザの枠」のとおり、利用者ごとに公平に渡します）。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
 ---
 
