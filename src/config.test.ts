@@ -118,8 +118,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (51 + 10 settings, 13 standard names, 43 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(61);
+  test('counts match the design (51 + 11 settings, 13 standard names, 43 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(62);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(43);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
@@ -203,13 +203,15 @@ describe('registry', () => {
     expect(SETTINGS.SORA_EGRESS_PORTS).not.toHaveProperty('default');
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).toMatchObject({ area: 'egress', kind: 'list' });
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).not.toHaveProperty('default');
+    // 運用の水準。standard（既定）と strict。上限の値の組を選ぶ（security/limits.ts）。書き方の誤りは、起動の検査がエラーにする
+    expect(SETTINGS.SORA_ISOLATION).toMatchObject({ area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard' });
     // 名前つきの複数の鍵のファイル。パスだけで、既定は無い（無ければ、従来どおり SORA_API_KEY か認証なし）
     expect(SETTINGS.SORA_AUTH_KEYS_FILE).toMatchObject({ area: 'auth', kind: 'path' });
     expect(SETTINGS.SORA_AUTH_KEYS_FILE).not.toHaveProperty('default');
   });
 
   test('names follow the naming rules and do not collide', () => {
-    const core = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_MODULES', 'SORA_DB_PATH', 'SORA_PUBLIC_URL', 'SORA_ALLOWED_HOSTS', 'SORA_ALLOWED_ORIGINS'];
+    const core = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_MODULES', 'SORA_ISOLATION', 'SORA_DB_PATH', 'SORA_PUBLIC_URL', 'SORA_ALLOWED_HOSTS', 'SORA_ALLOWED_ORIGINS'];
     for (const [name, s] of Object.entries(SETTINGS as Record<string, Setting>)) {
       expect(name.startsWith('SORA_')).toBe(true);
       if (s.area === 'core') expect(core).toContain(name);

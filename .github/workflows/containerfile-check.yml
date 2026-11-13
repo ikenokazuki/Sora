@@ -50,6 +50,9 @@ on:
       - src/routes/module_guard.ts
       - src/rest_operations.ts
       - src/index.ts
+      - src/security/limits.ts
+      - src/url_glob.ts
+      - src/html_parser.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

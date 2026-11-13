@@ -2,6 +2,7 @@ import TurndownService from 'turndown';
 import * as cheerio from 'cheerio';
 import { parseHTML } from 'linkedom';
 import { Readability } from '@mozilla/readability';
+import { type GlobBudget, globMatch } from './url_glob.js';
 import type {
   EventItem,
   FieldEvidence,
@@ -682,7 +683,7 @@ export function extractMediaInfo(
 }
 
 /** URL パターンマッチング (includePatterns / excludePatterns 用ワイルドカード対応) */
-export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean {
+export function matchUrlPattern(targetUrl: string, patterns?: string[], budget?: GlobBudget): boolean {
   if (!patterns || patterns.length === 0) return true;
   let pathname = '';
   let filename = '';
@@ -695,19 +696,8 @@ export function matchUrlPattern(targetUrl: string, patterns?: string[]): boolean
     filename = targetUrl;
   }
 
-  return patterns.some((pattern) => {
-    let esc = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-    esc = esc.replace(/\*\*/g, '___DOUBLE_STAR___');
-    esc = esc.replace(/\*/g, '[^/]*');
-    esc = esc.replace(/___DOUBLE_STAR___/g, '.*');
-    const regexStr = '^' + esc + '$';
-    try {
-      const reg = new RegExp(regexStr);
-      return reg.test(pathname) || reg.test(targetUrl) || reg.test(filename);
-    } catch {
-      return pathname.includes(pattern) || targetUrl.includes(pattern) || filename.includes(pattern);
-    }
-  });
+  // 正規表現にしない（星の多いパターンで、メインのスレッドが止まらないように。設計 6・穴 21）
+  return patterns.some((pattern) => globMatch(pattern, pathname, budget) || globMatch(pattern, targetUrl, budget) || globMatch(pattern, filename, budget));
 }
 
 /**

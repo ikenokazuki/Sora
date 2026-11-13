@@ -126,7 +126,7 @@ const PARTY_FORM = 'JSON のオブジェクト（`name`・`street`・`city`・`s
 
 const MODULES_IN_ALL = MODULE_NAMES.filter((m) => !EXPLICIT_ONLY_MODULES.includes(m)).join(',');
 
-/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 8 個）。 */
+/** Sora 固有の設定（設計メモの KEEP・RENAME・MERGE の新名 53 個と、そのあとに増えた 9 個）。 */
 export const SETTINGS = {
   // --- 全体 ---
   SORA_API_KEY: {
@@ -142,6 +142,11 @@ export const SETTINGS = {
     area: 'core', kind: 'list', default: ['all'], allowAll: true, item: moduleName, legacy: ['ENABLED_MODULES'], legacyOnly: 'error',
     form: `カンマ区切りのモジュール名（${MODULE_NAMES.join('・')}）か all`,
     doc: `有効にするモジュール（カンマ区切り: \`${MODULES_IN_ALL}\` または \`all\`）。自己責任の \`lyrics\`・楽曲認識の \`shazam\`・HTS の版の保存の \`hts-archive\` は \`all\` に含まれず、\`all,lyrics\` のように名前を挙げたときだけ有効。絞ったモジュールは、MCP のツールだけでなく、REST の経路も閉じます（404・\`code: MODULE_DISABLED\`。\`/openapi.json\` と \`GET /tools\` にも載りません）。\`media\` は \`media\` か \`web\` のどちらかで有効です。システム（\`/health\` など）と公開の文書は、絞っても開いています。知らない名前があると起動しません`,
+  },
+  SORA_ISOLATION: {
+    area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard',
+    defaultDoc: '`standard`',
+    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。いまの `strict` は、この上限の値を切り替えます（起動時の検査などのほかの要件は、段階的に足します）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',
