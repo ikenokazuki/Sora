@@ -1,4 +1,4 @@
-// 増幅の上限と、ブラウザの枠の値（設計 6。穴 11・21・23〜26）。水準（SORA_ISOLATION）で、組み込みの 2 組の値を切り替える。個別の環境変数は足さない
+// 増幅の上限と、ブラウザの枠・browser_action の値（設計 6。穴 11・21・23〜26）。水準（SORA_ISOLATION）で、組み込みの 2 組の値を切り替える。個別の環境変数は足さない
 // （設定が増えすぎるため）。値の組は、呼ぶたびに水準を読んで選ぶ（起動のあとで環境を変える運用・テストに追従する）。
 //
 //   standard（既定）: ユーザーが 1 人か、互いに信頼できる少数。今までの使い方を止めない緩い値で、異常な入力（無制限の本文・星だらけのパターンなど）だけを止める
@@ -36,6 +36,20 @@ export interface Limits {
   browserQueueWaitMs: number;
   /** 1 つの tenant が、同時に持てる枠の割合（1〜100 のパーセント。枠の数に掛けて切り捨て、最低 1 枠）。100 は制限なし */
   browserTenantSharePercent: number;
+  /** browser_action の actions の件数 */
+  browserActionCount: number;
+  /** browser_action の wait の ms（セレクタを待つときの待ち時間も）の上限（ミリ秒） */
+  browserActionWaitMs: number;
+  /** browser_action の delay（click の後の待ち・fill/type の 1 文字ごとの間隔）の上限（ミリ秒） */
+  browserActionDelayMs: number;
+  /** browser_action の text・script の長さ（文字数） */
+  browserActionTextLength: number;
+  /** browser_action の timeout（ページ遷移の待ち）の上限（ミリ秒） */
+  browserActionTimeoutMs: number;
+  /** browser_action 1 回の呼び出しの全体の時間（ミリ秒）。超えたら、残りのアクションは実行しない */
+  browserActionTotalMs: number;
+  /** browser_action の extract.maxChars（抽出する本文の最大文字数）の上限 */
+  browserExtractChars: number;
 }
 
 const MB = 1024 * 1024;
@@ -55,6 +69,13 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserQueueTotal: 500,
   browserQueueWaitMs: 600_000,
   browserTenantSharePercent: 100,
+  browserActionCount: 100,
+  browserActionWaitMs: 120_000,
+  browserActionDelayMs: 10_000,
+  browserActionTextLength: 100_000,
+  browserActionTimeoutMs: 180_000,
+  browserActionTotalMs: 600_000,
+  browserExtractChars: 1_000_000,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -72,6 +93,13 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserQueueTotal: 100,
   browserQueueWaitMs: 60_000,
   browserTenantSharePercent: 50,
+  browserActionCount: 20,
+  browserActionWaitMs: 15_000,
+  browserActionDelayMs: 2_000,
+  browserActionTextLength: 10_000,
+  browserActionTimeoutMs: 60_000,
+  browserActionTotalMs: 120_000,
+  browserExtractChars: 100_000,
 });
 
 /**
