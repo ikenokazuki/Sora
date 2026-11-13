@@ -47,6 +47,9 @@ on:
       - src/routes/scrape.ts
       - src/security/tenant_cache.ts
       - src/routes/system.ts
+      - src/routes/module_guard.ts
+      - src/rest_operations.ts
+      - src/index.ts
       - .github/workflows/containerfile-check.yml
 concurrency:
   group: containerfile-${{ github.ref }}

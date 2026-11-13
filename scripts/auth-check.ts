@@ -10,6 +10,7 @@
  *  (6) ウォッチと tenant（設計 5。穴 2・18）: ある tenant が登録したウォッチは、別の tenant の一覧に出ず（通知先・取得した内容も）、確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
  *  (7) map_site と tenant（設計 5。穴 17）: robots.txt・サイトマップを、呼んだ tenant の保存済みのセッションで取り、保存済みのセッションで見えた map を、別の tenant に返さない
  *  (8) 管理者の鍵と POST /cache/clear（設計 5。穴 19）: admin: true の鍵だけが、全員分（共有のキャッシュも）を消せる。ほかの鍵は、自分の tenant のキャッシュだけを消す
+ *  (9) REST のモジュール（設計 5。穴 20）: SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求は 401 で、設定を教えない）。文書（/openapi.json）にも載らない
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -43,7 +44,7 @@ const base = `http://127.0.0.1:${port}`;
 
 // 廃止した名前（置き換え先の無い旧名と、リリースされなかった名前）の全部。登録簿から取る（名前を、ここに書き写さない）
 const REMOVED_ENV = Object.keys(LEGACY).filter((name) => !LEGACY[name].to);
-const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_KEYS_FILE', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', ...REMOVED_ENV];
+const AUTH_ENV = ['SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS', 'SORA_AUTH_KEYS_FILE', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_MODULES', ...REMOVED_ENV];
 
 /** 認証の環境変数を、この場面のものに替えて fn を回す（認証は、要求のたびに環境を読む）。終わったら、セッションを捨てる */
 async function scenario(label: string, vars: Record<string, string>, fn: () => Promise<void>): Promise<void> {
@@ -329,6 +330,38 @@ await scenario('map_site と tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH
 });
 mapSite.close();
 
+// (9) REST のモジュール。SORA_MODULES=web にすると、web 以外のモジュールの経路（/watch/*・/trade/* など）は、REST でも 404（MODULE_DISABLED）
+const restAs = async (key: string | undefined, method: string, path: string, body?: object) => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(key ? { 'X-API-Key': key } : {}) };
+  const response = await fetch(`${base}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const text = await response.text();
+  let json: any;
+  try {
+    json = JSON.parse(text);
+  } catch {}
+  return { status: response.status, json, text };
+};
+await scenario('REST のモジュール', { SORA_AUTH_KEYS_FILE: keyPath, SORA_MODULES: 'web' }, async () => {
+  const noKey = await restAs(undefined, 'GET', '/watch/list');
+  check(noKey.status === 401, `REST のモジュール: 鍵のない要求が 401 でない（設定を教えている）: ${noKey.status} ${noKey.text.slice(0, 120)}`);
+  const closed = await restAs(MAP_BOB, 'GET', '/watch/list');
+  check(closed.status === 404 && closed.json?.code === 'MODULE_DISABLED', `REST のモジュール: SORA_MODULES=web で /watch/list が閉じていない: ${closed.status} ${closed.text.slice(0, 160)}`);
+  const closedDelete = await restAs(MAP_BOB, 'DELETE', '/watch/wt_none');
+  check(closedDelete.status === 404 && closedDelete.json?.code === 'MODULE_DISABLED', `REST のモジュール: DELETE /watch/:id が閉じていない: ${closedDelete.status}`);
+  const closedTrade = await restAs(MAP_BOB, 'POST', '/trade/hts-verify', {});
+  check(closedTrade.status === 404 && closedTrade.json?.code === 'MODULE_DISABLED', `REST のモジュール: /trade/hts-verify が閉じていない: ${closedTrade.status}`);
+  const open = await restAs(MAP_BOB, 'POST', '/scrape', {});
+  check(open.status !== 404 || open.json?.code !== 'MODULE_DISABLED', `REST のモジュール: web の経路 /scrape まで閉じた: ${open.status} ${open.text.slice(0, 120)}`);
+  const health = await restAs(undefined, 'GET', '/health');
+  check(health.status === 200, `REST のモジュール: /health が鍵なしで開かない: ${health.status}`);
+  const doc = await restAs(undefined, 'GET', '/openapi.json');
+  check(doc.status === 200 && doc.json?.paths && !('/watch/list' in doc.json.paths) && '/scrape' in doc.json.paths, `REST のモジュール: 閉じた経路が OpenAPI に載っている、または web の経路が載っていない`);
+});
+await scenario('REST のモジュール（既定の all）', { SORA_AUTH_KEYS_FILE: keyPath }, async () => {
+  const allOpen = await restAs(MAP_BOB, 'GET', '/watch/list');
+  check(allOpen.status === 200, `REST のモジュール: 既定（all）で /watch/list が開いていない: ${allOpen.status} ${allOpen.text.slice(0, 120)}`);
+});
+
 // (8) 管理者の鍵と POST /cache/clear。キャッシュの行は、同じプロセスのメモリに直に置く（アプリと同じモジュール）
 const clearAs = async (key?: string) => {
   const response = await fetch(`${base}/cache/clear`, { method: 'POST', headers: key ? { 'X-API-Key': key } : {} });
@@ -392,5 +425,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる');
 process.exit(0);
