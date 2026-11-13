@@ -50,6 +50,14 @@ on:
       - src/browser_semaphore.ts
       - src/browser_session.ts
       - src/errors.ts
+      - src/routes/tracking.ts
+      - src/routes/song_recognition.ts
+      - src/routes/social.ts
+      - src/services/tracking/index.ts
+      - src/services/tracking/carriers/browser_track.ts
+      - src/services/audio_decode.ts
+      - src/services/song_recognition.ts
+      - src/services/social/transport.ts
       - src/security/tenant_cache.ts
       - src/routes/system.ts
       - src/routes/module_guard.ts
