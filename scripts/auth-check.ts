@@ -9,6 +9,7 @@
  *  (5) 共有キャッシュと tenant（設計 5。E25）: 保存済みのセッション（Cookie）で得たページを、別の tenant に返さない。ログインしていない tenant どうしは共有する
  *  (6) ウォッチと tenant（設計 5。穴 2・18）: ある tenant が登録したウォッチは、別の tenant の一覧に出ず（通知先・取得した内容も）、確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
  *  (7) map_site と tenant（設計 5。穴 17）: robots.txt・サイトマップを、呼んだ tenant の保存済みのセッションで取り、保存済みのセッションで見えた map を、別の tenant に返さない
+ *  (8) 管理者の鍵と POST /cache/clear（設計 5。穴 19）: admin: true の鍵だけが、全員分（共有のキャッシュも）を消せる。ほかの鍵は、自分の tenant のキャッシュだけを消す
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -20,9 +21,11 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LEGACY } from '../src/config.js';
+import { getFromCache, setToCache } from '../src/cache.js';
 import { dbSaveTenantCookies } from '../src/db.js';
 import { closeHttpSession } from '../src/http_fetcher.js';
 import { app, mcpSessionManager } from '../src/index.js';
+import { tenantCacheKey } from '../src/security/tenant_state.js';
 
 const failures: string[] = [];
 const check = (ok: boolean, message: string) => {
@@ -145,9 +148,14 @@ const MAP_ALICE_1 = 'map-alice-key-0123456789abcdefg';
 const MAP_ALICE_2 = 'map-alice-second-key-0123456789';
 const MAP_BOB = 'map-bob-key-0123456789abcdefghij';
 const MAP_CAROL = 'map-carol-key-0123456789abcdefghi';
+// (8) 用。管理者の鍵（admin: true）と、同じ name の管理者でない鍵（admin は鍵ごとの属性）
+const CLEAR_ALICE = 'clear-alice-key-0123456789abcdef';
+const CLEAR_BOB = 'clear-bob-key-0123456789abcdefgh';
+const CLEAR_OPS = 'clear-ops-key-0123456789abcdefghi';
+const CLEAR_OPS_PLAIN = 'clear-ops-plain-key-0123456789ab';
 const keyDir = mkdtempSync(join(tmpdir(), 'sora-auth-check-'));
 const keyPath = join(keyDir, 'keys.json');
-writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }, { name: 'watch-alice', key: WATCH_ALICE_1 }, { name: 'watch-alice', key: WATCH_ALICE_2 }, { name: 'watch-bob', key: WATCH_BOB }, { name: 'map-alice', key: MAP_ALICE_1 }, { name: 'map-alice', key: MAP_ALICE_2 }, { name: 'map-bob', key: MAP_BOB }, { name: 'map-carol', key: MAP_CAROL }] }), { mode: 0o600 });
+writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }, { name: 'watch-alice', key: WATCH_ALICE_1 }, { name: 'watch-alice', key: WATCH_ALICE_2 }, { name: 'watch-bob', key: WATCH_BOB }, { name: 'map-alice', key: MAP_ALICE_1 }, { name: 'map-alice', key: MAP_ALICE_2 }, { name: 'map-bob', key: MAP_BOB }, { name: 'map-carol', key: MAP_CAROL }, { name: 'clear-alice', key: CLEAR_ALICE }, { name: 'clear-bob', key: CLEAR_BOB }, { name: 'clear-ops', key: CLEAR_OPS, admin: true }, { name: 'clear-ops', key: CLEAR_OPS_PLAIN }] }), { mode: 0o600 });
 chmodSync(keyPath, 0o600);
 
 const seenCookies: Array<string | undefined> = [];
@@ -321,6 +329,49 @@ await scenario('map_site と tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH
 });
 mapSite.close();
 
+// (8) 管理者の鍵と POST /cache/clear。キャッシュの行は、同じプロセスのメモリに直に置く（アプリと同じモジュール）
+const clearAs = async (key?: string) => {
+  const response = await fetch(`${base}/cache/clear`, { method: 'POST', headers: key ? { 'X-API-Key': key } : {} });
+  const body = (await response.json().catch(() => ({}))) as { scope?: string; cleared?: number };
+  return { status: response.status, scope: body.scope, cleared: body.cleared };
+};
+const clearKeys = {
+  alice: tenantCacheKey('name:clear-alice', 'check:k'),
+  bob: tenantCacheKey('name:clear-bob', 'check:k'),
+  ops: tenantCacheKey('name:clear-ops', 'check:k'),
+  shared: 'check:clear-shared',
+};
+const seedClear = () => {
+  for (const key of Object.values(clearKeys)) setToCache(key, { v: key });
+};
+const clearAlive = () => Object.fromEntries(Object.entries(clearKeys).map(([name, key]) => [name, getFromCache(key) !== null]));
+await scenario('管理者の鍵と /cache/clear', { SORA_AUTH_KEYS_FILE: keyPath }, async () => {
+  seedClear();
+  const none = await clearAs();
+  check(none.status === 401, `cache/clear: 鍵なしの要求が 401 でない: ${none.status}`);
+  check(JSON.stringify(clearAlive()) === JSON.stringify({ alice: true, bob: true, ops: true, shared: true }), `cache/clear: 鍵なしの要求でキャッシュが消えた: ${JSON.stringify(clearAlive())}`);
+  // 管理者でない利用者は、自分の tenant の分だけ
+  const alice = await clearAs(CLEAR_ALICE);
+  check(alice.status === 200 && alice.scope === 'tenant' && alice.cleared === 1, `cache/clear: 管理者でない利用者の消去が、自分の分だけでない: ${JSON.stringify(alice)}`);
+  check(JSON.stringify(clearAlive()) === JSON.stringify({ alice: false, bob: true, ops: true, shared: true }), `cache/clear: 管理者でない利用者が、ほかの tenant か共有のキャッシュを消した: ${JSON.stringify(clearAlive())}`);
+  // admin は鍵ごとの属性: 同じ name の、admin のない鍵は、管理者ではない
+  const opsPlain = await clearAs(CLEAR_OPS_PLAIN);
+  check(opsPlain.status === 200 && opsPlain.scope === 'tenant', `cache/clear: admin のない鍵が、全体を消せる扱いになった: ${JSON.stringify(opsPlain)}`);
+  check(clearAlive().shared === true && clearAlive().bob === true, `cache/clear: admin のない鍵が、共有のキャッシュかほかの tenant を消した: ${JSON.stringify(clearAlive())}`);
+  // 管理者の鍵は、全員分（共有のキャッシュも）
+  const ops = await clearAs(CLEAR_OPS);
+  check(ops.status === 200 && ops.scope === 'all', `cache/clear: 管理者の鍵の消去が、全体でない: ${JSON.stringify(ops)}`);
+  check(JSON.stringify(clearAlive()) === JSON.stringify({ alice: false, bob: false, ops: false, shared: false }), `cache/clear: 管理者の鍵で、全員分が消えていない: ${JSON.stringify(clearAlive())}`);
+  // 鍵ファイルを使わない運用（鍵が 1 つ）は、これまでどおり全体
+  seedClear();
+  process.env.SORA_AUTH_KEYS_FILE = '';
+  delete process.env.SORA_AUTH_KEYS_FILE;
+  process.env.SORA_API_KEY = KEY;
+  const single = await clearAs(KEY);
+  check(single.status === 200 && single.scope === 'all', `cache/clear: 鍵が 1 つの運用の消去が、全体でない: ${JSON.stringify(single)}`);
+  check(JSON.stringify(clearAlive()) === JSON.stringify({ alice: false, bob: false, ops: false, shared: false }), `cache/clear: 鍵が 1 つの運用で、全員分が消えていない: ${JSON.stringify(clearAlive())}`);
+});
+
 // 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にしない
 await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
   const originalError = console.error;
@@ -341,5 +392,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す');
 process.exit(0);
