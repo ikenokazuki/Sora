@@ -301,7 +301,7 @@ APIキーによる認証は任意です。必要な場合のみ `-e SORA_API_KEY
 
 ## 2. 提供 MCP ツール一覧 (全 33 ツール / 12 のモジュール & ハイブリッド 13 コア構成)
 
-Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `SORA_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`SORA_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-sora_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`SORA_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-sora_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`SORA_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-sora_modulesallhts-archive)）。
+Sora は、目的に応じて **12 個の論理モジュール（全 33 ツール）** で構成されています。環境変数 `SORA_MODULES`（デフォルト: `all`、または `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube`）で有効化するカテゴリを自由にカスタマイズ可能です。これとは別に、自己責任で使う **`lyrics` モジュール（歌詞全文、1 ツール）** があります。`all` には含まれず、`SORA_MODULES=all,lyrics` のように名前を挙げたときだけ有効になります（[Module 12](#-module-12-lyrics-sora_modulesalllyrics)）。同じく **`shazam` モジュール（楽曲認識、1 ツール）** も `all` には含まれず、`SORA_MODULES=all,shazam` のように名前を挙げたときだけ有効になります（[Module 14](#-module-14-song-recognition-sora_modulesallshazam)）。同じく **`hts-archive` モジュール（HTS の版の保存、REST だけ）** も `all` には含まれず、`SORA_MODULES=all,hts-archive` のように名前を挙げたときだけ有効になります（[Module 15](#-module-15-hts-release-archive-sora_modulesallhts-archive)）。`SORA_MODULES` で絞ったモジュールは、MCP のツールだけでなく、REST の経路（`/watch/*` など）も閉じます（404、`code: MODULE_DISABLED`。`/openapi.json` と `GET /tools` にも載りません）。`media` は、`media` か `web` のどちらかで有効です。システム（`/health`・`/metrics` など）と公開の文書は、絞っても開いています。
 
 ツールの答えを Sora がどう決めているか（HTS コードの推測、CPSC・GCC の判定、住所の正規化、地名の解決など）は、[判断エンジンの一覧](docs/engines/README.md)に機能ごとに書いています。
 
@@ -2501,6 +2501,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - 取得した結果の共有キャッシュは、tenant の保存済みの状態（そのサイトが取得のときにセットした Cookie・localStorage）を使って得た結果を、その tenant のキャッシュにだけ置き、別の tenant に返しません（状態を使わずに得た結果だけを共有します）。Cookie か、`Accept-Language` などの無害なものを除くヘッダーを渡した取得は、共有キャッシュを読まず、書きません。
   - ウォッチ（`watch`・`/watch/*`）は、登録した利用者（tenant）のものだけが、一覧・確認・削除できます。`id` を省いた確認も、呼んだ利用者の分だけです。
   - `map_site`（`crawl_site` の `listOnly`）と、`search_web` の `formats`（検索の結果のページを読む）も、呼んだ利用者の保存済みのセッションで取得し、結果は、共有キャッシュと同じ規則で置きます。Sora が自分の都合で読むページ（GCC・trade の商品ページ・国の情報の記事）は、`public` の tenant で読みます（保存済みの Cookie・localStorage を、読まず、書きません）。
+  - `SORA_MODULES` で絞ったモジュールの経路は、REST でも閉じます（認証のあとに検査するので、鍵のない要求は、閉じた経路でも 401 です）。
   - `POST /cache/clear` は、鍵ファイルを使う運用では、`admin: true` の鍵だけが全員分を消せます。ほかの鍵は、自分の tenant のキャッシュだけを消します。鍵ファイルを使わない運用（鍵が 1 つか匿名）は、これまでどおり、全員分を消します。
   - 鍵を設定したら、ループバックからの接続でも鍵が要ります（接続元を、認証の代わりにしません。v4 の鍵なしのループバック通過の設定は、v5 で廃止しました）。ローカルの道具には、鍵を渡してください（`/health` は鍵なしで開きます）。
   - 複数の利用者が使うときは、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、鍵ごとに別の tenant で動かせます。鍵は SHA-256 で書けます（4.6）。
@@ -2547,7 +2548,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_ALLOW_ANONYMOUS` | `false` | `true` で匿名の利用を認めます。キーが未設定なら、値によらず認証なしで使えます（`true` はキー無しの警告を止めるだけ）。キーを設定していて `true` のときは、キー無しの要求も誤ったキーの要求も匿名として通します（`401` で断るのは `false` のときだけ）。`SORA_AUTH_KEYS_FILE` があるときは効きません（鍵ファイルがあると、匿名は認めません） |
 | `SORA_API_KEY` | *(未設定 = 認証なし)* | サーバーの API 認証キー。設定すると `Authorization: Bearer <key>` か `X-API-Key` ヘッダーでの認証が要ります。未設定なら認証なしで使えます（Fail-Open。キー無しの警告を 1 回出します）。名前つきの複数の鍵が要るときは、代わりに `SORA_AUTH_KEYS_FILE` を使います（併用はできません） |
 | `SORA_DB_PATH` | `./data/sora.db`（`NODE_ENV=test` なら `:memory:`。公開イメージは `/data/sora.db`） | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します） |
-| `SORA_MODULES` | `all` | 有効にするモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics`・楽曲認識の `shazam`・HTS の版の保存の `hts-archive` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。知らない名前があると起動しません |
+| `SORA_MODULES` | `all` | 有効にするモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics`・楽曲認識の `shazam`・HTS の版の保存の `hts-archive` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。絞ったモジュールは、MCP のツールだけでなく、REST の経路も閉じます（404・`code: MODULE_DISABLED`。`/openapi.json` と `GET /tools` にも載りません）。`media` は `media` か `web` のどちらかで有効です。システム（`/health` など）と公開の文書は、絞っても開いています。知らない名前があると起動しません |
 | `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。荷物ごとの表示ページの `pageUrl` の組み立てに使います |
 
 **認証**
@@ -2803,7 +2804,7 @@ docker run -d --name sora -p 3016:8000 \
 - 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。
 - 日次の上限（`SORA_AUTH_DAILY_LIMIT`）は、tenant ごとに数えます。拒否の回数は、`/metrics` の `sora_auth_rejected_missing_total`（鍵なし）と `sora_auth_rejected_invalid_total`（誤った鍵）で見られます。
 
-**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使い、サイトが出した Cookie が、利用者をまたいで共有されます。REST は、`SORA_MODULES` で絞ったモジュールの経路も開いたままで、`/health?detailed=true` と `/metrics` は鍵なしで開き、`/health?detailed=true` は呼ぶたびに外部へ通信します。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
+**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使い、サイトが出した Cookie が、利用者をまたいで共有されます。`/health?detailed=true` と `/metrics` は鍵なしで開き、全利用者の合計の数字（キャッシュの件数・ブラウザのセッション数など）が見えます（`/health?detailed=true` が外部へ通信するのは、1 分に 1 回までです）。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
 ---
 
