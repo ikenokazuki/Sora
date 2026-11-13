@@ -18,7 +18,6 @@ Related settings:
 | Setting | Default | Effect |
 |---|---|---|
 | `SORA_ALLOW_ANONYMOUS` | false (closed) | Anonymous requests rejected on keyed deployments |
-| `SORA_AUTH_TRUST_PROXY` | unset | X-Forwarded-For ignored for local checks |
 
 Adaptive scrape is a per-request option
 (`adaptiveScrape`, `scrapeBudget`), default off. PRF retrieval (`enablePrf`) was removed in v4.0.0.

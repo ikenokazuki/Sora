@@ -76,8 +76,8 @@ export function renderEnvTable(): string;
 | 旧名 | 新名 | 領域 | 既定 | 型 | 旧名だけのとき | 備考 |
 |---|---|---|---|---|---|---|
 | `ENABLED_MODULES` | `SORA_MODULES` | CORE | all（lyrics・shazam は名前を挙げたときだけ） | list<enum> | **拒否** | registry.ts isModuleActive。小文字化のみ、未知の名前は黙って無視（綴り違いで全ツールが消える）。旧名を無視すると lyrics/shazam が消え、絞ったモジュールが開く |
-| `ALLOW_LOCAL_NO_AUTH` | `SORA_AUTH_LOOPBACK_NO_KEY` | AUTH | false | bool | 警告 | auth.ts。=== 'true'。旧名を無視すると閉じる側（401）なので警告で足りる。smithery.yaml の設定は stdio では効かない（認証の中間層を通らない） |
-| `TRUST_PROXY` | `SORA_AUTH_TRUST_PROXY` | AUTH | false | bool | 警告 | auth.ts resolvePeerLocal だけが読む。無視すると閉じる側 |
+| `ALLOW_LOCAL_NO_AUTH` | （廃止） | AUTH | — | — | 警告（廃止） | **2026-11-13 に廃止**（隔離の段階 3c。docs/superpowers/specs/2026-11-12-isolation-design.md の E24・未決 11）。鍵なしのループバック通過をやめた。旧名を無視すると閉じる側（401）。smithery.yaml の設定は stdio では効かない |
+| `TRUST_PROXY` | （廃止） | AUTH | — | — | 警告（廃止） | **2026-11-13 に廃止**（隔離の段階 3c）。読むのは、鍵なしのループバック通過の判定（resolvePeerLocal）だけだったので、一緒に廃止した。ほかのプログラムも使う名前なので、警告は「ほかのプログラムのものなら構わない」と添える |
 | `DAILY_REQUEST_LIMIT` | `SORA_AUTH_DAILY_LIMIT` | AUTH | unset（無制限） | int>=1 | **拒否** | auth.ts。parseInt なので '100abc' は 100、不正・0 以下は黙って無制限。無視すると利用上限が外れる |
 | `LOG_FORMAT` | `SORA_LOG_FORMAT` | SERVER | text | enum text\|json | 警告 | index.ts。=== 'json' |
 | `ADMIN_ALERT_WEBHOOK_URL` | `SORA_ALERT_WEBHOOK_URL` | SERVER | unset | url | 警告 | health.ts。外への送信。私的な宛先は isSafeWebhookUrl が拒否し、その警告ログに URL 全体を出す（秘密が漏れる） |

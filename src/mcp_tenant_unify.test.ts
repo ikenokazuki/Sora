@@ -9,7 +9,7 @@ import { closeHttpSession } from './http_fetcher.js';
 import { app, mcpSessionManager } from './index.js';
 import { McpSessionManager } from './mcp.js';
 import { resetApiKeyStoreCache } from './security/api_keys.js';
-import { withEnv } from './test_fixtures/env.js';
+import { removedSettings, withEnv } from './test_fixtures/env.js';
 
 /**
  * MCP の tenant は、認証のミドルウェアが決めたものだけを使う（設計書 4。穴 15）。
@@ -45,7 +45,7 @@ async function open(headers: Record<string, string>, remoteAddr?: string): Promi
   return sessionId!;
 }
 
-const keyed = (extra: Record<string, string | undefined> = {}) => ({ SORA_API_KEY: KEY, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined, ...extra });
+const keyed = (extra: Record<string, string | undefined> = {}) => ({ SORA_API_KEY: KEY, SORA_ALLOW_ANONYMOUS: undefined, ...extra });
 
 afterEach(() => mcpSessionManager.clearAllSessions());
 
@@ -102,7 +102,7 @@ describe('MCP の tenant は、認証が決めたもの', () => {
   });
 
   test('鍵を設定していないとき: 任意の Bearer を付けても、付けなくても、同じ tenant（REST と同じ legacy）', async () => {
-    await withEnv({ SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined }, async () => {
+    await withEnv({ SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
       const sessionId = await open({});
       for (const headers of [{}, { Authorization: 'Bearer some-token' }, { 'X-API-Key': 'some-key' }] as Headers_[]) {
         expect((await send(headers, listTools, sessionId)).status, JSON.stringify(headers)).toBe(200);
@@ -110,17 +110,16 @@ describe('MCP の tenant は、認証が決めたもの', () => {
     });
   });
 
-  test('鍵なしのループバック通過（SORA_AUTH_LOOPBACK_NO_KEY）は、REST と同じ internal の scope（匿名の legacy とも、鍵を持つ利用者とも別）', async () => {
-    await withEnv(keyed({ SORA_AUTH_LOOPBACK_NO_KEY: 'true', SORA_ALLOW_ANONYMOUS: 'true' }), async () => {
+  test('ループバックは特別ではない（鍵なしの通過は、v5 で廃止した。旧い設定が残っていても効かない）: 鍵が要り、匿名は接続元によらず同じ scope', async () => {
+    await withEnv(keyed({ SORA_ALLOW_ANONYMOUS: 'true', ...removedSettings() }), async () => {
       const local = await open({}, '127.0.0.1');
       const remote = await open({}, '203.0.113.5');
-      const keyedSession = await open({ 'X-API-Key': KEY }, '203.0.113.5');
-      expect((await send({}, listTools, local, '127.0.0.1')).status).toBe(200);
-      expect((await send({}, listTools, remote, '203.0.113.5')).status).toBe(200);
-      expect((await send({}, listTools, local, '203.0.113.5')).status).toBe(404);
-      expect((await send({}, listTools, remote, '127.0.0.1')).status).toBe(404);
-      expect((await send({ 'X-API-Key': KEY }, listTools, local, '203.0.113.5')).status).toBe(404);
-      expect((await send({}, listTools, keyedSession, '127.0.0.1')).status).toBe(404);
+      for (const [sessionId, from] of [[local, '203.0.113.5'], [local, '127.0.0.1'], [remote, '127.0.0.1'], [remote, '203.0.113.5']] as const) {
+        expect((await send({}, listTools, sessionId, from)).status, `${sessionId} ← ${from}`).toBe(200);
+      }
+    });
+    await withEnv(keyed(removedSettings()), async () => {
+      expect((await send({}, initialize, undefined, '127.0.0.1')).status).toBe(401);
     });
   });
 });
@@ -246,7 +245,7 @@ describe('鍵ファイルでは、MCP も鍵ごとの tenant で分かれる', (
     writeFileSync(path, JSON.stringify({ keys: [{ name: 'kf-alice', key: ALICE_1 }, { name: 'kf-alice', key: ALICE_2 }, { name: 'kf-bob', key: BOB }] }), { mode: 0o600 });
     chmodSync(path, 0o600);
     try {
-      return await withEnv({ SORA_AUTH_KEYS_FILE: path, SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined }, fn);
+      return await withEnv({ SORA_AUTH_KEYS_FILE: path, SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined }, fn);
     } finally {
       rmSync(dir, { recursive: true, force: true });
       resetApiKeyStoreCache();

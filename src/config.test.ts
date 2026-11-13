@@ -39,12 +39,14 @@ const REFUSED: Record<string, [string, string]> = {
   SORA_CROSS_INDEX_SHA256: ['SORA_HTS_CROSS_INDEX_SHA256', 'a'.repeat(64)],
 };
 
-const REMOVED = ['SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR'];
+/** 廃止した名前。鍵なしのループバック通過（ALLOW_LOCAL_NO_AUTH → SORA_AUTH_LOOPBACK_NO_KEY）と、その判定にしか使わない X-Forwarded-For の読み方（TRUST_PROXY → SORA_AUTH_TRUST_PROXY・SORA_AUTH_PROXY_HOPS）を含む（隔離の段階 3c）。 */
+const REMOVED = [
+  'SORA_YAHOO_THROTTLE', 'SORA_WEB_RETRY_WAIT_MS', 'SORA_WEB_NATIVE_RANKING', 'SORA_RRF_ENABLED', 'SORA_WEB_QUERY_UNION', 'SORA_X_SOURCE_ISOLATION', 'SORA_REALTIME_ANCHOR',
+  'ALLOW_LOCAL_NO_AUTH', 'TRUST_PROXY', 'SORA_AUTH_LOOPBACK_NO_KEY', 'SORA_AUTH_TRUST_PROXY', 'SORA_AUTH_PROXY_HOPS',
+];
 
-/** 旧名だけのとき警告する、改名・統合の 23 個（設計メモの対応表から手で写した）。 */
+/** 旧名だけのとき警告する、改名・統合の 21 個（設計メモの対応表から手で写した）。 */
 const RENAMED_WARN: Record<string, string> = {
-  ALLOW_LOCAL_NO_AUTH: 'SORA_AUTH_LOOPBACK_NO_KEY',
-  TRUST_PROXY: 'SORA_AUTH_TRUST_PROXY',
   LOG_FORMAT: 'SORA_LOG_FORMAT',
   ADMIN_ALERT_WEBHOOK_URL: 'SORA_ALERT_WEBHOOK_URL',
   SORA_TOOL_OUTPUT_SCHEMA: 'SORA_MCP_OUTPUT_SCHEMA',
@@ -79,7 +81,6 @@ const SECRETS = [
 const INTS: Record<string, [number, number | undefined, number | undefined, number?]> = {
   PORT: [1, 65_535, 8000],
   SORA_AUTH_DAILY_LIMIT: [1, undefined, undefined],
-  SORA_AUTH_PROXY_HOPS: [1, 10, 1],
   SORA_MCP_MAX_SESSIONS: [1, undefined, 100],
   SORA_BROWSER_MAX_CONCURRENCY: [1, undefined, undefined, 50],
   SORA_BROWSER_IDLE_TTL_MS: [0, undefined, 300_000],
@@ -117,16 +118,16 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 11 settings, 13 standard names, 40 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(64);
+  test('counts match the design (51 + 10 settings, 13 standard names, 43 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(61);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
-    expect(Object.keys(LEGACY)).toHaveLength(40);
+    expect(Object.keys(LEGACY)).toHaveLength(43);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
     expect(Object.keys(LEGACY).filter((n) => !LEGACY[n].to).sort()).toEqual([...REMOVED].sort());
     for (const [old, [to]] of Object.entries(REFUSED)) expect(LEGACY[old].to).toBe(to as never);
   });
 
-  test('every old name maps to its hand-written replacement and policy (40 rows)', () => {
+  test('every old name maps to its hand-written replacement and policy (43 rows)', () => {
     expect(LEGACY as unknown).toEqual({
       ...Object.fromEntries(Object.entries(REFUSED).map(([old, [to]]) => [old, { to, policy: 'error' }])),
       ...Object.fromEntries(Object.entries(RENAMED_WARN).map(([old, to]) => [old, { to, policy: 'warn' }])),
@@ -186,7 +187,7 @@ describe('registry', () => {
     expect(SETTINGS.SORA_MODULES.default).toEqual(['all']);
   });
 
-  test('the eleven settings added after the design are registered', () => {
+  test('the ten settings added after the design are registered', () => {
     expect(SETTINGS.SORA_BROWSER_LOW_MEMORY).toMatchObject({ area: 'browser', kind: 'bool', default: false });
     expect(SETTINGS.SORA_FETCH_TRUST_STORE).toMatchObject({ area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'] });
     expect(SETTINGS.SORA_FETCH_MAX_CHROME_PROFILE).toMatchObject({ area: 'fetch', kind: 'int', default: 149, min: 136 });
@@ -202,8 +203,6 @@ describe('registry', () => {
     expect(SETTINGS.SORA_EGRESS_PORTS).not.toHaveProperty('default');
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).toMatchObject({ area: 'egress', kind: 'list' });
     expect(SETTINGS.SORA_EGRESS_ALLOW_HOSTS).not.toHaveProperty('default');
-    // 信頼するリバースプロキシの段数（X-Forwarded-For を右から数える）。1〜10、既定は 1 段
-    expect(SETTINGS.SORA_AUTH_PROXY_HOPS).toMatchObject({ area: 'auth', kind: 'int', default: 1, min: 1, max: 10 });
     // 名前つきの複数の鍵のファイル。パスだけで、既定は無い（無ければ、従来どおり SORA_API_KEY か認証なし）
     expect(SETTINGS.SORA_AUTH_KEYS_FILE).toMatchObject({ area: 'auth', kind: 'path' });
     expect(SETTINGS.SORA_AUTH_KEYS_FILE).not.toHaveProperty('default');
@@ -685,6 +684,24 @@ describe('checkEnv', () => {
     }
   });
 
+  test('removed generic names (without SORA_) say that another program may keep them; SORA_ names do not', () => {
+    const others = 'ほかのプログラムのものなら、そのままで構いません';
+    for (const old of REMOVED) {
+      const message = checkEnv({ [old]: 'x' }).warnings[0];
+      if (old.startsWith('SORA_')) expect(message, old).not.toContain(others);
+      else expect(message, old).toContain(others);
+    }
+    expect(REMOVED.filter((old) => !old.startsWith('SORA_')).sort()).toEqual(['ALLOW_LOCAL_NO_AUTH', 'TRUST_PROXY']);
+  });
+
+  test('the keyless loopback pass and the X-Forwarded-For settings are gone: no longer settings, only removed names', () => {
+    for (const name of ['SORA_AUTH_LOOPBACK_NO_KEY', 'SORA_AUTH_TRUST_PROXY', 'SORA_AUTH_PROXY_HOPS']) {
+      expect(Object.keys(SETTINGS)).not.toContain(name);
+      expect(LEGACY[name]).toEqual({ policy: 'warn' });
+      expect(checkEnv({ [name]: 'true' }).warnings).toEqual([`${name} は v5.0.0 で廃止しました（読みません）。設定を消してください`]);
+    }
+  });
+
   test('empty old names are treated as unset', () => {
     expect(checkEnv({ API_KEY: '', ENABLED_MODULES: '  ', SORA_REALTIME_ANCHOR: '' })).toEqual({ errors: [], warnings: [] });
   });
@@ -782,23 +799,6 @@ describe('checkEnv', () => {
       expect(errors, set).toEqual([]);
       expect(warnings, set).toEqual([`${id} と ${secret} は組で設定します。${set} だけでは効かず、API を使わずにブラウザで照会します（${missing} も設定するか、${set} を消してください）`]);
       expect(warnings[0]).not.toContain('value-9r');
-    }
-  });
-
-  test('SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効く: 効かないときは警告して起動する', () => {
-    expect(checkEnv({ SORA_AUTH_TRUST_PROXY: 'true', SORA_AUTH_PROXY_HOPS: '2' })).toEqual({ errors: [], warnings: [] });
-    expect(checkEnv({ SORA_AUTH_TRUST_PROXY: 'true' })).toEqual({ errors: [], warnings: [] });
-    expect(checkEnv({})).toEqual({ errors: [], warnings: [] });
-    for (const env of [{ SORA_AUTH_PROXY_HOPS: '2' }, { SORA_AUTH_PROXY_HOPS: '2', SORA_AUTH_TRUST_PROXY: 'false' }, { SORA_AUTH_PROXY_HOPS: '2', SORA_AUTH_TRUST_PROXY: ' ' }]) {
-      const { errors, warnings } = checkEnv(env);
-      expect(errors, JSON.stringify(env)).toEqual([]);
-      expect(warnings, JSON.stringify(env)).toEqual(['SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効きます。いまは効きません（SORA_AUTH_TRUST_PROXY=true にするか、この設定を消してください）']);
-    }
-    // 不正な値は、効かない警告ではなく、値の誤りとして止める
-    for (const raw of ['0', '11', 'abc', '1.5']) {
-      const { errors } = checkEnv({ SORA_AUTH_TRUST_PROXY: 'true', SORA_AUTH_PROXY_HOPS: raw });
-      expect(errors, raw).toHaveLength(1);
-      expect(errors[0]).toContain('SORA_AUTH_PROXY_HOPS');
     }
   });
 

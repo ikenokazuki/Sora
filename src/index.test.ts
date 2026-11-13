@@ -69,7 +69,7 @@ import * as cheerio from 'cheerio';
 import { deliverWebhook, extractQueryHighlightDetails, replaceMarkdownImages } from './enrichment.js';
 import * as enrichmentModule from './enrichment.js';
 import { sendAdminAlert } from './services/health.js';
-import { withEnv } from './test_fixtures/env.js';
+import { removedSettings, withEnv } from './test_fixtures/env.js';
 import { Hono } from 'hono';
 import { app } from './index.js';
 import { mcpSessionManager } from './routes/mcp_route.js';
@@ -708,27 +708,13 @@ describe('web-fetcher Auth Middleware', () => {
     expect(resMetrics.status).toBe(200);
   });
 
-  it('should reject direct local access by default when API key is set', async () => {
-    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
-    delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
-    try {
+  it('should reject direct local access when API key is set (the keyless loopback pass was removed in v5, so leftover settings of it have no effect)', async () => {
+    await withEnv(removedSettings(), async () => {
       const res = await testApp.fetch(new Request('http://localhost/protected'));
       expect(res.status).toBe(401);
-    } finally {
-      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
-    }
-  });
-
-  it('should allow direct local access only when SORA_AUTH_LOOPBACK_NO_KEY=true', async () => {
-    const prev = process.env.SORA_AUTH_LOOPBACK_NO_KEY;
-    process.env.SORA_AUTH_LOOPBACK_NO_KEY = 'true';
-    try {
-      const res = await testApp.fetch(new Request('http://localhost/protected'));
-      expect(res.status).toBe(200);
-    } finally {
-      if (prev !== undefined) process.env.SORA_AUTH_LOOPBACK_NO_KEY = prev;
-      else delete process.env.SORA_AUTH_LOOPBACK_NO_KEY;
-    }
+      const local = await testApp.fetch(new Request('http://localhost/protected'), { remoteAddr: '127.0.0.1' } as never);
+      expect(local.status).toBe(401);
+    });
   });
 
   it('should reject proxied request without API key', async () => {
