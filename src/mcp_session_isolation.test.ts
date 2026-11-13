@@ -7,15 +7,18 @@ const rpcHeaders = {
   'mcp-protocol-version': '2024-11-05',
 };
 
-function connection(manager: McpSessionManager, auth: Record<string, string> = {}) {
+/** tenant は、呼び出し側（本物では認証のミドルウェア）が渡す。ここでは、manager に直接渡す */
+function connection(manager: McpSessionManager, tenantId?: string) {
   let id = 0;
   let sessionId: string | undefined;
-  const request = (method: string, params: object = {}, headers: Record<string, string> = auth) =>
+  const send = (body: object, as: { tenantId?: string }, extra: Record<string, string> = {}) =>
     manager.handleRequest(new Request('http://localhost/mcp', {
-      method: 'POST',
-      headers: { ...rpcHeaders, ...headers, ...(sessionId ? { 'mcp-session-id': sessionId } : {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params }),
-    }));
+      method: extra.method ?? 'POST',
+      headers: { ...rpcHeaders, ...(sessionId ? { 'mcp-session-id': sessionId } : {}) },
+      ...(extra.method === 'DELETE' ? {} : { body: JSON.stringify(body) }),
+    }), as);
+  const request = (method: string, params: object = {}, as: { tenantId?: string } = { tenantId }) =>
+    send({ jsonrpc: '2.0', id: ++id, method, params }, as);
   const rpc = async (method: string, params: object = {}) => {
     const response = await request(method, params);
     expect(response.status).toBe(200);
@@ -32,11 +35,7 @@ function connection(manager: McpSessionManager, auth: Record<string, string> = {
       expect(response.status).toBe(200);
       sessionId = response.headers.get('mcp-session-id')!;
       expect(sessionId).toBeTruthy();
-      const notification = await manager.handleRequest(new Request('http://localhost/mcp', {
-        method: 'POST',
-        headers: { ...rpcHeaders, ...auth, 'mcp-session-id': sessionId },
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
-      }));
+      const notification = await send({ jsonrpc: '2.0', method: 'notifications/initialized' }, { tenantId });
       expect(notification.status).toBe(202);
     },
     async names() {
@@ -51,24 +50,22 @@ function connection(manager: McpSessionManager, auth: Record<string, string> = {
       return rpc('tools/call', { name, arguments: args });
     },
     close() {
-      return manager.handleRequest(new Request('http://localhost/mcp', {
-        method: 'DELETE', headers: { ...rpcHeaders, ...auth, 'mcp-session-id': sessionId! },
-      }));
+      return send({}, { tenantId }, { method: 'DELETE' });
     },
   };
 }
 
 describe('MCP session activation isolation', () => {
-  for (const [label, auth] of [
-    ['anonymous', {}],
-    ['same Bearer key', { Authorization: 'Bearer session-test-key' }],
-    ['same X-API-Key', { 'x-api-key': 'session-test-key' }],
+  for (const [label, tenantId] of [
+    ['legacy (no tenant given)', undefined],
+    ['a named tenant', 'name:session-test'],
+    ['a key-hash tenant', 'key:0123456789abcdef'],
   ] as const) {
     test(`${label}: discovery stays in one session and new connections start with core tools`, async () => {
       const manager = new McpSessionManager();
-      const first = connection(manager, auth);
-      const second = connection(manager, auth);
-      const third = connection(manager, auth);
+      const first = connection(manager, tenantId);
+      const second = connection(manager, tenantId);
+      const third = connection(manager, tenantId);
       try {
         await first.initialize();
         await second.initialize();
@@ -129,20 +126,20 @@ describe('MCP session activation isolation', () => {
     }
   });
 
-  test('a session accepts the same key via either header and rejects another tenant', async () => {
+  test('a session accepts only the tenant that created it (the tenant is given by the caller, never read from headers)', async () => {
     const manager = new McpSessionManager();
-    const first = connection(manager, { Authorization: 'Bearer session-owner-key' });
+    const first = connection(manager, 'name:owner');
     try {
       await first.initialize();
       await first.discover('search_keywords');
-      const sameOwner = await first.request('tools/list', {}, { 'x-api-key': 'session-owner-key' });
+      const sameOwner = await first.request('tools/list', {}, { tenantId: 'name:owner' });
       expect(sameOwner.status).toBe(200);
       const sameOwnerBody = await sameOwner.json() as any;
       expect(sameOwnerBody.result.tools).toHaveLength(15);
-      const otherOwners: Record<string, string>[] = [{ Authorization: 'Bearer different-owner-key' }, {}];
-      for (const auth of otherOwners) {
-        const response = await first.request('tools/list', {}, auth);
-        expect(response.status).toBe(404);
+      const otherOwners: { tenantId?: string }[] = [{ tenantId: 'name:other' }, { tenantId: 'key:0123456789abcdef' }, { tenantId: 'legacy' }, {}];
+      for (const as of otherOwners) {
+        const response = await first.request('tools/list', {}, as);
+        expect(response.status, JSON.stringify(as)).toBe(404);
         expect((await response.json() as any).error.message).toBe('Session not found');
       }
       expect(await first.names()).toHaveLength(15);

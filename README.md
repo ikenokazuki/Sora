@@ -2496,6 +2496,8 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 - **🔒 Timing-Safe 認証 & 日次クォータ・レートリミット制御**:
   - API キー照合には `crypto.timingSafeEqual` + SHA-256（定数時間比較）を採用し、Timing Attack を防御。
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
+  - 利用者ごとの状態の単位（tenant）は、認証のミドルウェアが決めたものだけを使います。MCP も REST も、生のヘッダーから別に作りません。`Authorization` の `Bearer` は、大文字小文字を区別せずに読み（RFC 7235）、`Bearer` があれば鍵はそれだけを読みます（誤った `Bearer` と正しい `X-API-Key` を併せても通りません）。
+  - リバースプロキシ配下（`SORA_AUTH_TRUST_PROXY=true`）では、`X-Forwarded-For` を右から数えます（左の値は利用者が書けるので信じません）。段数は `SORA_AUTH_PROXY_HOPS`（既定 1）です。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
   - SQLite 障害で degraded 判定時に、`SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
@@ -2548,7 +2550,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 |---|---|---|
 | `SORA_AUTH_DAILY_LIMIT` | *(無制限)* | API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます |
 | `SORA_AUTH_LOOPBACK_NO_KEY` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
-| `SORA_AUTH_TRUST_PROXY` | `false` | `true` で `X-Forwarded-For` の先頭のアドレスを接続元として信頼します（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。リバースプロキシ配下でのみ設定してください |
+| `SORA_AUTH_PROXY_HOPS` | `1` | `SORA_AUTH_TRUST_PROXY=true` のときの、`X-Forwarded-For` を足す、信頼するリバースプロキシの段数（1〜10）。右から数えて、この番目のアドレスを接続元とします。1 は、いちばん右（Sora の手前のプロキシが見た相手。nginx が 1 台ならこれ）、2 は、CDN とロードバランサーが続く構成です。`X-Forwarded-For` の長さがこの段数に足りない要求は、ループバックとみなしません |
+| `SORA_AUTH_TRUST_PROXY` | `false` | `true` で、`X-Forwarded-For` から接続元を読みます（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。読むのは、右から `SORA_AUTH_PROXY_HOPS` 番目のアドレスです（先頭の値は、利用者が書けるので信じません）。前段のリバースプロキシが、自分の見た接続元を右端に足す（または、その値に置き換える）構成が前提です。プロキシを通らずに Sora へつなげる経路があるなら、設定しないでください（その経路から `X-Forwarded-For` を書かれます）。v5 より前は先頭の値を読んでいたので、プロキシが 2 段以上のときは `SORA_AUTH_PROXY_HOPS` も設定してください |
 
 **ログ**
 

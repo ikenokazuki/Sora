@@ -172,7 +172,11 @@ export const SETTINGS = {
   },
   SORA_AUTH_TRUST_PROXY: {
     area: 'auth', kind: 'bool', default: false, legacy: ['TRUST_PROXY'], legacyOnly: 'warn',
-    doc: '`true` で `X-Forwarded-For` の先頭のアドレスを接続元として信頼します（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。リバースプロキシ配下でのみ設定してください',
+    doc: '`true` で、`X-Forwarded-For` から接続元を読みます（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。読むのは、右から `SORA_AUTH_PROXY_HOPS` 番目のアドレスです（先頭の値は、利用者が書けるので信じません）。前段のリバースプロキシが、自分の見た接続元を右端に足す（または、その値に置き換える）構成が前提です。プロキシを通らずに Sora へつなげる経路があるなら、設定しないでください（その経路から `X-Forwarded-For` を書かれます）。v5 より前は先頭の値を読んでいたので、プロキシが 2 段以上のときは `SORA_AUTH_PROXY_HOPS` も設定してください',
+  },
+  SORA_AUTH_PROXY_HOPS: {
+    area: 'auth', kind: 'int', min: 1, max: 10, default: 1,
+    doc: '`SORA_AUTH_TRUST_PROXY=true` のときの、`X-Forwarded-For` を足す、信頼するリバースプロキシの段数（1〜10）。右から数えて、この番目のアドレスを接続元とします。1 は、いちばん右（Sora の手前のプロキシが見た相手。nginx が 1 台ならこれ）、2 は、CDN とロードバランサーが続く構成です。`X-Forwarded-For` の長さがこの段数に足りない要求は、ループバックとみなしません',
   },
   SORA_AUTH_DAILY_LIMIT: {
     area: 'auth', kind: 'int', min: 1, legacy: ['DAILY_REQUEST_LIMIT'], legacyOnly: 'error',
@@ -680,6 +684,7 @@ const OTHER_PROGRAMS = 'ほかのプログラムのものなら、そのまま�
  * (a) 未知の SORA_* は警告 (b) 旧名は警告（置き換え先つき。新名があれば旧名は無視）
  * (c) 旧名だけで新名が無いとき、拒否の 10 個は errors (d) 不正な値は errors（秘密は「設定済み、長さ N」）
  * (e) 組の片方だけ（判例の索引の URL と SHA-256 は errors、運送会社の ID と秘密は警告）。
+ * (f) 効かない設定（SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効く）は警告。
  * キーも SORA_ALLOW_ANONYMOUS も無いのはエラーにしない（Fail-Open）。ファイルの有無は見ない（起動の処理の startup_check.ts が見る）。
  */
 export function checkEnv(env: Env = process.env): { errors: string[]; warnings: string[] } {
@@ -707,6 +712,11 @@ export function checkEnv(env: Env = process.env): { errors: string[]; warnings: 
     } else {
       warnings.push(`${old} は ${to} に変わりました（旧名は読まないので、この設定は効いていません）。${to} に変えてください${generic ? `（${OTHER_PROGRAMS}）` : ''}`);
     }
+  }
+
+  // 段数は、X-Forwarded-For を読むときだけ効く。効かない設定を、黙って抱えさせない
+  if (!isBlank(env.SORA_AUTH_PROXY_HOPS) && !envBool('SORA_AUTH_TRUST_PROXY', env)) {
+    warnings.push('SORA_AUTH_PROXY_HOPS は SORA_AUTH_TRUST_PROXY=true のときだけ効きます。いまは効きません（SORA_AUTH_TRUST_PROXY=true にするか、この設定を消してください）');
   }
 
   for (const [a, b, effect] of PAIRS) {

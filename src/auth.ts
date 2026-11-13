@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
 import { envBool, envInt, envStr } from './config.js';
 import { dbIncrementApiUsage } from './db.js';
+import { ipLiteralVersion } from './net/ip_policy.js';
 import { isPublicPath } from './security/public_paths.js';
 import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
 
@@ -20,18 +21,15 @@ export function isSecureEqual(a?: string, b?: string): boolean {
   return timingSafeEqual(hashA, hashB);
 }
 
-/** リクエストから Bearer Token または X-API-Key を抽出 */
+/**
+ * リクエストから Bearer Token または X-API-Key を抽出する。Authorization の scheme は大文字小文字を区別しない（RFC 7235 §2.1）。
+ * 認証も MCP も、鍵はここだけで読む（読み方が食い違うと、認証が通った利用者が別の tenant になれた）。
+ */
 export function extractAuthToken(c: any): string | undefined {
-  const authHeader = c.req.header('authorization');
+  const bearer = /^Bearer[ \t]+(.*)$/i.exec(c.req.header('authorization') ?? '');
+  if (bearer) return bearer[1].trim();
   const xApiKey = c.req.header('x-api-key');
-
-  if (authHeader?.startsWith('Bearer ')) {
-    return authHeader.substring(7).trim();
-  }
-  if (xApiKey) {
-    return xApiKey.trim();
-  }
-  return undefined;
+  return xApiKey ? xApiKey.trim() : undefined;
 }
 
 export function hashApiKey(key: string): string {
@@ -58,15 +56,27 @@ export function isLoopbackAddress(ip: string): boolean {
   return false;
 }
 
+/**
+ * X-Forwarded-For の値から、信頼するプロキシの段数 hops だけ右へ数えた位置の接続元を返す。
+ * hops=1 は、いちばん右（Sora の手前のプロキシが見た相手）。左の値は、利用者が書けるので使わない。
+ * 段数に足りないとき（プロキシを通っていない）と、IP アドレスでないときは undefined（信じない）。
+ */
+export function forwardedClientAddress(header: string, hops: number): string | undefined {
+  const chain = header.split(',');
+  if (chain.length < hops) return undefined;
+  const address = chain[chain.length - hops].trim();
+  return ipLiteralVersion(address) !== 0 ? address : undefined;
+}
+
 export function resolvePeerLocal(c: any): boolean {
   const forwardedFor = c.req.header('x-forwarded-for');
   const realIp = c.req.header('x-real-ip');
   const directConnection = !forwardedFor && !realIp;
   const peer = getPeerAddress(c);
   if (envBool('SORA_AUTH_TRUST_PROXY')) {
-    const clientIp = (forwardedFor || '').split(',')[0].trim() || peer;
-    if (!clientIp) return false;
-    return isLoopbackAddress(clientIp);
+    // X-Forwarded-For があれば、信頼するプロキシの段数から数えた値だけで決める（足りなければ信じない）。無ければ、ソケットの相手
+    const clientIp = forwardedFor ? forwardedClientAddress(forwardedFor, envInt('SORA_AUTH_PROXY_HOPS')) : peer;
+    return clientIp !== undefined && isLoopbackAddress(clientIp);
   }
   if (!directConnection) return false;
   // Peer unknown (unit tests, non-Bun runtimes): legacy header heuristic.
