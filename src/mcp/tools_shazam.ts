@@ -7,7 +7,7 @@ import type { ToolRegistrationContext } from './registry.js';
 
 /** 🎧 Category 14: Song Recognition (モジュール: 'shazam'。SORA_MODULES に名前を挙げたときだけ有効。Shazam の iPhone アプリと同じ窓口を使う) */
 export function registerShazamTools(context: ToolRegistrationContext): void {
-  const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
+  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId } = context;
   // recognize_song (音から曲を特定し、iTunes の曲とつなぐ) - DEFERRED
   registerTool(
     mcpServer,
@@ -19,7 +19,7 @@ export function registerShazamTools(context: ToolRegistrationContext): void {
     SongRecognitionRequestSchema.shape,
     async (opts) => {
       try {
-        return { content: [{ type: 'text', text: toolJson(await recognizeSong(opts)) }] };
+        return { content: [{ type: 'text', text: toolJson(await recognizeSong({ ...opts, tenantId: serverTenantId })) }] };
       } catch (err) {
         return { isError: true, content: [{ type: 'text', text: `Song recognition error: ${errorMessage(err) || err}` }] };
       }

@@ -76,6 +76,8 @@ export interface SongRecognitionOptions {
   offsetSec?: number;
   country?: string;
   noCache?: boolean;
+  /** ブラウザの枠（音声のデコード）を数える利用者。REST・MCP が、認証が決めた利用者を渡す。無ければ legacy */
+  tenantId?: string;
 }
 
 type DownloadedAudio = { bytes: Uint8Array; contentType: string };
@@ -85,7 +87,7 @@ type Fetcher = (url: string, timeoutMs: number) => Promise<{ finalUrl: string; r
 export interface SongRecognitionDeps {
   fetchFn?: typeof fetch;
   download?: (url: string) => Promise<DownloadedAudio | DownloadRefusal>;
-  decode?: (bytes: Uint8Array, pickWindows: (durationSec: number) => number[]) => Promise<DecodedWindows>;
+  decode?: (bytes: Uint8Array, pickWindows: (durationSec: number) => number[], tenantId: string) => Promise<DecodedWindows>;
 }
 
 const round3 = (n: number) => Math.round(n * 1000) / 1000;
@@ -264,10 +266,10 @@ async function queryWindows(windows: Iterable<Window>, country: string, fetchFn:
   return { hit: weak ? await found(weak.match, weak.clipOffsetSec, true) : null, attempts };
 }
 
-async function identify(audio: DownloadedAudio, offsetSec: number | undefined, country: string, deps: SongRecognitionDeps): Promise<Hit> {
+async function identify(audio: DownloadedAudio, offsetSec: number | undefined, country: string, deps: SongRecognitionDeps, tenantId: string): Promise<Hit> {
   let decoded: DecodedWindows;
   try {
-    decoded = await (deps.decode ?? decodeAudioWindows)(audio.bytes, (d) => pickWindows(d, offsetSec));
+    decoded = await (deps.decode ?? decodeAudioWindows)(audio.bytes, (d) => pickWindows(d, offsetSec), tenantId);
   } catch (e) {
     if (e instanceof AudioDecodeError) return { result: refusal('not-audio', NOT_AUDIO), ttlMs: CACHE_TTL_EMPTY };
     throw e;
@@ -322,7 +324,7 @@ export async function recognizeSong(options: SongRecognitionOptions, deps: SongR
   const key = `song-recognition:${cacheKeyDigest<{ audio: string; offsetSec?: number; country: string }>({ audio: digest, offsetSec: options.offsetSec, country })}`;
   const hit = options.noCache ? null : getFromCache<SongRecognitionResult>(key);
   if (hit) return hit;
-  const { result, ttlMs } = await runWithSingleFlight(key, () => identify(audio, options.offsetSec, country, deps));
+  const { result, ttlMs } = await runWithSingleFlight(key, () => identify(audio, options.offsetSec, country, deps, options.tenantId ?? 'legacy'));
   if (!options.noCache && ttlMs > 0) setToCache(key, result, ttlMs);
   return result;
 }

@@ -8,7 +8,7 @@ import type { ToolRegistrationContext } from './registry.js';
 
 /** 🗾 Category 4: Japanese Daily Life Services (モジュール: 'life') */
 export function registerLifeTools(context: ToolRegistrationContext): void {
-  const { mcpServer, toolCatalog, sessionActivated, deferredDefault } = context;
+  const { mcpServer, toolCatalog, sessionActivated, deferredDefault, serverTenantId } = context;
   // Tool 14: search_route (電車・鉄道 乗換案内) - CORE (defaultEnabled: true)
   registerTool(
     mcpServer,
@@ -111,12 +111,15 @@ export function registerLifeTools(context: ToolRegistrationContext): void {
     },
     async ({ trackingNumber, carrier, preferredCarriers, noCache }) => {
       try {
-        const result = await trackPackage({
-          trackingNumber,
-          carrier: carrier ?? 'auto',
-          preferredCarriers,
-          noCache: noCache ?? false,
-        });
+        const result = await trackPackage(
+          {
+            trackingNumber,
+            carrier: carrier ?? 'auto',
+            preferredCarriers,
+            noCache: noCache ?? false,
+          },
+          { tenantId: serverTenantId },
+        );
         return {
           content: [{ type: 'text', text: toolJson(result) }],
         };

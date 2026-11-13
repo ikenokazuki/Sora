@@ -118,7 +118,7 @@ export const dhlAdapter: TrackingCarrierAdapter = {
 
     // API未設定またはフォールバック: 公式Web追跡URLとガイダンスを返却
     try {
-      const scraped = await scrapeDhlByBrowser(num, trackingUrl, context?.signal);
+      const scraped = await scrapeDhlByBrowser(num, trackingUrl, context);
       if (scraped === 'blocked') {
         return {
           carrier,
@@ -135,6 +135,8 @@ export const dhlAdapter: TrackingCarrierAdapter = {
       }
       if (scraped) return scraped;
     } catch (err) {
+      // 枠が混み合って断られたことは、案内（番号ごとの共有キャッシュに入る）に退避しない。呼んだ利用者に返す
+      if (err instanceof ResourceBusyError) throw err;
       console.warn('DHL browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
@@ -163,7 +165,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
-import { errorMessage } from '../../../errors.js';
+import { errorMessage, ResourceBusyError } from '../../../errors.js';
 
 const DHL_POSITIVE = /delivered|in transit|trouble|held|exception|配達完了|配達中/i;
 const DHL_NO_RESULT = /no results?|shipment .* not found|not found/i;
@@ -194,8 +196,8 @@ export function parseDhlTrackPage(html: string, title: string): DhlPageParse {
 }
 
 /** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
-export async function scrapeDhlByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
-  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 25000, readyMarkers: DHL_READY });
+export async function scrapeDhlByBrowser(num: string, trackingUrl: string, context?: TrackingContext): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal: context?.signal, tenantId: context?.tenantId, timeoutMs: 25000, readyMarkers: DHL_READY });
   if (!page) return undefined;
   const parsed = parseDhlTrackPage(page.html, page.title);
   if (!parsed) return undefined;

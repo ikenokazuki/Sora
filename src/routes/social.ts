@@ -1,20 +1,21 @@
 import { Hono } from 'hono';
 import { SocialFetchInputSchema, SocialSearchInputSchema } from '../services/social/types.js';
 import type { SocialService } from '../services/social/index.js';
-import { formatError } from './utils.js';
+import { busyResponse, formatError } from './utils.js';
 
 export interface SocialRouteDeps {
   service?: SocialService;
 }
 
-async function loadProdService(): Promise<SocialService> {
+/** tenantId は、ブラウザの枠（Weibo の匿名セッション・Meta の本文の描画）を数える利用者 */
+async function loadProdService(tenantId: string): Promise<SocialService> {
   const { createSocialService } = await import('../services/social/index.js');
   const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('../services/social/transport.js');
   return createSocialService({
     weiboHttp: createProdWeiboHttp(),
-    sessionOpener: createProdSessionOpener(),
+    sessionOpener: createProdSessionOpener(tenantId),
     metaHttp: createProdMetaHttp(),
-    metaBrowser: createProdMetaBrowser(),
+    metaBrowser: createProdMetaBrowser(tenantId),
     webSearch: createProdWebSearch(),
   });
 }
@@ -34,11 +35,11 @@ export function createSocialRoutes(deps: SocialRouteDeps = {}) {
       return formatError(c, 'Invalid social search parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
     }
     try {
-      const service = deps.service ?? await loadProdService();
+      const service = deps.service ?? await loadProdService(c.get('tenant')?.tenantId ?? 'legacy');
       const signal = AbortSignal.timeout(55000);
       return c.json(await service.search(parsed.data, { signal, deadlineAt: Date.now() + 55000 }));
     } catch (error) {
-      return formatError(c, error instanceof Error ? error.message : 'Social search failed', 'SOCIAL_ERROR', 500);
+      return busyResponse(c, error) ?? formatError(c, error instanceof Error ? error.message : 'Social search failed', 'SOCIAL_ERROR', 500);
     }
   });
 
@@ -54,11 +55,11 @@ export function createSocialRoutes(deps: SocialRouteDeps = {}) {
       return formatError(c, 'Invalid social fetch parameters', 'INVALID_INPUT', 400, false, parsed.error.format());
     }
     try {
-      const service = deps.service ?? await loadProdService();
+      const service = deps.service ?? await loadProdService(c.get('tenant')?.tenantId ?? 'legacy');
       const signal = AbortSignal.timeout(30000);
       return c.json(await service.fetch(parsed.data, { signal, deadlineAt: Date.now() + 30000 }));
     } catch (error) {
-      return formatError(c, error instanceof Error ? error.message : 'Social fetch failed', 'SOCIAL_ERROR', 500);
+      return busyResponse(c, error) ?? formatError(c, error instanceof Error ? error.message : 'Social fetch failed', 'SOCIAL_ERROR', 500);
     }
   });
 
