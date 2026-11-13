@@ -2498,6 +2498,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
   - Multi-turn ブラウザセッション（`sessionId`）を作成者トークンと暗号学的に紐付け、他者からのセッション乗っ取りを防止。
   - 利用者ごとの状態の単位（tenant）は、認証のミドルウェアが決めたものだけを使います。MCP も REST も、生のヘッダーから別に作りません。`Authorization` の `Bearer` は、大文字小文字を区別せずに読み（RFC 7235）、`Bearer` があれば鍵はそれだけを読みます（誤った `Bearer` と正しい `X-API-Key` を併せても通りません）。
   - リバースプロキシ配下（`SORA_AUTH_TRUST_PROXY=true`）では、`X-Forwarded-For` を右から数えます（左の値は利用者が書けるので信じません）。段数は `SORA_AUTH_PROXY_HOPS`（既定 1）です。
+  - 複数の利用者が使うときは、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、鍵ごとに別の tenant で動かせます。鍵は SHA-256 で書けます（4.6）。
 - **🩺 外部依存関係並行監視 & 管理者 Webhook アラート (`checkDetailedHealth`)**:
   - `GET /health?detailed=true` により SQLite、Chromium、Yahoo、気象庁、P2P地震情報、e-Gov への並行疎通確認を実施。
   - SQLite 障害で degraded 判定時に、`SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者へ障害通知 Webhook を発火（外部依存の瞬断では発火しない）。
@@ -2538,8 +2539,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `PORT` | `8000` | HTTP / MCP サーバーのリッスンポート（1〜65535）。起動のときに読みます |
 | `SORA_ALLOWED_HOSTS` | *(未設定 = `localhost`・`127.0.0.1`・`[::1]` をポート不問)* | MCP エンドポイント（`/mcp`・`/sse`・`/message`）と、ブラウザ上のページから来る REST 要求が受け付ける Host のカンマ区切りリスト（例: `sora.example.com,localhost:3016`）。未設定なら `localhost`・`127.0.0.1`・`[::1]` を**ポート不問**で許可します（`-p 3016:8000` のようなポート割り当てでもそのまま接続できます）。設定した場合は、書いた Host だけをポート込みで厳密に照合します。LAN・公開ホスト名・リバースプロキシ経由で使うときは設定してください。ブラウザを介さない REST 要求（curl・サーバー間通信）は Host を検査しません |
 | `SORA_ALLOWED_ORIGINS` | `localhost`・`127.0.0.1`・`[::1]`（ポート無し／`PORT` 付き） | MCP と REST に接続してよいブラウザの Origin のカンマ区切りリスト（例: `http://localhost:3016,http://localhost:5173`）。Origin ヘッダーを送らない通常の MCP クライアント（Claude Desktop・Cursor・CLI など）や、REST の curl・サーバー間通信には影響しません。REST は、サーバー自身のページ（`/docs` など）からの同一オリジンの呼び出しを、この設定によらず許可します。別の Origin のページから呼ぶときに設定します。許可外の Origin は `403`（`code: ORIGIN_NOT_ALLOWED`）で、`/health`・`/metrics`・`/openapi.json`・`/docs`・`/swagger` と荷物ごとの表示ページ（`/t/...`）は、どの Origin からでも読めます。拒否の回数は `/metrics` の `sora_rest_origin_rejected_total` で確認できます |
-| `SORA_ALLOW_ANONYMOUS` | `false` | `true` で匿名の利用を認めます。キーが未設定なら、値によらず認証なしで使えます（`true` はキー無しの警告を止めるだけ）。キーを設定していて `true` のときは、キー無しの要求も誤ったキーの要求も匿名として通します（`401` で断るのは `false` のときだけ） |
-| `SORA_API_KEY` | *(未設定 = 認証なし)* | サーバーの API 認証キー。設定すると `Authorization: Bearer <key>` か `X-API-Key` ヘッダーでの認証が要ります。未設定なら認証なしで使えます（Fail-Open。キー無しの警告を 1 回出します） |
+| `SORA_ALLOW_ANONYMOUS` | `false` | `true` で匿名の利用を認めます。キーが未設定なら、値によらず認証なしで使えます（`true` はキー無しの警告を止めるだけ）。キーを設定していて `true` のときは、キー無しの要求も誤ったキーの要求も匿名として通します（`401` で断るのは `false` のときだけ）。`SORA_AUTH_KEYS_FILE` があるときは効きません（鍵ファイルがあると、匿名は認めません） |
+| `SORA_API_KEY` | *(未設定 = 認証なし)* | サーバーの API 認証キー。設定すると `Authorization: Bearer <key>` か `X-API-Key` ヘッダーでの認証が要ります。未設定なら認証なしで使えます（Fail-Open。キー無しの警告を 1 回出します）。名前つきの複数の鍵が要るときは、代わりに `SORA_AUTH_KEYS_FILE` を使います（併用はできません） |
 | `SORA_DB_PATH` | `./data/sora.db`（`NODE_ENV=test` なら `:memory:`。公開イメージは `/data/sora.db`） | SQLite データベースファイルのパス（キャッシュ・監視対象・ドメイン別 Cookie / localStorage を格納。ファイルは自動で `0600` に制限されます。ブラウザで開いたページが HTTP 400 以上を返したとき、または待っても確認の画面（ボット対策）のままだったときは、そのサイトの Cookie / localStorage を保存せず、保存していた分を消して、戻さずに 1 回だけ開き直します） |
 | `SORA_MODULES` | `all` | 有効にするモジュール（カンマ区切り: `web,browser,yahoo,life,disaster,watch,music,gov,trade,media,intel,youtube` または `all`）。自己責任の `lyrics`・楽曲認識の `shazam`・HTS の版の保存の `hts-archive` は `all` に含まれず、`all,lyrics` のように名前を挙げたときだけ有効。知らない名前があると起動しません |
 | `SORA_PUBLIC_URL` | *(未設定)* | 利用者がブラウザで開く Sora の公開 URL（例: `https://sora.example.com`）。荷物ごとの表示ページの `pageUrl` の組み立てに使います |
@@ -2549,6 +2550,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | 環境変数名 | デフォルト値 | 説明 |
 |---|---|---|
 | `SORA_AUTH_DAILY_LIMIT` | *(無制限)* | API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます |
+| `SORA_AUTH_KEYS_FILE` | *(未設定)* | 名前つきの複数の鍵のファイルのパス（JSON。`{"keys": [{"name": "alice", "key": "…"}, {"name": "bob", "keyHash": "sha256:…"}]}`）。設定すると、共有のサービスとして、鍵ごとに別の tenant（`name:<name>`）で動きます。`name` は英小文字・数字・`-`・`_` の 1〜64 字、`key` は 16〜256 字の空白を含まない ASCII、`keyHash` は `sha256:` と鍵の SHA-256（64 桁の 16 進）です。同じ `name` を複数の行に書くと、どちらの鍵も同じ tenant です（鍵の入れ替えの移行期に使います）。匿名は認めず（`SORA_ALLOW_ANONYMOUS` は効きません）、`SORA_API_KEY` とは併用できません。ファイルが無い・読めない・誤りがある・鍵が 1 つも無いときは、起動しません。起動のときに 1 回読むので、鍵を足す・消すときは再起動してください。平文の `key` を書いたファイルは `chmod 600` にしてください（所有者以外も読めるときは警告します）。詳しくは README の「4.6 複数のユーザーで使う」 |
 | `SORA_AUTH_LOOPBACK_NO_KEY` | `false` | `true` の場合、`X-Forwarded-For` / `X-Real-IP` が付かない直接のループバック接続に限り、API キー無しでのアクセスを許可します。**リバースプロキシ配下では有効化しないでください** |
 | `SORA_AUTH_PROXY_HOPS` | `1` | `SORA_AUTH_TRUST_PROXY=true` のときの、`X-Forwarded-For` を足す、信頼するリバースプロキシの段数（1〜10）。右から数えて、この番目のアドレスを接続元とします。1 は、いちばん右（Sora の手前のプロキシが見た相手。nginx が 1 台ならこれ）、2 は、CDN とロードバランサーが続く構成です。`X-Forwarded-For` の長さがこの段数に足りない要求は、ループバックとみなしません |
 | `SORA_AUTH_TRUST_PROXY` | `false` | `true` で、`X-Forwarded-For` から接続元を読みます（`SORA_AUTH_LOOPBACK_NO_KEY` の判定に使います）。読むのは、右から `SORA_AUTH_PROXY_HOPS` 番目のアドレスです（先頭の値は、利用者が書けるので信じません）。前段のリバースプロキシが、自分の見た接続元を右端に足す（または、その値に置き換える）構成が前提です。プロキシを通らずに Sora へつなげる経路があるなら、設定しないでください（その経路から `X-Forwarded-For` を書かれます）。v5 より前は先頭の値を読んでいたので、プロキシが 2 段以上のときは `SORA_AUTH_PROXY_HOPS` も設定してください |
@@ -2753,6 +2755,52 @@ docker run -d --name sora -p 3016:8000 \
 - このファイルは、Docker（moby 29.9.3）の既定のプロファイルの末尾に、規則を 1 つ足しただけです（`scripts/seccomp/profile.test.ts` が、それ以外が 1 バイトも違わないことを確かめます）。Podman も、同じファイルを `--security-opt seccomp=` で使えます。
 - このファイルは Docker 形式（`includes`・`excludes` で capability の条件を書く）で、Kubernetes の `seccompProfile`（`Localhost`）が読む形式とは違います。Kubernetes では使わないでください（未確認です）。
 - 有効になっているかは、起動時のログに、「サンドボックスを有効にして起動できなかったので」の警告が出ていないことで分かります。
+
+### 4.6 複数のユーザーで使う（鍵ファイル）
+
+複数の利用者が 1 つの Sora を使うときは、`SORA_API_KEY`（鍵が 1 つ）の代わりに、鍵ファイル（`SORA_AUTH_KEYS_FILE`）で、利用者ごとに別の鍵を渡します。鍵ごとに別の tenant（利用者ごとの状態の単位。ID は `name:<name>`）で動き、サイトごとの Cookie / localStorage・MCP のセッション・ブラウザのセッション・日次の上限が、tenant ごとに分かれます。
+
+1. 利用者ごとに鍵を作り、SHA-256 を計算します。
+
+   ```bash
+   KEY=$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')   # 16〜256 字の、空白を含まない ASCII なら、何でも構いません
+   printf '%s' "$KEY" | sha256sum                              # keyHash に書く値（先頭の 64 桁）
+   ```
+
+2. 鍵ファイル（JSON）に書きます。鍵は、SHA-256 の `keyHash` でも、平文の `key` でも書けます（1 行にどちらか 1 つ）。ハッシュなら、ファイルが漏れても鍵は漏れないので、こちらを勧めます。
+
+   ```json
+   {
+     "keys": [
+       { "name": "alice", "keyHash": "sha256:<alice の鍵の SHA-256。64 桁の 16 進>" },
+       { "name": "bob", "key": "<bob の鍵。16〜256 字の、空白を含まない ASCII>" }
+     ]
+   }
+   ```
+
+3. ファイルを `chmod 600` にして、パスを渡して起動します。
+
+   ```bash
+   docker run -d --name sora -p 3016:8000 \
+     -v "$PWD/sora-keys.json:/run/secrets/sora-keys.json:ro" \
+     -e SORA_AUTH_KEYS_FILE=/run/secrets/sora-keys.json \
+     ghcr.io/ikenokazuki/sora:latest
+   ```
+
+   利用者は、`Authorization: Bearer <鍵>` か `X-API-Key: <鍵>` で呼びます（`Bearer` は大文字小文字を問いません）。
+
+仕様:
+
+- `name` は、英小文字・数字・`-`・`_` の 1〜64 字です（先頭は英小文字か数字）。tenant の ID は鍵でなく `name` から作るので、鍵を入れ替えても、tenant の状態は残ります。
+- **鍵の入れ替え:** 同じ `name` の行を足すと、どちらの鍵も同じ tenant です。利用者が新しい鍵に移ったら、古い行を消します。同じ鍵を 2 回書く（別の `name` でも）ことはできません。
+- **匿名は認めません。** `SORA_ALLOW_ANONYMOUS` は効かず、`SORA_API_KEY` とは併用できません（起動を止めます）。鍵なしの要求は 401 です。
+- **ファイルが無い・読めない・JSON の誤りがある・鍵が 1 つも無いときは、起動しません**（鍵が無い状態を、認証なしにしないため）。誤りは、どの行のどの項目かを、標準エラーにすべて出します（鍵の値は出しません）。起動のときに 1 回だけ読むので、鍵を足す・消すときは、再起動してください。
+- 平文の `key` を書いたファイルを、所有者以外も読めるときは、警告します。
+- 鍵の照合は、鍵を SHA-256 にして表を引くので、鍵の数によらず、比べる時間は一定です。
+- 日次の上限（`SORA_AUTH_DAILY_LIMIT`）は、tenant ごとに数えます。拒否の回数は、`/metrics` の `sora_auth_rejected_missing_total`（鍵なし）と `sora_auth_rejected_invalid_total`（誤った鍵）で見られます。
+- `SORA_AUTH_LOOPBACK_NO_KEY=true` の鍵なしの通過は、鍵ファイルでも使えます（共有の `internal` の tenant になります）。共有のサービスでは使わないでください。
+
+**まだ分かれないもの。** 鍵ファイルは、隔離の入口です。互いに信頼できない利用者に公開するには、次がまだ足りません（段階的に進めています。設計: [`docs/superpowers/specs/2026-11-12-isolation-design.md`](docs/superpowers/specs/2026-11-12-isolation-design.md)）。監視対象とその履歴（`watch`）は tenant で分かれず、全員に見えます。`POST /cache/clear` は全員分のキャッシュを消します。共有キャッシュの規則は、資格情報とみなすヘッダーの名前の一覧に頼っています。ブラウザの同時実行枠・セッション数・メモリは全員で共有で、tenant ごとの上限がありません。ブラウザのプロセスも、tenant をまたいで共有です。これらが済むまでは、信頼できる範囲の利用者に限ってください。
 
 ---
 

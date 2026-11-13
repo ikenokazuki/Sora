@@ -1,5 +1,9 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { checkEnv, type Env } from './config.js';
+import { getApiKeyStore, resetApiKeyStoreCache } from './security/api_keys.js';
 import { checkStartupEnv } from './startup_check.js';
 
 /** 起動時の検査を、出力・終了・ファイルの有無を差し替えて走らせる。 */
@@ -265,5 +269,88 @@ describe('出口のゲートウェイの許す宛先（SORA_EGRESS_ALLOW_HOSTS�
 
   test('正しい宛先は、止めず、何も出さない', () => {
     expect(run({ SORA_EGRESS_GATEWAY: 'on', SORA_EGRESS_ALLOW_HOSTS: 'fxembed.internal:3000,10.0.0.5:8080,[fd00::5]:8443' })).toEqual({ lines: [], exits: [], asked: [] });
+  });
+});
+
+describe('名前つきの複数の鍵（SORA_AUTH_KEYS_FILE）は、起動のときに読んで検査する', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'sora-startup-keys-'));
+    resetApiKeyStoreCache();
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    resetApiKeyStoreCache();
+  });
+  const write = (content: string, mode = 0o600) => {
+    const path = join(dir, 'keys.json');
+    writeFileSync(path, content, { mode });
+    chmodSync(path, mode);
+    return path;
+  };
+  const keys = (...rows: unknown[]) => JSON.stringify({ keys: rows });
+  const ALICE = { name: 'alice', key: 'alice-key-0123456789abcdef' };
+  const errorLines = (lines: string[]) => lines.filter((line) => line.startsWith(`${PREFIX} エラー:`));
+
+  test('正しいファイルは、止めず、何も出さない。読んだ鍵の表を、認証が使う（要求のたびに読み直さない）', () => {
+    const path = write(keys(ALICE));
+    expect(run({ SORA_AUTH_KEYS_FILE: path })).toEqual({ lines: [], exits: [], asked: [] });
+    writeFileSync(path, keys({ name: 'bob', key: 'bob-key-0123456789abcdefgh' }));
+    expect(getApiKeyStore({ SORA_AUTH_KEYS_FILE: path })?.lookup(ALICE.key)).toBe('alice');
+  });
+
+  test('ファイルが無い・読めない: 匿名にせず、起動を止める', () => {
+    const path = join(dir, 'missing.json');
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: path });
+    expect(exits).toEqual([1]);
+    expect(errorLines(lines)).toEqual([`${PREFIX} エラー: SORA_AUTH_KEYS_FILE: 鍵ファイル（${JSON.stringify(path)}）を読めません（ENOENT）。パスと権限を確かめてください`]);
+    expect(lines.at(-1)).toBe(`${PREFIX} 環境変数の誤りが 1 件あるので、起動しません`);
+  });
+
+  test('中身の誤りは、すべてを出して止める。鍵の値は出さない', () => {
+    const path = write(keys({ name: 'Alice', key: 'short-SECRET' }, { name: 'bob' }));
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: path });
+    expect(exits).toEqual([1]);
+    expect(errorLines(lines)).toEqual([
+      `${PREFIX} エラー: SORA_AUTH_KEYS_FILE: keys[0].name は、英小文字・数字・-・_ の 1〜64 字にしてください（先頭は英小文字か数字）`,
+      `${PREFIX} エラー: SORA_AUTH_KEYS_FILE: keys[0].key は、16〜256 字の、空白を含まない ASCII の印字可能な文字にしてください`,
+      `${PREFIX} エラー: SORA_AUTH_KEYS_FILE: keys[1] に key か keyHash が要ります（どちらか 1 つ）`,
+    ]);
+    expect(lines.join('\n')).not.toContain('SECRET');
+  });
+
+  test('鍵が 1 つも無い・JSON でない: 止める（鍵が無い状態を、Fail-Open の匿名にしない）', () => {
+    for (const content of [keys(), '', '{']) {
+      const { exits, lines } = run({ SORA_AUTH_KEYS_FILE: write(content) });
+      expect(exits, content).toEqual([1]);
+      expect(errorLines(lines), content).toHaveLength(1);
+      resetApiKeyStoreCache();
+    }
+  });
+
+  test('SORA_API_KEY との併用は、止める（鍵ファイルの誤りも、あわせて知らせる）', () => {
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: write(keys(ALICE)), SORA_API_KEY: 'single-key-0123456789' });
+    expect(exits).toEqual([1]);
+    expect(errorLines(lines)).toEqual([`${PREFIX} エラー: SORA_API_KEY と SORA_AUTH_KEYS_FILE は併用できません。鍵ファイルを使うときは SORA_API_KEY を消してください（鍵ファイルは、名前つきの複数の鍵を持ちます）`]);
+    expect(lines.join('\n')).not.toContain('single-key');
+    const both = run({ SORA_AUTH_KEYS_FILE: join(dir, 'missing.json'), SORA_API_KEY: 'single-key-0123456789' });
+    expect(errorLines(both.lines)).toHaveLength(2);
+  });
+
+  test('平文の鍵のファイルを、所有者以外も読めるときは、警告して続ける', () => {
+    const path = write(keys(ALICE), 0o644);
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: path });
+    expect(exits).toEqual([]);
+    expect(lines).toEqual([`${PREFIX} 警告: SORA_AUTH_KEYS_FILE: 鍵ファイル（${JSON.stringify(path)}）に平文の鍵があり、所有者以外も読めます（権限 644）。chmod 600 にするか、keyHash で書いてください`]);
+  });
+
+  test('SORA_ALLOW_ANONYMOUS=true は効かないと警告する（止めない）', () => {
+    const { lines, exits } = run({ SORA_AUTH_KEYS_FILE: write(keys(ALICE)), SORA_ALLOW_ANONYMOUS: 'true' });
+    expect(exits).toEqual([]);
+    expect(lines).toEqual([`${PREFIX} 警告: SORA_ALLOW_ANONYMOUS は、SORA_AUTH_KEYS_FILE があるとき効きません（鍵ファイルがあると、匿名は認めません）。この設定を消してください`]);
+  });
+
+  test('stdio は認証を通らないので、鍵ファイルを読まない（無くても止めない）', () => {
+    expect(run({ SORA_AUTH_KEYS_FILE: join(dir, 'missing.json') }, [], 'stdio')).toEqual({ lines: [], exits: [], asked: [] });
   });
 });

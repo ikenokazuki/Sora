@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { dbSaveTenantCookies } from './db.js';
 import { closeHttpSession } from './http_fetcher.js';
 import { app, mcpSessionManager } from './index.js';
 import { McpSessionManager } from './mcp.js';
+import { resetApiKeyStoreCache } from './security/api_keys.js';
 import { withEnv } from './test_fixtures/env.js';
 
 /**
@@ -221,7 +226,86 @@ describe('MCP のツールは、セッションの tenant でサイトごとの 
     } finally {
       server.close();
       manager.clearAllSessions();
-      for (const tenantId of ['name:alice', 'name:bob', 'name:carol']) await closeHttpSession('127.0.0.1', tenantId).catch(() => {});
+      for (const tenantId of ['name:alice', 'name:bob', 'name:carol']) {
+        await closeHttpSession('127.0.0.1', tenantId).catch(() => {});
+        dbSaveTenantCookies(tenantId, '127.0.0.1', []); // 保存した Cookie は残るので、後の試験に持ち越さない
+      }
+    }
+  });
+});
+
+describe('鍵ファイルでは、MCP も鍵ごとの tenant で分かれる', () => {
+  const ALICE_1 = 'alice-key-0123456789abcdef';
+  const ALICE_2 = 'alice-second-key-0123456789';
+  const BOB = 'bob-key-0123456789abcdefgh';
+  let dir: string;
+  const withKeyFile = async <T>(fn: () => Promise<T>): Promise<T> => {
+    dir = mkdtempSync(join(tmpdir(), 'sora-mcp-keys-'));
+    resetApiKeyStoreCache();
+    const path = join(dir, 'keys.json');
+    writeFileSync(path, JSON.stringify({ keys: [{ name: 'kf-alice', key: ALICE_1 }, { name: 'kf-alice', key: ALICE_2 }, { name: 'kf-bob', key: BOB }] }), { mode: 0o600 });
+    chmodSync(path, 0o600);
+    try {
+      return await withEnv({ SORA_AUTH_KEYS_FILE: path, SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_LOOPBACK_NO_KEY: undefined }, fn);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      resetApiKeyStoreCache();
+    }
+  };
+
+  test('同じ name の 2 つの鍵は同じ tenant（セッションを続けられる）。別の name は別（404）。匿名・誤った鍵は 401', async () => {
+    await withKeyFile(async () => {
+      const alice = await open({ 'X-API-Key': ALICE_1 });
+      for (const headers of [{ 'X-API-Key': ALICE_2 }, { Authorization: `Bearer ${ALICE_1}` }, { Authorization: `bearer ${ALICE_2}` }] as Headers_[]) {
+        expect((await send(headers, listTools, alice)).status, JSON.stringify(headers)).toBe(200);
+      }
+      const bob = await open({ 'X-API-Key': BOB });
+      expect((await send({ 'X-API-Key': BOB }, listTools, bob)).status).toBe(200);
+      expect((await send({ 'X-API-Key': BOB }, listTools, alice)).status).toBe(404);
+      expect((await send({ 'X-API-Key': ALICE_1 }, listTools, bob)).status).toBe(404);
+      for (const headers of [{}, { 'X-API-Key': 'unknown-key-0123456789abcdef' }, { Authorization: 'bearer unknown-key-0123456789abcdef', 'X-API-Key': ALICE_1 }] as Headers_[]) {
+        expect((await send(headers, initialize)).status, JSON.stringify(headers)).toBe(401);
+        expect((await send(headers, listTools, alice)).status, JSON.stringify(headers)).toBe(401);
+      }
+    });
+  });
+
+  test('サイトごとの Cookie は name ごと: 同じ name の 2 つの鍵で引き継ぎ、別の name には見せない（MCP のツール経由）', async () => {
+    const seen: Array<string | undefined> = [];
+    let hits = 0;
+    const server = createServer((request, response) => {
+      hits++;
+      seen.push(request.headers.cookie);
+      response.writeHead(200, { 'content-type': 'text/html', 'Set-Cookie': `sess=${hits}; Path=/` });
+      response.end('<html><head><title>t</title></head><body><p>hello world content here and more text for the extractor</p></body></html>');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    let calls = 0;
+    const scrape = async (headers: Headers_) => {
+      const response = await send(headers, { jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'scrape', arguments: { url: `${base}/jar/${++calls}`, mode: 'fast' } } });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { result?: { isError?: boolean; content?: { text: string }[] }; error?: unknown };
+      expect(body.error).toBeUndefined();
+      expect(body.result?.isError).toBeFalsy();
+      expect(body.result?.content?.[0]?.text).toContain('hello world content');
+    };
+    try {
+      await withEnv({ SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+        await withKeyFile(async () => {
+          await scrape({ 'X-API-Key': ALICE_1 }); // Cookie なし
+          await scrape({ 'X-API-Key': ALICE_2 }); // 同じ name の別の鍵: alice の Cookie
+          await scrape({ 'X-API-Key': BOB }); // 別の name: alice の Cookie は見えない
+          await scrape({ Authorization: `Bearer ${ALICE_1}` }); // alice の jar は 2 回目の応答で更新されている
+        });
+      });
+      expect(seen).toEqual([undefined, 'sess=1', undefined, 'sess=2']);
+    } finally {
+      server.close();
+      for (const tenantId of ['name:kf-alice', 'name:kf-bob']) {
+        await closeHttpSession('127.0.0.1', tenantId).catch(() => {});
+        dbSaveTenantCookies(tenantId, '127.0.0.1', []); // 保存した Cookie は残るので、後の試験に持ち越さない
+      }
     }
   });
 });

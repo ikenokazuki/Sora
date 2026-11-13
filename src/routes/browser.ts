@@ -27,11 +27,14 @@ export const handleBrowserAction = async (c: Context) => {
   }
 
   try {
-    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
+    const tenant = c.get('tenant');
+    const tenantId = tenant?.tenantId ?? 'legacy';
     const result = await executeBrowserActions({
       url: body.url,
       sessionId: body.sessionId,
-      ownerToken: extractAuthToken(c),
+      // 名前つきの鍵（鍵ファイル）の tenant は、鍵の値でなく tenant で持ち主を確かめる（セッションは tenant に結び付く）。
+      // 鍵の値を持ち主にすると、同じ tenant の別の鍵（鍵の入れ替えの移行期）で、自分のセッションを続けられなくなる
+      ownerToken: tenant?.name ? undefined : extractAuthToken(c),
       tenantId,
       createSession: body.createSession,
       closeSession: body.closeSession,
