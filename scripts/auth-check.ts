@@ -6,6 +6,7 @@
  *  (2) 鍵を持つ利用者と匿名（SORA_ALLOW_ANONYMOUS=true）は別の tenant。匿名どうしは、任意の Bearer を付けても同じ scope
  *  (3) ループバックは特別ではない: 鍵を設定したら、ループバックからでも鍵が要る。鍵なしの通過（廃止した設定）は、廃止した名前を残らず置いても、
  *      X-Forwarded-For・X-Real-IP を付けても付けなくても、効かない（設計書 E24。旧名は、登録簿とそのテスト以外に書かない）
+ *  (5) 共有キャッシュと tenant（設計 5。E25）: 保存済みのセッション（Cookie）で得たページを、別の tenant に返さない。ログインしていない tenant どうしは共有する
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -17,6 +18,8 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LEGACY } from '../src/config.js';
+import { dbSaveTenantCookies } from '../src/db.js';
+import { closeHttpSession } from '../src/http_fetcher.js';
 import { app, mcpSessionManager } from '../src/index.js';
 
 const failures: string[] = [];
@@ -126,9 +129,14 @@ await scenario('ループバックでも鍵が要る', { SORA_API_KEY: KEY, ...O
 const ALICE_1 = 'alice-key-0123456789abcdef';
 const ALICE_2 = 'alice-second-key-0123456789';
 const BOB = 'bob-key-0123456789abcdefgh';
+// (5) 用。前の場面で Cookie を受け取った tenant（alice・bob）と混ざらないよう、別の tenant にする
+const SHARED_ALICE_1 = 'shared-alice-key-0123456789abcdef';
+const SHARED_ALICE_2 = 'shared-alice-second-key-0123456789';
+const SHARED_BOB = 'shared-bob-key-0123456789abcdefgh';
+const SHARED_CAROL = 'shared-carol-key-0123456789abcdefg';
 const keyDir = mkdtempSync(join(tmpdir(), 'sora-auth-check-'));
 const keyPath = join(keyDir, 'keys.json');
-writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }] }), { mode: 0o600 });
+writeFileSync(keyPath, JSON.stringify({ keys: [{ name: 'alice', key: ALICE_1 }, { name: 'alice', key: ALICE_2 }, { name: 'bob', keyHash: `sha256:${new Bun.CryptoHasher('sha256').update(BOB).digest('hex')}` }, { name: 'shared-alice', key: SHARED_ALICE_1 }, { name: 'shared-alice', key: SHARED_ALICE_2 }, { name: 'shared-bob', key: SHARED_BOB }, { name: 'shared-carol', key: SHARED_CAROL }] }), { mode: 0o600 });
 chmodSync(keyPath, 0o600);
 
 const seenCookies: Array<string | undefined> = [];
@@ -172,6 +180,42 @@ await scenario('鍵ファイル', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALL
   check(JSON.stringify(seenCookies) === JSON.stringify([undefined, 'sess=1', undefined, 'sess=2']), `鍵ファイル: サイトごとの Cookie が name ごとに分かれていない: ${JSON.stringify(seenCookies)}`);
 });
 
+// (5) 共有キャッシュと tenant。alice は、このサイトの保存済みのセッション（Cookie）を持つ。サーバーは、Cookie の値で、返す本文を変える
+const PRIVATE = 'PRIVATE-FOR-ALICE';
+const PUBLIC = 'PUBLIC-FOR-EVERYONE';
+let sharedHits = 0;
+const personalizedSite = createServer((request, response) => {
+  sharedHits++;
+  const marker = (request.headers.cookie ?? '').includes('sess=ALICE') ? PRIVATE : PUBLIC;
+  response.writeHead(200, { 'content-type': 'text/html' });
+  response.end(`<html><head><title>${marker}</title></head><body><main><h1>${marker}</h1><p>${marker}: このページの本文です。注文の履歴、住所、会員の情報など、読めるだけの長さの文章をここに置きます。</p><p>${marker}: 二つ目の段落です。抽出器が本文として扱うのに足りる長さの文を、続けて並べておきます。</p></main></body></html>`);
+});
+await new Promise<void>((resolve) => personalizedSite.listen(0, '127.0.0.1', () => resolve()));
+const personalizedUrl = `http://127.0.0.1:${(personalizedSite.address() as { port: number }).port}/mypage`;
+const scrapeText = async (headers: Record<string, string>) => {
+  const response = await fetch(`${base}/scrape`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ url: personalizedUrl, mode: 'fast', formats: ['markdown'] }) });
+  const body = await response.text();
+  return { status: response.status, private: body.includes(PRIVATE), public: body.includes(PUBLIC), cached: body.includes('"cached":true') };
+};
+await scenario('共有キャッシュと tenant', { SORA_AUTH_KEYS_FILE: keyPath, SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  const tenants = ['name:shared-alice', 'name:shared-bob', 'name:shared-carol'];
+  dbSaveTenantCookies('name:shared-alice', '127.0.0.1', [{ name: 'sess', value: 'ALICE', path: '/' }]);
+  const alice = await scrapeText({ 'X-API-Key': SHARED_ALICE_1 });
+  check(alice.status === 200 && alice.private && !alice.public, `共有キャッシュ: alice が、保存済みの Cookie で、自分のページを取れない: ${JSON.stringify(alice)}`);
+  const bob = await scrapeText({ 'X-API-Key': SHARED_BOB });
+  check(bob.status === 200 && bob.public && !bob.private && !bob.cached, `共有キャッシュ: bob に、alice のページが返った（またはキャッシュから返った）: ${JSON.stringify(bob)}`);
+  const carol = await scrapeText({ 'X-API-Key': SHARED_CAROL });
+  check(carol.status === 200 && carol.public && !carol.private && carol.cached, `共有キャッシュ: ログインしていない carol が、bob の公開のページを、共有のキャッシュから読めない: ${JSON.stringify(carol)}`);
+  const aliceAgain = await scrapeText({ 'X-API-Key': SHARED_ALICE_2 });
+  check(aliceAgain.private && !aliceAgain.public && aliceAgain.cached, `共有キャッシュ: alice の 2 回目（同じ name の別の鍵）が、alice 自身のキャッシュから返らない: ${JSON.stringify(aliceAgain)}`);
+  check(sharedHits === 2, `共有キャッシュ: サーバーへの要求が 2 回でない（alice と bob の 1 回ずつ。あとは、キャッシュ）: ${sharedHits}`);
+  for (const tenantId of tenants) {
+    await closeHttpSession('127.0.0.1', tenantId).catch(() => {});
+    dbSaveTenantCookies(tenantId, '127.0.0.1', []);
+  }
+});
+personalizedSite.close();
+
 // 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にしない
 await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
   const originalError = console.error;
@@ -192,5 +236,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）');
 process.exit(0);
