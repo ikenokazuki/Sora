@@ -35,3 +35,20 @@ describe('tenant_context (P1-SEC-01)', () => {
     expect(resolveTenantContext({ tenantName: 'alice', apiKey: 'secret-1' }).tenantId).toBe('name:alice');
   });
 });
+
+describe('admin（全体に効く操作を許すか）', () => {
+  test('鍵ファイルの鍵: admin: true の鍵だけ。省くと、管理者ではない', () => {
+    expect(resolveTenantContext({ tenantName: 'ops', admin: true }).admin).toBe(true);
+    expect(resolveTenantContext({ tenantName: 'bob', admin: false }).admin).toBe(false);
+    expect(resolveTenantContext({ tenantName: 'bob' }).admin).toBe(false);
+  });
+
+  test('鍵ファイルを使わない運用（鍵が 1 つ・匿名）は、1 つの信頼の範囲なので、管理者', () => {
+    expect(resolveTenantContext({ apiKey: 'secret-1' }).admin).toBe(true);
+    expect(resolveTenantContext({}).admin).toBe(true);
+  });
+
+  test('鍵ファイルの鍵では、admin の引数が真でなければ、管理者にならない（真偽値以外の truthy を、真と読まない）', () => {
+    expect(resolveTenantContext({ tenantName: 'bob', admin: 'yes' as never }).admin).toBe(false);
+  });
+});

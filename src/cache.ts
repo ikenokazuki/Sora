@@ -5,9 +5,11 @@ import {
   dbDeleteCache,
   dbClearExpiredCache,
   dbClearAllCache,
+  dbClearCacheByPrefix,
   dbPurgeOldApiUsage,
   dbPurgeOldWatchHistory,
 } from './db.js';
+import { tenantCacheKey } from './security/tenant_state.js';
 
 interface CacheEntry<T> {
   data: T;
@@ -82,6 +84,23 @@ export function clearCache(): number {
   dbClearAllCache();
   cacheHits = 0;
   cacheMisses = 0;
+  return count;
+}
+
+/**
+ * その tenant のキャッシュだけを消す（tenant の保存済みの状態で得た結果のキー `tenant:<ID>:…`。security/tenant_state.ts）。
+ * 共有のキー（状態を使わずに得た結果）と、ほかの tenant のキーは残す。全体の統計（hits・misses）も消さない。消したメモリの行の数を返す
+ */
+export function clearTenantCache(tenantId: string): number {
+  const prefix = tenantCacheKey(tenantId, '');
+  let count = 0;
+  for (const key of memoryCache.keys()) {
+    if (key.startsWith(prefix)) {
+      memoryCache.delete(key);
+      count++;
+    }
+  }
+  dbClearCacheByPrefix(prefix);
   return count;
 }
 

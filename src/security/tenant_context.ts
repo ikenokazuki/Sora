@@ -11,6 +11,11 @@ export interface TenantContext {
   authMode: TenantAuthMode;
   /** 鍵ファイル（SORA_AUTH_KEYS_FILE）の name。名前つきの鍵の tenant だけ */
   name?: string;
+  /**
+   * 全体に効く操作（全員分のキャッシュの消去など）を許すか。鍵ファイルの鍵は、admin: true の鍵だけ。
+   * 鍵ファイルを使わない運用（鍵が 1 つか、匿名）は、運用者と利用者が同じ 1 つの信頼の範囲なので、true
+   */
+  admin?: boolean;
 }
 
 export const LEGACY_TENANT_ID = 'legacy';
@@ -43,6 +48,8 @@ export function resolveTenantContext(options: {
   apiKey?: string;
   /** 鍵ファイルの name（認証が、鍵から引いたもの） */
   tenantName?: string;
+  /** 鍵ファイルの鍵の admin（認証が、鍵から引いたもの）。true のときだけ、管理者 */
+  admin?: boolean;
   requestId?: string;
 }): TenantContext {
   if (options.tenantName) {
@@ -51,6 +58,7 @@ export function resolveTenantContext(options: {
       requestId: options.requestId ?? randomUUID(),
       authMode: 'api_key',
       name: options.tenantName,
+      admin: options.admin === true,
     };
   }
   if (options.apiKey) {
@@ -58,11 +66,13 @@ export function resolveTenantContext(options: {
       tenantId: tenantIdForApiKey(options.apiKey),
       requestId: options.requestId ?? randomUUID(),
       authMode: 'api_key',
+      admin: true,
     };
   }
   return {
     tenantId: LEGACY_TENANT_ID,
     requestId: options.requestId ?? randomUUID(),
     authMode: 'anonymous',
+    admin: true,
   };
 }

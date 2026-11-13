@@ -248,6 +248,17 @@ export function dbClearAllCache(): number {
   }
 }
 
+/** キーが prefix で始まる行を消す。LIKE は使わない（キーの _ と % を、ワイルドカードとして読んでしまう） */
+export function dbClearCacheByPrefix(prefix: string): number {
+  try {
+    const db = getDb();
+    const res = db.query('DELETE FROM cache_entries WHERE substr(key, 1, ?) = ?').run(prefix.length, prefix);
+    return res.changes;
+  } catch {
+    return 0;
+  }
+}
+
 /** API 使用量の古い日次行を削除（レート制限は当日のみ参照するため既定 90 日保持） */
 export function dbPurgeOldApiUsage(maxAgeDays = 90): number {
   try {

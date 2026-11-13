@@ -15,8 +15,8 @@ describe('parseApiKeyFile: 正しい鍵ファイル', () => {
     const { entries, errors } = parseApiKeyFile(file([{ name: 'alice', key: KEY_A }, { name: 'bob', keyHash: `sha256:${sha(KEY_B)}` }]));
     expect(errors).toEqual([]);
     expect(entries).toEqual([
-      { name: 'alice', digest: sha(KEY_A), plain: true },
-      { name: 'bob', digest: sha(KEY_B), plain: false },
+      { name: 'alice', digest: sha(KEY_A), plain: true, admin: false },
+      { name: 'bob', digest: sha(KEY_B), plain: false, admin: false },
     ]);
   });
 
@@ -45,6 +45,30 @@ describe('parseApiKeyFile: 正しい鍵ファイル', () => {
   });
 });
 
+describe('parseApiKeyFile: admin（全体に効く操作を許す鍵）', () => {
+  test('admin: true を書ける。省くか false なら、管理者ではない', () => {
+    const { entries, errors } = parseApiKeyFile(file([{ name: 'ops', key: KEY_A, admin: true }, { name: 'bob', key: KEY_B }, { name: 'carol', key: 'carol-key-0123456789abcdefg', admin: false }]));
+    expect(errors).toEqual([]);
+    expect(entries.map((e) => [e.name, e.admin])).toEqual([['ops', true], ['bob', false], ['carol', false]]);
+  });
+
+  test('keyHash の行にも書ける。同じ name の別の鍵とは独立（鍵ごとの属性）', () => {
+    const { entries, errors } = parseApiKeyFile(file([{ name: 'alice', key: KEY_A }, { name: 'alice', keyHash: `sha256:${sha(KEY_B)}`, admin: true }]));
+    expect(errors).toEqual([]);
+    expect(entries.map((e) => e.admin)).toEqual([false, true]);
+  });
+
+  test('admin は真偽値だけ。文字列・数・null・配列・オブジェクトは断る', () => {
+    for (const admin of ['true', 'false', 1, 0, null, [], {}]) {
+      expect(parseApiKeyFile(file([{ name: 'ops', key: KEY_A, admin }])).errors, JSON.stringify(admin)).toEqual(['keys[0].admin は true か false にしてください']);
+    }
+  });
+
+  test('未対応の項目の文には、admin が入る', () => {
+    expect(parseApiKeyFile(file([{ name: 'ops', key: KEY_A, role: 'admin' }])).errors).toEqual(['keys[0] に、未対応の項目 role があります（対応しているのは name・key・keyHash・admin）']);
+  });
+});
+
 describe('parseApiKeyFile: 誤り（すべてを一度に知らせ、1 つでもあれば、鍵を返さない）', () => {
   const errorsOf = (text: string) => parseApiKeyFile(text).errors;
 
@@ -65,11 +89,11 @@ describe('parseApiKeyFile: 誤り（すべてを一度に知らせ、1 つでも
     expect(errorsOf(file([]))).toEqual(['鍵が 1 つもありません（鍵ファイルを設定したときは、1 つ以上の鍵が要ります。匿名にはしません）']);
   });
 
-  test('未対応の項目は、誤り（あとの版が足す limits・admin を、古い版が黙って無視しない）', () => {
+  test('未対応の項目は、誤り（あとの版が足す limits などを、古い版が黙って無視しない）', () => {
     expect(errorsOf(file([{ name: 'alice', key: KEY_A }], { limits: {} }))).toEqual(['最上位に、未対応の項目 limits があります（対応しているのは keys だけ）']);
-    expect(errorsOf(file([{ name: 'alice', key: KEY_A, admin: true, limits: {} }]))).toEqual([
-      'keys[0] に、未対応の項目 admin があります（対応しているのは name・key・keyHash）',
-      'keys[0] に、未対応の項目 limits があります（対応しているのは name・key・keyHash）',
+    expect(errorsOf(file([{ name: 'alice', key: KEY_A, admin: true, limits: {}, role: 'x' }]))).toEqual([
+      'keys[0] に、未対応の項目 limits があります（対応しているのは name・key・keyHash・admin）',
+      'keys[0] に、未対応の項目 role があります（対応しているのは name・key・keyHash・admin）',
     ]);
   });
 
@@ -126,11 +150,11 @@ describe('parseApiKeyFile: 誤り（すべてを一度に知らせ、1 つでも
 
   test('未対応の項目の名前が、名前の形でない（空白・記号・41 字以上）ときは、文に入れない。名前の形（40 字まで）は、そのまま出す', () => {
     const odd = 'SECRET value with space';
-    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, [odd]: 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 （読めない名前） があります（対応しているのは name・key・keyHash）']);
+    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, [odd]: 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 （読めない名前） があります（対応しているのは name・key・keyHash・admin）']);
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], [odd]: 1 })).errors).toEqual(['最上位に、未対応の項目 （読めない名前） があります（対応しているのは keys だけ）']);
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(41)]: 1 })).errors).toEqual(['最上位に、未対応の項目 （読めない名前） があります（対応しているのは keys だけ）']);
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(40)]: 1 })).errors).toEqual([`最上位に、未対応の項目 ${'x'.repeat(40)} があります（対応しているのは keys だけ）`]);
-    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, 'a.b-c_9': 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 a.b-c_9 があります（対応しているのは name・key・keyHash）']);
+    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, 'a.b-c_9': 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 a.b-c_9 があります（対応しているのは name・key・keyHash・admin）']);
   });
 
   test('誤りの文に、鍵の値もハッシュも、入れない（標準エラーに残るので）', () => {
@@ -169,6 +193,14 @@ describe('ApiKeyStore.lookup: 提示された鍵から、tenant の name を引�
     for (const miss of ['', ' ', KEY_A.slice(0, -1), `${KEY_A}x`, KEY_A.toUpperCase(), ` ${KEY_A}`, `${KEY_A} `, sha(KEY_B), `sha256:${sha(KEY_B)}`, 'unknown-key-0123456789abcdef']) {
       expect(s.lookup(miss), JSON.stringify(miss)).toBeUndefined();
     }
+  });
+
+  test('lookupEntry は、name と admin を返す。知らない鍵は undefined。lookup は name だけ', () => {
+    const s = storeOf([{ name: 'ops', key: KEY_A, admin: true }, { name: 'bob', keyHash: `sha256:${sha(KEY_B)}` }]);
+    expect(s.lookupEntry(KEY_A)).toEqual({ name: 'ops', admin: true });
+    expect(s.lookupEntry(KEY_B)).toEqual({ name: 'bob', admin: false });
+    expect(s.lookupEntry(`${KEY_A}x`)).toBeUndefined();
+    expect(s.lookup(KEY_A)).toBe('ops');
   });
 
   test('digestOf は、鍵の UTF-8 の SHA-256（小文字の 16 進）', () => {

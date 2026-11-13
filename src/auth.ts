@@ -130,9 +130,9 @@ function authenticateWithSingleKey(c: any, expectedApiKey: string | undefined): 
  */
 function authenticateWithKeyFile(c: any, store: ApiKeyStore): string | Response {
   const providedToken = extractAuthToken(c);
-  const name = providedToken ? store.lookup(providedToken) : undefined;
-  if (name !== undefined) {
-    const tenant = resolveTenantContext({ tenantName: name });
+  const entry = providedToken ? store.lookupEntry(providedToken) : undefined;
+  if (entry !== undefined) {
+    const tenant = resolveTenantContext({ tenantName: entry.name, admin: entry.admin });
     c.set('tenant', tenant);
     return tenant.tenantId;
   }

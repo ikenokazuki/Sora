@@ -227,6 +227,28 @@ describe('鍵ファイルでの認証', () => {
     }
   });
 
+  test('admin: true の鍵だけ、tenant の admin が真になる（同じ name の別の鍵には及ばない）。鍵ファイルを使わない運用は、管理者', async () => {
+    const { entries, errors } = parseApiKeyFile(JSON.stringify({ keys: [
+      { name: 'ops', key: 'ops-key-0123456789abcdefgh', admin: true },
+      { name: 'ops', key: 'ops-second-key-0123456789ab' },
+      { name: 'bob', key: 'bob-key-0123456789abcdefgh' },
+    ] }));
+    expect(errors).toEqual([]);
+    const direct = new Hono();
+    direct.use('*', createAuthMiddleware(undefined, new ApiKeyStore(entries)));
+    direct.get('/p', (c) => c.json({ tenant: c.get('tenant') }));
+    const adminOf = async (key: string) => ((await (await direct.request('/p', { headers: { 'X-API-Key': key } })).json()) as { tenant: { admin?: boolean } }).tenant.admin;
+    expect(await adminOf('ops-key-0123456789abcdefgh')).toBe(true);
+    expect(await adminOf('ops-second-key-0123456789ab')).toBe(false);
+    expect(await adminOf('bob-key-0123456789abcdefgh')).toBe(false);
+
+    const single = new Hono();
+    single.use('*', createAuthMiddleware('single-key-0123456789'));
+    single.get('/p', (c) => c.json({ tenant: c.get('tenant') }));
+    const res = await single.request('/p', { headers: { 'X-API-Key': 'single-key-0123456789' } });
+    expect(((await res.json()) as { tenant: { admin?: boolean } }).tenant.admin).toBe(true);
+  });
+
   test('鍵の表を直接渡したとき（テスト用）は、環境に何も無くても、その表で認証する（Fail-Open にならない）', async () => {
     const { entries, errors } = parseApiKeyFile(JSON.stringify({ keys: [{ name: 'dave', key: 'dave-key-0123456789abcdef' }] }));
     expect(errors).toEqual([]);
