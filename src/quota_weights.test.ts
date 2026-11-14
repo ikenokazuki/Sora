@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +15,7 @@ import { ScrapeInputError } from './errors.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { crawlPageBudget, crawlSiteUrl, scrapeBatchUrls } from './scraper.js';
 import { resetApiKeyStoreCache } from './security/api_keys.js';
+import * as quotaModule from './security/quota.js';
 import { withEnv } from './test_fixtures/env.js';
 
 /**
@@ -361,33 +362,25 @@ describe('呼び出し側の関数が投げても、数えは落ちない', () =
   });
 });
 
-describe('UTC の日の変わり目をまたぐ crawl は、足した日の行を戻す', () => {
-  test('日 D に足し、日 D+1 に終わっても、D の行から戻し、D+1 の行（その日の要求の回数）は減らさない', async () => {
+describe('crawl は、足した日の行から戻す（UTC の日の変わり目をまたいでも）', () => {
+  /**
+   * quotaDay を差し替えて、日が変わるようにする: 始めに取る日（D）を 1 回返し、そのあとは翌日（D+1）を返す。
+   * 足す・戻すのどちらも、始めに取った D を使い、D+1 の行（翌日の要求の回数）は触らない。
+   * 時計そのものを進める方法（setSystemTime）は、取得の間隔を時刻で管理する部品が未来の時刻を覚えて、時計を戻したあとの取得を止めるので使わない。
+   */
+  test('始めに取った日（D）の行に足し、D の行から戻す。日が変わったあとの日（D+1）の行は減らさない', async () => {
     const tenant = `name:midnight-${randomUUID()}`;
-    await withEnv({ SORA_AUTH_DAILY_LIMIT: '1000' }, async () => {
-      setSystemTime(new Date('2031-03-10T23:59:59Z'));
-      try {
-        dbAddApiUsage(tenant, '2031-03-11', 60); // 翌日の行
-        let crossed = false;
-        await crawlSiteUrl({
-          url: siteUrl,
-          maxPages: 20, // 4 ページしかないサイト。19 を先に足し、16 を戻す
-          maxDepth: 1,
-          tenantId: tenant,
-          noCache: true,
-          onPageScraped: () => {
-            if (!crossed) {
-              crossed = true;
-              setSystemTime(new Date('2031-03-11T00:00:05Z')); // 最初のページのあとで日が変わる
-            }
-          },
-        });
+    const spy = spyOn(quotaModule, 'quotaDay').mockReturnValueOnce('2031-03-10').mockReturnValue('2031-03-11');
+    try {
+      await withEnv({ SORA_AUTH_DAILY_LIMIT: '1000' }, async () => {
+        dbAddApiUsage(tenant, '2031-03-11', 60); // 翌日の行（その日の要求が数えた回数）
+        await crawlSiteUrl({ url: siteUrl, maxPages: 20, maxDepth: 1, tenantId: tenant, noCache: true }); // 4 ページしかないサイト。19 を先に足し、16 を戻す
         expect(dbGetApiUsage(tenant, '2031-03-10')).toBe(3); // 19 − 16
         expect(dbGetApiUsage(tenant, '2031-03-11')).toBe(60);
-      } finally {
-        setSystemTime();
-      }
-    });
+      });
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
 
