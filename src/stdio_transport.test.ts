@@ -52,15 +52,9 @@ describe('stdio transport', () => {
 
 describe('stdio と日次クォータ', () => {
   test('SORA_AUTH_DAILY_LIMIT が環境にあっても、stdio は一括の件数を数えない（要求を数える層が無いので、一括・crawl だけが半端に効くのを避ける）', async () => {
-    const page = Bun.serve({ port: 0, fetch: () => new Response('<!doctype html><html><head><title>t</title></head><body><h1>t</h1><p>本文のテスト用ページです。</p></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } }) });
-    const env: Record<string, string> = {
-      PATH: process.env.PATH ?? '',
-      HOME: process.env.HOME ?? '',
-      NODE_ENV: 'test',
-      SORA_DB_PATH: ':memory:',
-      SORA_AUTH_DAILY_LIMIT: '2',
-      SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true',
-    };
+    // 取得そのものは要らないので、内部のアドレス（SSRF の検査で、通信もブラウザも使わずに断られる）の 4 URL を一括で送る。
+    // 日次クォータを数えるなら、始める前に、残り（上限 2）を超えて断られる。数えないなら、4 件とも取得に失敗した結果が返る
+    const env: Record<string, string> = { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NODE_ENV: 'test', SORA_DB_PATH: ':memory:', SORA_AUTH_DAILY_LIMIT: '2' };
     if (process.env.LD_LIBRARY_PATH) env.LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH;
     const proc = Bun.spawn([process.execPath, '--no-env-file', 'src/stdio.ts'], { cwd: new URL('..', import.meta.url).pathname, stdin: 'pipe', stdout: 'pipe', stderr: 'pipe', env });
     const stderrText = new Response(proc.stderr).text();
@@ -69,31 +63,30 @@ describe('stdio と日次クォータ', () => {
       const send = (m: object) => proc.stdin.write(JSON.stringify(m) + '\n');
       send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } });
       send({ jsonrpc: '2.0', method: 'notifications/initialized' });
-      // 4 URL の一括。上限 2 を数えると、残りを超えて断られる。stdio は数えないので、通る
-      const urls = Array.from({ length: 4 }, (_, i) => `http://127.0.0.1:${page.port}/p${i}`);
-      send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'scrape', arguments: { urls, fastOnly: true, noCache: true } } });
+      const urls = Array.from({ length: 4 }, (_, i) => `http://127.0.0.1:1/p${i}`);
+      send({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'scrape', arguments: { urls, noCache: true } } });
       proc.stdin.flush();
       const reader = proc.stdout.getReader();
       const decoder = new TextDecoder();
       let buf = '';
-      const deadline = Date.now() + 30000;
+      const deadline = Date.now() + 25000;
       while (!callLine && Date.now() < deadline) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value);
+        // 読み取りが止まっても、期限で抜ける（子が応答しないとき、理由の標準エラーを出して失敗させるため）
+        const next = await Promise.race([reader.read(), new Promise<{ done: true; value?: undefined }>((resolve) => setTimeout(() => resolve({ done: true }), Math.max(0, deadline - Date.now())))]);
+        if (next.done) break;
+        buf += decoder.decode(next.value);
         callLine = buf.split('\n').find((l) => l.includes('"id":3')) ?? '';
       }
     } finally {
       proc.kill();
       await proc.exited;
-      page.stop(true);
     }
     expect(callLine, await stderrText).not.toBe('');
     const result = JSON.parse(callLine).result;
     expect(result.isError).toBeFalsy();
     expect(JSON.stringify(result)).not.toContain('日次クォータ');
     expect(JSON.stringify(result)).toContain('\\"total\\":4');
-  }, 60000);
+  }, 40000);
 });
 
 describe('instructions', () => {
