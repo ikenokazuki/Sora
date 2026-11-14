@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import * as engine from './browser_engine.js';
 import { browserQueuePolicy, browserSemaphore, closeSharedBrowser, getBrowser, isSharedBrowserConnected, type Lease, recordBrowserUsage, resolveChromiumPath } from './browser_engine.js';
-import { closeAllBrowserSessions, getActiveSessionCount, handleBrowserSessionAction, MAX_ACTIVE_SESSIONS } from './browser_session.js';
+import { closeAllBrowserSessions, getActiveSessionCount, handleBrowserSessionAction } from './browser_session.js';
 import { fetchWithStealthBrowser } from './browser_stealth.js';
 import { ResourceBusyError } from './errors.js';
+import { STANDARD_LIMITS } from './security/limits.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 
 /**
@@ -165,13 +166,13 @@ describe.skipIf(!browserAvailable)('共有ブラウザの入れ替え', () => {
 
   test('セッションの作成が枠を断られたとき、いちばん古いセッションを閉じない（ほかの人のセッションが、断られた人のせいで消えない）', async () => {
     delete process.env.SORA_ISOLATION;
-    for (let i = 0; i < MAX_ACTIVE_SESSIONS; i++) await handleBrowserSessionAction({ createSession: true, sessionId: `fill-${i}`, tenantId: 'S', actions: [], extract: { markdown: false } });
-    expect(getActiveSessionCount()).toBe(MAX_ACTIVE_SESSIONS);
+    for (let i = 0; i < STANDARD_LIMITS.browserSessionsTotal; i++) await handleBrowserSessionAction({ createSession: true, sessionId: `fill-${i}`, tenantId: 'S', actions: [], extract: { markdown: false } });
+    expect(getActiveSessionCount()).toBe(STANDARD_LIMITS.browserSessionsTotal);
     process.env.SORA_ISOLATION = 'strict';
     await saturate();
     fillQueue('T', 10);
     const busy = await busyOf(handleBrowserSessionAction({ createSession: true, tenantId: 'T', actions: [] }));
     expect(busy.reason).toBe('tenant_queue_full');
-    expect(getActiveSessionCount()).toBe(MAX_ACTIVE_SESSIONS); // 上限に達していても、枠を断られたので、1 つも閉じていない
+    expect(getActiveSessionCount()).toBe(STANDARD_LIMITS.browserSessionsTotal); // 上限に達していても、枠を断られたので、1 つも閉じていない
   }, 60_000);
 });

@@ -39,7 +39,10 @@ const UNBOUNDED: QueuePolicy = { perTenant: Infinity, total: Infinity, waitMs: I
 /** 断ったときに、再試行までに空けてほしい秒数（Retry-After） */
 const RETRY_AFTER_SEC = 5;
 
-function busy(reason: BusyReason, policy: QueuePolicy): ResourceBusyError {
+/** 枠の待ち行列が断る理由（session_limit は、セッションの登録簿の理由） */
+type QueueBusyReason = Exclude<BusyReason, 'session_limit'>;
+
+function busy(reason: QueueBusyReason, policy: QueuePolicy): ResourceBusyError {
   incrementSecurityCounter(`sora_browser_busy_${reason}_total`);
   const message = {
     tenant_queue_full: `ブラウザの枠を待つ要求が、この利用者の上限（${policy.perTenant} 件）に達しています。実行中の要求が終わってから、もう一度試してください`,
