@@ -4,7 +4,7 @@ import { closeAllBrowserSessions, getActiveSessionCount, handleBrowserSessionAct
 import { ResourceBusyError } from './errors.js';
 import { STANDARD_LIMITS } from './security/limits.js';
 import { resetSecurityMetrics } from './security/metrics.js';
-import { busyOf, fillQueue, releaseAll, saturate } from './test_fixtures/browser_slots.js';
+import { busyOf, fillQueue, releaseAll, saturate, within } from './test_fixtures/browser_slots.js';
 
 /**
  * 作成済みのブラウザセッションの呼び出しが、枠の下で動くこと・使用中のセッションを閉じないこと・最長の時間があること・
@@ -89,7 +89,7 @@ afterEach(async () => {
 
 /** 上限・最長の時間を小さくした値（standard の他の値はそのまま） */
 const lims = (extra: Partial<typeof STANDARD_LIMITS> = {}) => ({ ...STANDARD_LIMITS, ...extra });
-const act = (options: Record<string, unknown>, lim: Readonly<typeof STANDARD_LIMITS> = STANDARD_LIMITS) => handleBrowserSessionAction({ extract: { markdown: false }, actions: [], ...options } as never, lim);
+const act = (options: Record<string, unknown>, lim: Readonly<typeof STANDARD_LIMITS> = STANDARD_LIMITS) => within(handleBrowserSessionAction({ extract: { markdown: false }, actions: [], ...options } as never, lim));
 const create = async (tenantId: string, options: Record<string, unknown> = {}, lim?: Readonly<typeof STANDARD_LIMITS>) => (await act({ createSession: true, tenantId, ...options }, lim)).sessionId as string;
 const scroll = { actions: [{ type: 'scroll' }] };
 
