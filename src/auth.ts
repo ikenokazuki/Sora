@@ -2,6 +2,7 @@ import type { MiddlewareHandler } from 'hono';
 import { timingSafeEqual, createHash } from 'crypto';
 import { envBool, envInt, envStr } from './config.js';
 import { dbIncrementApiUsage } from './db.js';
+import { secondsUntilNextUtcDay } from './errors.js';
 import { getApiKeyStore, type ApiKeyStore } from './security/api_keys.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { isPublicPath } from './security/public_paths.js';
@@ -180,6 +181,7 @@ export function createAuthMiddleware(expectedApiKey?: string, keyStore?: ApiKeyS
       c.header('X-RateLimit-Remaining', String(Math.max(0, dailyLimit - usageCount)));
 
       if (usageCount > dailyLimit) {
+        c.header('Retry-After', String(secondsUntilNextUtcDay()));
         return c.json(
           {
             error: 'Too Many Requests: Daily quota limit exceeded',

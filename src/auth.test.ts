@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from 'bun:test';
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { createAuthMiddleware, extractAuthToken } from './auth.js';
+import { secondsUntilNextUtcDay } from './errors.js';
 import { removedSettings, withEnv } from './test_fixtures/env.js';
 
 function mockCtx(headers: Record<string, string> = {}) {
@@ -102,6 +103,15 @@ describe('v5 の環境変数の名前（認証）', () => {
       return { statuses, limit };
     });
     expect(await run('2')).toEqual({ statuses: [200, 200, 429], limit: '2' });
+    // 429 には Retry-After（次の UTC の日の始まりまでの秒）が付く（一括・crawl の件数で断った 429 と同じ）
+    await withEnv({ SORA_AUTH_DAILY_LIMIT: '1' }, async () => {
+      const key = `daily-retry-${randomUUID()}`;
+      await app(key).request('/p', { headers: { 'X-API-Key': key } });
+      const res = await app(key).request('/p', { headers: { 'X-API-Key': key } });
+      expect(res.status).toBe(429);
+      const retryAfter = Number(res.headers.get('Retry-After'));
+      expect(Math.abs(retryAfter - secondsUntilNextUtcDay())).toBeLessThanOrEqual(2);
+    });
     expect(await run(' 2 ')).toEqual({ statuses: [200, 200, 429], limit: '2' });
     for (const raw of [undefined, '0', 'abc', '2abc', '-1', '1.5', '']) {
       expect(await run(raw), String(raw)).toEqual({ statuses: [200, 200, 200], limit: null });

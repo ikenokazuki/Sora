@@ -4,6 +4,7 @@ import type { z } from 'zod';
 import {
   assertCrawlInputs,
   assertScrapeInputs,
+  crawlPageBudget,
   scrapeUrl,
   scrapeBatchUrls,
   mapSiteUrl,
@@ -16,8 +17,9 @@ import {
   CrawlRequestSchema,
   MapRequestSchema,
 } from '../types.js';
-import { busyEventFields, busyResponse, dropNullFields, formatError } from './utils.js';
-import { errorMessage, ScrapeInputError } from '../errors.js';
+import { busyEventFields, busyResponse, dropNullFields, formatError, quotaBody, quotaResponse } from './utils.js';
+import { errorMessage, QuotaExceededError, ScrapeInputError } from '../errors.js';
+import { checkQuota } from '../security/quota.js';
 
 export const scrapeRoutes = new Hono();
 
@@ -190,6 +192,8 @@ scrapeRoutes.post('/scrape/batch', async (c) => {
   } catch (err) {
     const busy = busyResponse(c, err);
     if (busy) return busy;
+    const overQuota = quotaResponse(c, err);
+    if (overQuota) return overQuota;
     const msg = errorMessage(err) || 'Batch scrape failed';
     if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const isSecurity = msg.includes('セキュリティ上の理由') || msg.includes('遮断') || msg.includes('DNS Rebinding') || msg.includes('Forbidden');
@@ -230,6 +234,8 @@ scrapeRoutes.post('/crawl', async (c) => {
   } catch (err) {
     const busy = busyResponse(c, err);
     if (busy) return busy;
+    const overQuota = quotaResponse(c, err);
+    if (overQuota) return overQuota;
     const msg = errorMessage(err) || 'Crawl failed';
     if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
@@ -247,6 +253,14 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
     assertCrawlInputs(data);
   } catch (err) {
     if (err instanceof ScrapeInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
+    throw err;
+  }
+  // 日次クォータ: 最大ページ数ぶんを数えられるか、ストリームを開く前に見る（開いたあとは 200 のままで、429 を返せない。数えるのは crawlSiteUrl）
+  try {
+    checkQuota(c.get('tenant')?.tenantId ?? 'legacy', crawlPageBudget(data.maxPages) - 1);
+  } catch (err) {
+    const overQuota = quotaResponse(c, err);
+    if (overQuota) return overQuota;
     throw err;
   }
 
@@ -279,7 +293,7 @@ scrapeRoutes.post('/crawl/stream', async (c) => {
       const { code, status, retryable } = classifyFetchError(msg, 'CRAWL_ERROR');
       await stream.writeSSE({
         event: 'error',
-        data: JSON.stringify({ error: msg, ...(busyEventFields(err) ?? { code, status, retryable }) }),
+        data: JSON.stringify({ error: msg, ...(busyEventFields(err) ?? (err instanceof QuotaExceededError ? quotaBody(err) : { code, status, retryable })) }),
       });
     }
   });

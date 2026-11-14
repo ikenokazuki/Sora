@@ -135,6 +135,7 @@ import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
+import { chargeQuota, refundQuota } from './security/quota.js';
 
 // ==========================================
 // 2. ブラウザ自動操作 (browser_action)
@@ -1140,6 +1141,8 @@ export async function scrapeBatchUrls(options: {
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, webhookUrl, ...scrapeOpts } = options;
   assertScrapeInputs(scrapeOpts);
+  // 日次クォータは、URL の件数を数える（要求の 1 回は、HTTP の層がもう数えている）。超えるなら、1 件も取らずに断る（設計 6。穴 26）
+  chargeQuota(options.tenantId, urls.length - 1);
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
 
   const results: ScrapeResult[] = [];
@@ -1460,7 +1463,34 @@ type CrawledPage = Record<string, any> & { url: string };
 /** crawl でたどるリンクの URL の長さの上限（これより長いリンクは、たどらない） */
 const MAX_CRAWL_URL_LENGTH = 8192;
 
-export async function crawlSiteUrl(options: {
+/** crawl が取るページ数の上限（maxPages の既定 10・最大 50）。本体の targetLimit と同じ */
+export function crawlPageBudget(maxPages: number | undefined = 10): number {
+  return Number.isFinite(maxPages) ? Math.max(0, Math.min(Math.floor(maxPages), 50)) : 10;
+}
+
+/**
+ * 再帰クロール。日次クォータは、取ったページ数を数える（設計 6。穴 26）: 始める前に、最大ページ数ぶんを数えて（超えるなら 1 ページも取らずに断る）、
+ * 終わったら、取らなかった分を戻す。途中で失敗したときも、取れたページの分だけ残す。要求の 1 回は、HTTP の層がもう数えている
+ */
+export async function crawlSiteUrl(options: Parameters<typeof crawlSiteUrlCore>[0]): ReturnType<typeof crawlSiteUrlCore> {
+  assertCrawlInputs(options);
+  const reserved = crawlPageBudget(options.maxPages);
+  chargeQuota(options.tenantId, reserved - 1);
+  let scraped = 0;
+  try {
+    return await crawlSiteUrlCore({
+      ...options,
+      onPageScraped: (page) => {
+        scraped++;
+        options.onPageScraped?.(page);
+      },
+    });
+  } finally {
+    refundQuota(options.tenantId, Math.max(0, reserved - 1) - Math.max(0, scraped - 1));
+  }
+}
+
+async function crawlSiteUrlCore(options: {
   url: string;
   maxPages?: number;
   maxDepth?: number;
@@ -1512,7 +1542,7 @@ export async function crawlSiteUrl(options: {
     onPageCrawled,
   } = options;
 
-  const targetLimit = Number.isFinite(maxPages) ? Math.max(0, Math.min(Math.floor(maxPages), 50)) : 10;
+  const targetLimit = crawlPageBudget(maxPages);
   // 並行度は OpenAPI（CrawlRequestSchema）の記載どおり 1〜10、既定 3。
   const workers = Number.isFinite(options.concurrency) ? Math.max(1, Math.min(Math.floor(options.concurrency as number), 10)) : 3;
 

@@ -44,3 +44,32 @@ export class ResourceBusyError extends Error {
     this.name = 'ResourceBusyError';
   }
 }
+
+/**
+ * 日次クォータ（SORA_AUTH_DAILY_LIMIT）を超える件数の呼び出しを、始める前に断ったときの例外（一括・crawl は、件数分を数える。設計 6。穴 26）。
+ * REST では 429（RATE_LIMIT_EXCEEDED）と Retry-After（次の UTC の日の始まりまでの秒）、MCP ではエラーの文になる。その日のうちは、再試行しても通らない
+ */
+export class QuotaExceededError extends Error {
+  constructor(
+    /** 1 日の上限（回数） */
+    readonly limit: number,
+    /** 断った時点の、今日の回数 */
+    readonly current: number,
+    /** この呼び出しが足そうとした件数（最初の 1 回の要求の分を除く） */
+    readonly requested: number,
+  ) {
+    super(`日次クォータ（1 日 ${limit} 回）を超えるため、始めません。この呼び出しは、あと ${requested} 回分を数えますが、今日の回数は ${current} 回です。次の UTC の日の始まりに戻ります`);
+    this.name = 'QuotaExceededError';
+  }
+
+  /** 次の UTC の日の始まりまでの秒（Retry-After） */
+  get retryAfterSec(): number {
+    return secondsUntilNextUtcDay();
+  }
+}
+
+/** 次の UTC の日の始まりまでの秒（日次クォータが戻るまで。1 以上） */
+export function secondsUntilNextUtcDay(now = new Date()): number {
+  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
+}
