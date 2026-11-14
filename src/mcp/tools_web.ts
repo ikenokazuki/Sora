@@ -272,9 +272,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('../services/social/transport.js');
         const svc = createSocialService({
           weiboHttp: createProdWeiboHttp(),
-          sessionOpener: createProdSessionOpener(),
+          sessionOpener: createProdSessionOpener(serverTenantId),
           metaHttp: createProdMetaHttp(),
-          metaBrowser: createProdMetaBrowser(),
+          metaBrowser: createProdMetaBrowser(serverTenantId),
           webSearch: createProdWebSearch(),
         });
         const signal = AbortSignal.timeout(55000);
@@ -334,9 +334,9 @@ export function registerWebTools(context: ToolRegistrationContext): void {
         const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('../services/social/transport.js');
         const svc = createSocialService({
           weiboHttp: createProdWeiboHttp(),
-          sessionOpener: createProdSessionOpener(),
+          sessionOpener: createProdSessionOpener(serverTenantId),
           metaHttp: createProdMetaHttp(),
-          metaBrowser: createProdMetaBrowser(),
+          metaBrowser: createProdMetaBrowser(serverTenantId),
           webSearch: createProdWebSearch(),
         });
         const signal = AbortSignal.timeout(30000);

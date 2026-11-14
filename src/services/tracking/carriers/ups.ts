@@ -142,7 +142,7 @@ export const upsAdapter: TrackingCarrierAdapter = {
 
     // API未設定または失敗時: ブラウザ取得を試み、不可なら案内へフォールバック
     try {
-      const scraped = await scrapeUpsByBrowser(num, trackingUrl, context?.signal);
+      const scraped = await scrapeUpsByBrowser(num, trackingUrl, context);
       if (scraped === 'blocked') {
         return {
           carrier,
@@ -159,6 +159,8 @@ export const upsAdapter: TrackingCarrierAdapter = {
       }
       if (scraped) return scraped;
     } catch (err) {
+      // 枠が混み合って断られたことは、案内（番号ごとの共有キャッシュに入る）に退避しない。呼んだ利用者に返す
+      if (err instanceof ResourceBusyError) throw err;
       console.warn('UPS browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
@@ -188,7 +190,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
-import { errorMessage } from '../../../errors.js';
+import { errorMessage, ResourceBusyError } from '../../../errors.js';
 
 const UPS_INVALID_PHRASES = ['トラッキングナンバーが無効', 'tracking number is invalid', 'not yet valid', '見当たりません'];
 const UPS_READY = [
@@ -222,8 +224,8 @@ export function parseUpsTrackPage(html: string, title: string): UpsPageParse {
 }
 
 /** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
-export async function scrapeUpsByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
-  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 40000, readyMarkers: UPS_READY });
+export async function scrapeUpsByBrowser(num: string, trackingUrl: string, context?: TrackingContext): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal: context?.signal, tenantId: context?.tenantId, timeoutMs: 40000, readyMarkers: UPS_READY });
   if (!page) return undefined;
   const parsed = parseUpsTrackPage(page.html, page.title);
   if (!parsed) return undefined;

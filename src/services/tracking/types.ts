@@ -35,6 +35,10 @@ export interface TrackingVerification {
 export interface TrackingContext {
   signal?: AbortSignal;
   noCache?: boolean;
+  /**
+   * ブラウザの枠（同時に動かせる数）を数える利用者。追跡の結果は番号ごとの共有キャッシュに入るので、状態の分離には使わない。無ければ legacy
+   */
+  tenantId?: string;
 }
 
 export interface TrackingCarrierAdapter {

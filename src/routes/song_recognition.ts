@@ -3,7 +3,7 @@ import { errorMessage } from '../errors.js';
 import { isModuleActive } from '../mcp/registry.js';
 import { recognizeSignature, recognizeSong, SongRecognitionInputError, type SongRecognitionOptions } from '../services/song_recognition.js';
 import { SongRecognitionFormSchema, SongRecognitionRequestSchema, SongRecognitionSignatureRequestSchema } from '../types.js';
-import { formatError } from './utils.js';
+import { busyResponse, formatError } from './utils.js';
 
 const moduleDisabled = (c: Context) =>
   formatError(c, 'shazam module is not enabled. Add it to SORA_MODULES by name (e.g. SORA_MODULES=all,shazam); "all" alone does not include it.', 'MODULE_DISABLED', 404, false);
@@ -13,6 +13,8 @@ async function respond(c: Context, run: () => Promise<unknown>) {
   try {
     return c.json(await run());
   } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
     if (err instanceof SongRecognitionInputError) return formatError(c, err.message, 'INVALID_INPUT', 400, false);
     return formatError(c, errorMessage(err) || 'Song recognition failed', 'SONG_RECOGNITION_UPSTREAM_ERROR', 502, true);
   }
@@ -60,7 +62,9 @@ export function createSongRecognitionRoutes(
       }
       input = parsed.data;
     }
-    return respond(c, () => run(input));
+    // 認証が決めた利用者を渡す（ブラウザの枠を数える）。本文・フォームの tenantId は使わない
+    const tenantId = c.get('tenant')?.tenantId ?? 'legacy';
+    return respond(c, () => run({ ...input, tenantId }));
   });
   routes.post('/music/recognize/signature', async (c) => {
     if (!isModuleActive('shazam')) return moduleDisabled(c);

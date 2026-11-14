@@ -1,5 +1,6 @@
 import type {
   CarrierCode,
+  TrackingContext,
   TrackingRequest,
   TrackingResult,
   TrackingVerification,
@@ -30,7 +31,7 @@ export * from './detector.js';
 export async function trackByCarrier(
   carrier: CarrierCode,
   trackingNumber: string,
-  context?: { signal?: AbortSignal; noCache?: boolean },
+  context?: TrackingContext,
 ): Promise<TrackingResult> {
   const num = cleanTrackingNumber(trackingNumber);
   const adapter = getCarrierAdapter(carrier);
@@ -66,6 +67,8 @@ export async function trackPackageAuto(
     signal?: AbortSignal;
     noCache?: boolean;
     candidatesOverride?: RankedCandidate[];
+    /** ブラウザの枠を数える利用者（carrier の照会に渡す） */
+    tenantId?: string;
   },
 ): Promise<TrackingResult> {
   const num = cleanTrackingNumber(trackingNumber);
@@ -90,7 +93,7 @@ export async function trackPackageAuto(
   // Exclusive な候補（UPS 1Z 等）は単体実行
   if (candidates[0].strength === 'exclusive') {
     const winnerCandidate = candidates[0];
-    const res = await winnerCandidate.adapter.track(num, { signal: hints?.signal });
+    const res = await winnerCandidate.adapter.track(num, { signal: hints?.signal, tenantId: hints?.tenantId });
     const verification = winnerCandidate.adapter.verify(res, num);
     return {
       ...res,
@@ -116,7 +119,7 @@ export async function trackPackageAuto(
     // Wave 内を並行実行
     const wavePromises = waveCandidates.map(async (cand) => {
       try {
-        const res = await cand.adapter.track(num, { signal: hints?.signal });
+        const res = await cand.adapter.track(num, { signal: hints?.signal, tenantId: hints?.tenantId });
         const verification = cand.adapter.verify(res, num);
         return {
           candidate: cand,
@@ -270,7 +273,7 @@ export function trackingCacheKey(req: Pick<TrackingRequest, 'carrier' | 'preferr
 /**
  * 統合エントリーポイント（キャッシュ付き）
  */
-export async function trackPackage(req: TrackingRequest): Promise<TrackingResult> {
+export async function trackPackage(req: TrackingRequest, context: { tenantId?: string } = {}): Promise<TrackingResult> {
   const num = cleanTrackingNumber(req.trackingNumber);
   if (!num) {
     throw new Error('追跡番号を入力してください');
@@ -291,10 +294,12 @@ export async function trackPackage(req: TrackingRequest): Promise<TrackingResult
     result = await trackPackageAuto(num, {
       preferredCarriers: req.preferredCarriers,
       noCache: req.noCache,
+      tenantId: context.tenantId,
     });
   } else {
     result = await trackByCarrier(req.carrier as CarrierCode, num, {
       noCache: req.noCache,
+      tenantId: context.tenantId,
     });
   }
 

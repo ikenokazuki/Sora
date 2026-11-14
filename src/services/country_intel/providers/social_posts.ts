@@ -3,6 +3,7 @@ import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../pr
 import type { EvidenceDetail } from '../detail.js';
 import type { IntelSocialPlatform } from '../types.js';
 import type { SocialPost, SocialService } from '../../social/index.js';
+import { PUBLIC_TENANT_ID } from '../../../security/tenant_context.js';
 
 export const SOCIAL_PLATFORMS: readonly IntelSocialPlatform[] = ['weibo', 'threads', 'instagram', 'facebook'];
 export const SOCIAL_DEFAULT_LOOKBACK_HOURS = 24;
@@ -194,9 +195,9 @@ async function loadProdService(): Promise<SocialService> {
   const { createProdWeiboHttp, createProdMetaHttp, createProdMetaBrowser, createProdSessionOpener, createProdWebSearch } = await import('../../social/transport.js');
   return createSocialService({
     weiboHttp: createProdWeiboHttp(),
-    sessionOpener: createProdSessionOpener(),
+    sessionOpener: createProdSessionOpener(PUBLIC_TENANT_ID),
     metaHttp: createProdMetaHttp(),
-    metaBrowser: createProdMetaBrowser(),
+    metaBrowser: createProdMetaBrowser(PUBLIC_TENANT_ID),
     webSearch: createProdWebSearch(),
   });
 }

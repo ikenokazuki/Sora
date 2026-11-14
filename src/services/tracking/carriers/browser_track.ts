@@ -13,11 +13,13 @@ export interface RenderOptions {
   timeoutMs?: number;
   /** 本文に現れたら取得完了とみなす正規表現。空ならDOM安定まで待つ。 */
   readyMarkers?: RegExp[];
+  /** ブラウザの枠（同時に動かせる数）を数える利用者。結果は共有キャッシュに入るので、状態の分離には使わない。無ければ legacy */
+  tenantId?: string;
 }
 
 /** 公式追跡ページをステルスChromiumで描画する。Chromiumなしは undefined（呼び出し側が案内へフォールバック）。 */
 export async function renderTrackingPage(url: string, options: RenderOptions = {}): Promise<RenderedTrackPage | undefined> {
-  const { signal, timeoutMs = 25000, readyMarkers = [] } = options;
+  const { signal, timeoutMs = 25000, readyMarkers = [], tenantId } = options;
   let engine: typeof import('../../../browser_engine.js');
   let stealth: typeof import('../../../browser_stealth.js');
   try {
@@ -27,41 +29,48 @@ export async function renderTrackingPage(url: string, options: RenderOptions = {
     return undefined;
   }
   if (typeof engine.resolveChromiumPath === 'function' && !engine.resolveChromiumPath()) return undefined;
-  const { browser } = await engine.getBrowser();
-  const context = await browser.createBrowserContext();
+  // ブラウザの枠の下で開く（利用者ごとの公平な待ち行列。待っている間に中止されたら、待ちから外れる）
+  const lease = await engine.browserSemaphore.acquire(tenantId, { signal });
+  engine.recordBrowserUsage();
   try {
-    const page = await context.newPage();
-    await stealth.applyStealthEvasions(page);
-    if (typeof engine.setupPageSecurity === 'function') await engine.setupPageSecurity(page, true);
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Math.min(20000, timeoutMs) });
-    const deadline = Date.now() + timeoutMs;
-    let bodyText = '';
-    for (;;) {
-      if (signal?.aborted) throw signal.reason ?? new DOMException('aborted', 'AbortError');
-      try {
-        bodyText = await page.evaluate(() => (document.body ? document.body.innerText : ''));
-      } catch {
-        bodyText = '';
+    const { browser } = await engine.getBrowser();
+    const context = await browser.createBrowserContext();
+    try {
+      const page = await context.newPage();
+      await stealth.applyStealthEvasions(page);
+      if (typeof engine.setupPageSecurity === 'function') await engine.setupPageSecurity(page, true);
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: Math.min(20000, timeoutMs) });
+      const deadline = Date.now() + timeoutMs;
+      let bodyText = '';
+      for (;;) {
+        if (signal?.aborted) throw signal.reason ?? new DOMException('aborted', 'AbortError');
+        try {
+          bodyText = await page.evaluate(() => (document.body ? document.body.innerText : ''));
+        } catch {
+          bodyText = '';
+        }
+        if (readyMarkers.length === 0 || readyMarkers.some((re) => re.test(bodyText))) break;
+        if (Date.now() >= deadline) break;
+        await new Promise((r) => setTimeout(r, 800));
       }
-      if (readyMarkers.length === 0 || readyMarkers.some((re) => re.test(bodyText))) break;
-      if (Date.now() >= deadline) break;
-      await new Promise((r) => setTimeout(r, 800));
+      let html = '';
+      try {
+        html = await page.content();
+      } catch {
+        html = '';
+      }
+      let title = '';
+      try {
+        title = await page.title();
+      } catch {
+        title = '';
+      }
+      return { title, finalUrl: page.url(), bodyText, html };
+    } finally {
+      await context.close().catch(() => undefined);
     }
-    let html = '';
-    try {
-      html = await page.content();
-    } catch {
-      html = '';
-    }
-    let title = '';
-    try {
-      title = await page.title();
-    } catch {
-      title = '';
-    }
-    return { title, finalUrl: page.url(), bodyText, html };
   } finally {
-    await context.close().catch(() => undefined);
+    lease();
   }
 }
 

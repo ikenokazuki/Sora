@@ -40,57 +40,71 @@ export function createProdMetaHttp(): MetaHttp {
 }
 
 /** Weibo匿名セッション: 通常表示でサイト発行のCookie群を受け取る。固定sleepなし。 */
-export function createProdSessionOpener(): WeiboSessionOpener {
+export function createProdSessionOpener(tenantId?: string): WeiboSessionOpener {
   return {
     async openWeiboSession(signal: AbortSignal): Promise<SimpleCookie[]> {
-      const { getBrowser, closeSharedBrowser } = await import('../../browser_engine.js');
+      const { getBrowser, closeSharedBrowser, browserSemaphore, recordBrowserUsage } = await import('../../browser_engine.js');
       const { applyStealthEvasions } = await import('../../browser_stealth.js');
       const { setupPageSecurity } = await import('../../browser_engine.js');
-      const { browser } = await getBrowser();
-      const context = await browser.createBrowserContext();
+      // ブラウザの枠の下で開く（呼んだ利用者の枠として数える。待っている間に中止されたら、待ちから外れる）
+      const lease = await browserSemaphore.acquire(tenantId, { signal });
+      recordBrowserUsage();
       try {
-        const page = await context.newPage();
-        await applyStealthEvasions(page);
-        await setupPageSecurity(page, true);
-        await page.goto('https://m.weibo.cn/', { waitUntil: 'domcontentloaded', timeout: 20000 });
-        const deadline = Date.now() + 15000;
-        let cookies: SimpleCookie[] = [];
-        while (Date.now() < deadline) {
-          if (signal.aborted) throw signal.reason;
-          const all = await context.cookies();
-          cookies = all
-            .filter((c) => ['m.weibo.cn', '.m.weibo.cn', 'weibo.cn', '.weibo.cn'].includes(c.domain))
-            .map((c) => ({ name: c.name, value: c.value, domain: c.domain }));
-          if (cookies.some((c) => c.name === 'SUB')) break;
-          await new Promise((r) => setTimeout(r, 800));
+        const { browser } = await getBrowser();
+        const context = await browser.createBrowserContext();
+        try {
+          const page = await context.newPage();
+          await applyStealthEvasions(page);
+          await setupPageSecurity(page, true);
+          await page.goto('https://m.weibo.cn/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+          const deadline = Date.now() + 15000;
+          let cookies: SimpleCookie[] = [];
+          while (Date.now() < deadline) {
+            if (signal.aborted) throw signal.reason;
+            const all = await context.cookies();
+            cookies = all
+              .filter((c) => ['m.weibo.cn', '.m.weibo.cn', 'weibo.cn', '.weibo.cn'].includes(c.domain))
+              .map((c) => ({ name: c.name, value: c.value, domain: c.domain }));
+            if (cookies.some((c) => c.name === 'SUB')) break;
+            await new Promise((r) => setTimeout(r, 800));
+          }
+          return cookies;
+        } finally {
+          await context.close().catch(() => undefined);
+          void closeSharedBrowser;
         }
-        return cookies;
       } finally {
-        await context.close().catch(() => undefined);
-        void closeSharedBrowser;
+        lease();
       }
     },
   };
 }
 
-export function createProdMetaBrowser(): MetaBrowser {
+export function createProdMetaBrowser(tenantId?: string): MetaBrowser {
   return {
     async readPage(url, timeoutMs, signal) {
-      const { getBrowser } = await import('../../browser_engine.js');
+      const { getBrowser, browserSemaphore, recordBrowserUsage } = await import('../../browser_engine.js');
       const { applyStealthEvasions } = await import('../../browser_stealth.js');
       const { setupPageSecurity } = await import('../../browser_engine.js');
-      const { browser } = await getBrowser();
-      const context = await browser.createBrowserContext();
+      // ブラウザの枠の下で開く（呼んだ利用者の枠として数える。待っている間に中止されたら、待ちから外れる）
+      const lease = await browserSemaphore.acquire(tenantId, { signal });
+      recordBrowserUsage();
       try {
-        const page = await context.newPage();
-        await applyStealthEvasions(page);
-        await setupPageSecurity(page, true);
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
-        if (signal.aborted) throw signal.reason;
-        const html = await page.content();
-        return { finalUrl: page.url(), html, title: await page.title() };
+        const { browser } = await getBrowser();
+        const context = await browser.createBrowserContext();
+        try {
+          const page = await context.newPage();
+          await applyStealthEvasions(page);
+          await setupPageSecurity(page, true);
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+          if (signal.aborted) throw signal.reason;
+          const html = await page.content();
+          return { finalUrl: page.url(), html, title: await page.title() };
+        } finally {
+          await context.close().catch(() => undefined);
+        }
       } finally {
-        await context.close().catch(() => undefined);
+        lease();
       }
     },
   };

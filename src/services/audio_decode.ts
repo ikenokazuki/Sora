@@ -50,9 +50,10 @@ const extractInPage = (offsets: number[], windowSec: number, rate: number) => {
  * 音声・動画のバイト列を、共有の Chromium の Web Audio で 16 kHz に変換し、pickWindows が選んだ位置から
  * 12 秒ずつを、チャンネルの平均のモノラルの Int16 で返す。ファイルはまるごと変換する（途中だけは読まない）。
  */
-export async function decodeAudioWindows(bytes: Uint8Array, pickWindows: (durationSec: number) => number[]): Promise<DecodedWindows> {
+export async function decodeAudioWindows(bytes: Uint8Array, pickWindows: (durationSec: number) => number[], tenantId?: string): Promise<DecodedWindows> {
   if (!resolveChromiumPath()) throw new Error('Chromium/Chrome が見つからないため音声を変換できません');
-  const lease = await browserSemaphore.acquire();
+  // 呼んだ利用者の枠として数える（ブラウザの枠は、利用者ごとに公平に渡す）
+  const lease = await browserSemaphore.acquire(tenantId);
   recordBrowserUsage();
   try {
     const { browser, isDedicated } = await getBrowser();

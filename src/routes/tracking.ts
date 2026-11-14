@@ -3,7 +3,7 @@ import { trackPackage, cleanTrackingNumber } from '../services/tracking.js';
 import { isValidTrackingPage, renderTrackingPage } from '../services/tracking/page.js';
 import { TrackingRequestSchema, CARRIER_CODES } from '../types.js';
 import { errorMessage } from '../errors.js';
-import { formatError } from './utils.js';
+import { busyResponse, formatError } from './utils.js';
 
 export const trackingRoutes = new Hono();
 
@@ -17,10 +17,10 @@ trackingRoutes.post('/tracking', async (c) => {
       return formatError(c, 'リクエストパラメータが不正です', 'INVALID_INPUT', 400, false, parseResult.error.flatten().fieldErrors);
     }
 
-    const result = await trackPackage(parseResult.data);
+    const result = await trackPackage(parseResult.data, { tenantId: c.get('tenant')?.tenantId ?? 'legacy' });
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });
 
@@ -42,15 +42,18 @@ trackingRoutes.get('/tracking/:carrier/:number', async (c) => {
       return formatError(c, '伝票番号を指定してください', 'INVALID_INPUT', 400);
     }
 
-    const result = await trackPackage({
-      trackingNumber: num,
-      carrier: carrier.data,
-      noCache,
-    });
+    const result = await trackPackage(
+      {
+        trackingNumber: num,
+        carrier: carrier.data,
+        noCache,
+      },
+      { tenantId: c.get('tenant')?.tenantId ?? 'legacy' },
+    );
 
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });
 
@@ -61,7 +64,14 @@ trackingRoutes.get('/t/:carrier/:number', async (c) => {
   if (!carrier.success || carrier.data === 'auto' || !isValidTrackingPage(carrier.data, num, c.req.query('sig'))) {
     return c.notFound();
   }
-  const result = await trackPackage({ trackingNumber: num, carrier: carrier.data });
+  let result: Awaited<ReturnType<typeof trackPackage>>;
+  try {
+    result = await trackPackage({ trackingNumber: num, carrier: carrier.data }, { tenantId: c.get('tenant')?.tenantId ?? 'legacy' });
+  } catch (err) {
+    const busy = busyResponse(c, err);
+    if (busy) return busy;
+    throw err;
+  }
   // 全体の CSP（default-src 'none'）に、ページ内のスタイルだけを足す。スクリプトは使わない
   c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
   c.header('Cache-Control', 'no-store');
@@ -79,14 +89,17 @@ trackingRoutes.get('/tracking/:number', async (c) => {
       return formatError(c, '伝票番号を指定してください', 'INVALID_INPUT', 400);
     }
 
-    const result = await trackPackage({
-      trackingNumber: num,
-      carrier: 'auto',
-      noCache,
-    });
+    const result = await trackPackage(
+      {
+        trackingNumber: num,
+        carrier: 'auto',
+        noCache,
+      },
+      { tenantId: c.get('tenant')?.tenantId ?? 'legacy' },
+    );
 
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || '荷物追跡に失敗しました', 'TRACKING_ERROR', 500);
   }
 });

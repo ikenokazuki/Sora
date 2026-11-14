@@ -207,7 +207,7 @@ export const fedexAdapter: TrackingCarrierAdapter = {
 
     // API未設定またはフォールバック: 公式Web追跡URLとガイダンスを返却
     try {
-      const scraped = await scrapeFedexByBrowser(num, trackingUrl, context?.signal);
+      const scraped = await scrapeFedexByBrowser(num, trackingUrl, context);
       if (scraped === 'blocked') {
         return {
           carrier,
@@ -224,6 +224,8 @@ export const fedexAdapter: TrackingCarrierAdapter = {
       }
       if (scraped) return scraped;
     } catch (err) {
+      // 枠が混み合って断られたことは、案内（番号ごとの共有キャッシュに入る）に退避しない。呼んだ利用者に返す
+      if (err instanceof ResourceBusyError) throw err;
       console.warn('FedEx browser tracking failed, falling back to URL guidance:', errorMessage(err) || String(err));
     }
     return {
@@ -252,7 +254,7 @@ import {
   scopedBodyText,
   statusFromText,
 } from './browser_track.js';
-import { errorMessage } from '../../../errors.js';
+import { errorMessage, ResourceBusyError } from '../../../errors.js';
 
 const FEDEX_NOT_FOUND = ["your tracking number can't be found", 'not be in our system yet', 'no results found'];
 const FEDEX_READY = [
@@ -286,8 +288,8 @@ export function parseFedexTrackPage(html: string, finalUrl: string, title: strin
 }
 
 /** 資格情報なし時のブラウザ取得。不可時は undefined（案内へフォールバック）。 */
-export async function scrapeFedexByBrowser(num: string, trackingUrl: string, signal?: AbortSignal): Promise<TrackingResult | 'blocked' | undefined> {
-  const page = await renderTrackingPage(trackingUrl, { signal, timeoutMs: 40000, readyMarkers: FEDEX_READY });
+export async function scrapeFedexByBrowser(num: string, trackingUrl: string, context?: TrackingContext): Promise<TrackingResult | 'blocked' | undefined> {
+  const page = await renderTrackingPage(trackingUrl, { signal: context?.signal, tenantId: context?.tenantId, timeoutMs: 40000, readyMarkers: FEDEX_READY });
   if (!page) return undefined;
   const parsed = parseFedexTrackPage(page.html, page.finalUrl, page.title);
   if (!parsed) return undefined;
