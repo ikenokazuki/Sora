@@ -129,6 +129,31 @@ describe('assertBrowserActionInputs', () => {
     expect(() => assertBrowserActionInputs({ actions: many(12, { type: 'wait', selector: '#a' }) }, STRICT_LIMITS)).not.toThrow(); // 120 秒
     rejects(() => assertBrowserActionInputs({ actions: many(13, { type: 'wait', selector: '#a' }) }, STRICT_LIMITS));
   });
+
+  test('負の値・数でない値は、入力の誤り（負の ms・delay で「決まっている待ち時間の合計」を減らして、検査をすり抜けられない）', () => {
+    const typing: BrowserActionStep = { type: 'type', selector: '#b', text: 'x'.repeat(10_000), delay: 2000 }; // 20000 秒。単独なら断る
+    rejects(() => assertBrowserActionInputs({ actions: [typing] }, STRICT_LIMITS));
+    // 前に負の待ちを足して、合計を減らす（以前は通り、1 回の type だけで枠を数時間持てた）
+    for (const lim of [STRICT_LIMITS, STANDARD_LIMITS]) {
+      rejects(() => assertBrowserActionInputs({ actions: [wait(-1e9), typing] }, lim));
+      rejects(() => assertBrowserActionInputs({ actions: [{ type: 'click', selector: '#a', delay: -1e9 }, typing] }, lim));
+    }
+    // 単独でも断る（-1 でも）
+    rejects(() => assertBrowserActionInputs({ actions: [wait(-1)] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ actions: [{ type: 'wait', selector: '#a', ms: -1 }] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ actions: [{ type: 'click', selector: '#a', delay: -1 }] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ actions: [{ type: 'type', selector: '#a', text: 'x', delay: -1 }] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ actions: [{ type: 'fill', selector: '#a', text: 'x', delay: -1 }] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ timeout: -1 }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ extract: { maxChars: -1 } }, STRICT_LIMITS));
+    // NaN も断る（比較が常に偽になり、上限をすり抜けるため）
+    rejects(() => assertBrowserActionInputs({ actions: [wait(Number.NaN)] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ actions: [{ type: 'click', selector: '#a', delay: Number.NaN }] }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ timeout: Number.NaN }, STRICT_LIMITS));
+    rejects(() => assertBrowserActionInputs({ extract: { maxChars: Number.NaN } }, STRICT_LIMITS));
+    // 0 は通る
+    expect(() => assertBrowserActionInputs({ actions: [{ type: 'click', selector: '#a', delay: 0 }, wait(0)], timeout: 0, extract: { maxChars: 0 } }, STRICT_LIMITS)).not.toThrow();
+  });
 });
 
 describe('handleBrowserSessionAction は、ブラウザを起動する前に入力を検査する', () => {
@@ -161,11 +186,12 @@ describe('runActionsOnPage の全体の時間', () => {
 
   test('全体の時間を超えたら、残りのアクションを実行せず、実行しなかったことをログに残す。最後の待ちは、残りの時間で切る', async () => {
     const startedAt = performance.now();
-    const deadline = Date.now() + 150;
+    const deadline = Date.now() + 600;
     const { actionLogs } = await runActionsOnPage(fakePage, [wait(100), wait(5000), wait(100), wait(100)], 30_000, deadline);
     const tookMs = performance.now() - startedAt;
     expect(actionLogs.map((log) => log.success)).toEqual([true, true, false, false]);
-    expect(actionLogs[1].elapsedMs).toBeLessThan(200); // 5 秒の待ちを、残りの時間で切った
+    expect(actionLogs[1].elapsedMs).toBeLessThan(1000); // 5 秒の待ちを、残りの時間（約 500ms）で切った
+    expect(actionLogs[1].elapsedMs).toBeGreaterThan(100);
     expect(actionLogs[2].message).toContain('全体の制限時間');
     expect(actionLogs[3].message).toContain('全体の制限時間');
     expect(tookMs).toBeLessThan(1000);
@@ -234,7 +260,7 @@ describe.skipIf(!resolveChromiumPath())('handleBrowserSessionAction の全体の
     }
   }, 30_000);
 
-  test('枠を得たところから全体の時間を数え、過ぎたら、残りのアクションを実行しない', async () => {
+  test('ブラウザとページの用意のあと、最初の遷移の前から全体の時間を数え、過ぎたら、残りのアクションを実行しない', async () => {
     // scroll は、決まっている待ち時間に数えないが、実際には 0.5 秒かかる（5 つで約 2.5 秒）。全体を 0.6 秒にすると、途中から実行しない
     const lim = { ...STRICT_LIMITS, browserActionTotalMs: 600 };
     const scroll: BrowserActionStep = { type: 'scroll' };

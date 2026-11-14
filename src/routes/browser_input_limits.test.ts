@@ -40,6 +40,16 @@ describe('POST /browser/action', () => {
     expect(await longWait.json()).toMatchObject({ code: 'INVALID_INPUT', error: expect.stringContaining('120000') });
   });
 
+  test('負の ms・delay は 400（合計の検査を、負の値で減らして迂回できない）', async () => {
+    delete process.env.SORA_ISOLATION;
+    const typing = { type: 'type', selector: '#b', text: 'x'.repeat(100_000), delay: 10_000 };
+    for (const negative of [{ type: 'wait', ms: -1e9 }, { type: 'click', selector: '#a', delay: -1e9 }]) {
+      const res = await app().request('/browser/action', post({ url: 'https://example.com/', actions: [negative, typing] }));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'INVALID_INPUT', retryable: false });
+    }
+  });
+
   test('timeout と extract.maxChars の上限も 400', async () => {
     process.env.SORA_ISOLATION = 'strict';
     expect((await app().request('/browser/action', post({ url: 'https://example.com/', timeout: 60_001 }))).status).toBe(400);

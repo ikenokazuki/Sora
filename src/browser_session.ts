@@ -220,9 +220,13 @@ function declaredDurationMs(action: BrowserActionStep): number {
   }
 }
 
+/** 0 以上 max 以下でない値（負の値・NaN・上限超え）。比較を「範囲の外」でなく「範囲の中でない」で書くのは、NaN を通さないため */
+const outOfRange = (value: number, max: number): boolean => !(value >= 0 && value <= max);
+
 /**
  * browser_action 1 回の入力の上限（設計 6。穴 23）。値は水準（SORA_ISOLATION）の表（security/limits.ts）。
- * 超えたら、ブラウザも枠も使う前に、入力の誤り（ScrapeInputError。REST は 400）にする
+ * 超えたら、ブラウザも枠も使う前に、入力の誤り（ScrapeInputError。REST は 400）にする。
+ * 時間と文字数は、0 以上 上限以下（負の ms・delay は、決まっている待ち時間の合計を減らして、検査をすり抜けるために使える）
  */
 export function assertBrowserActionInputs(
   options: { actions?: BrowserActionStep[]; timeout?: number; extract?: { maxChars?: number; clipSelector?: string } },
@@ -230,17 +234,17 @@ export function assertBrowserActionInputs(
 ): void {
   const actions = options.actions ?? [];
   if (actions.length > lim.browserActionCount) throw new ScrapeInputError(`actions は ${lim.browserActionCount} 個までです（${actions.length} 個）`);
-  if (options.timeout !== undefined && options.timeout > lim.browserActionTimeoutMs) {
-    throw new ScrapeInputError(`timeout は ${lim.browserActionTimeoutMs} ミリ秒までです（${options.timeout}）`);
+  if (options.timeout !== undefined && outOfRange(options.timeout, lim.browserActionTimeoutMs)) {
+    throw new ScrapeInputError(`timeout は 0〜${lim.browserActionTimeoutMs} ミリ秒です（${options.timeout}）`);
   }
   const { maxChars, clipSelector } = options.extract ?? {};
-  if (maxChars !== undefined && maxChars > lim.browserExtractChars) throw new ScrapeInputError(`extract.maxChars は ${lim.browserExtractChars} 文字までです（${maxChars}）`);
+  if (maxChars !== undefined && outOfRange(maxChars, lim.browserExtractChars)) throw new ScrapeInputError(`extract.maxChars は 0〜${lim.browserExtractChars} 文字です（${maxChars}）`);
   if (clipSelector !== undefined && clipSelector.length > lim.selectorLength) throw new ScrapeInputError(`extract.clipSelector は ${lim.selectorLength} 文字までです`);
   let declaredMs = 0;
   actions.forEach((action, index) => {
     const at = `actions[${index}]（${action.type}）`;
-    if (action.ms !== undefined && action.ms > lim.browserActionWaitMs) throw new ScrapeInputError(`${at} の ms は ${lim.browserActionWaitMs} ミリ秒までです（${action.ms}）`);
-    if (action.delay !== undefined && action.delay > lim.browserActionDelayMs) throw new ScrapeInputError(`${at} の delay は ${lim.browserActionDelayMs} ミリ秒までです（${action.delay}）`);
+    if (action.ms !== undefined && outOfRange(action.ms, lim.browserActionWaitMs)) throw new ScrapeInputError(`${at} の ms は 0〜${lim.browserActionWaitMs} ミリ秒です（${action.ms}）`);
+    if (action.delay !== undefined && outOfRange(action.delay, lim.browserActionDelayMs)) throw new ScrapeInputError(`${at} の delay は 0〜${lim.browserActionDelayMs} ミリ秒です（${action.delay}）`);
     for (const [field, value] of [['text', action.text], ['script', action.script]] as const) {
       if (value !== undefined && value.length > lim.browserActionTextLength) throw new ScrapeInputError(`${at} の ${field} は ${lim.browserActionTextLength} 文字までです`);
     }
@@ -616,7 +620,7 @@ export async function handleBrowserSessionAction(
   }
 
   try {
-    // 全体の時間の締め切り。枠を得たあと（枠を待った時間は数えない）から数える
+    // 全体の時間の締め切り。ブラウザとページの用意が済んだあと、最初の URL への遷移の前から数える（枠を待った時間・ブラウザの用意の時間は数えない。最初の遷移は数える）
     const deadline = Date.now() + lim.browserActionTotalMs;
     // 初期 URL が指定されている場合、ページ遷移を実行
     if (options.url) {
