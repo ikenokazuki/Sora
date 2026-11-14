@@ -5,7 +5,7 @@ import { createAuthMiddleware, hashApiKey } from '../auth.js';
 import { dbAddApiUsage, dbGetApiUsage } from '../db.js';
 import { QuotaExceededError, secondsUntilNextUtcDay } from '../errors.js';
 import { withEnv } from '../test_fixtures/env.js';
-import { chargeQuota, checkQuota, refundQuota, usageKeyForTenant } from './quota.js';
+import { chargeQuota, checkQuota, refundQuota, setQuotaEnabled, usageKeyForTenant } from './quota.js';
 import { tenantIdForApiKey } from './tenant_context.js';
 
 /**
@@ -132,6 +132,48 @@ describe('checkQuota と refundQuota', () => {
         refundQuota(tenant, units);
         expect(dbGetApiUsage(tenant, today()), String(units)).toBe(0);
       }
+    });
+  });
+});
+
+describe('日をまたぐ呼び出し（crawl が UTC の日の変わり目をまたいだとき）', () => {
+  test('足した日を指定して戻すと、その日の行だけが減る（戻した時点の日の行は触らない）', async () => {
+    await withLimit('100', () => {
+      const tenant = `name:cross-${randomUUID()}`;
+      chargeQuota(tenant, 40, '2031-03-10');
+      dbAddApiUsage(tenant, '2031-03-11', 60); // 翌日の行（その日の要求が数えた回数）
+      refundQuota(tenant, 30, '2031-03-10');
+      expect(dbGetApiUsage(tenant, '2031-03-10')).toBe(10);
+      expect(dbGetApiUsage(tenant, '2031-03-11')).toBe(60);
+    });
+  });
+
+  test('足す日を指定すると、その日の回数で上限を見る', async () => {
+    await withLimit('50', () => {
+      const tenant = `name:cross-limit-${randomUUID()}`;
+      dbAddApiUsage(tenant, '2031-03-10', 45);
+      expect(() => chargeQuota(tenant, 10, '2031-03-10')).toThrow(QuotaExceededError);
+      chargeQuota(tenant, 10, '2031-03-11'); // 別の日の行は空
+      expect(dbGetApiUsage(tenant, '2031-03-11')).toBe(10);
+    });
+  });
+});
+
+describe('stdio では数えない（setQuotaEnabled）', () => {
+  test('無効にすると、足さず・断らず・戻さない。有効に戻すと、また数える', async () => {
+    await withLimit('5', () => {
+      const tenant = `name:stdio-${randomUUID()}`;
+      chargeQuota(tenant, 3); // 有効なうちに足した分
+      setQuotaEnabled(false);
+      try {
+        chargeQuota(tenant, 100);
+        checkQuota(tenant, 100);
+        refundQuota(tenant, 2);
+        expect(dbGetApiUsage(tenant, today())).toBe(3); // 足さず、戻さない
+      } finally {
+        setQuotaEnabled(true);
+      }
+      expect(() => chargeQuota(tenant, 100)).toThrow(QuotaExceededError);
     });
   });
 });

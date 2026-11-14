@@ -135,7 +135,7 @@ import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
-import { chargeQuota, refundQuota } from './security/quota.js';
+import { chargeQuota, quotaDay, refundQuota } from './security/quota.js';
 
 // ==========================================
 // 2. ブラウザ自動操作 (browser_action)
@@ -1475,20 +1475,24 @@ export function crawlPageBudget(maxPages: number | undefined = 10): number {
 export async function crawlSiteUrl(options: Parameters<typeof crawlSiteUrlCore>[0]): ReturnType<typeof crawlSiteUrlCore> {
   assertCrawlInputs(options);
   const reserved = crawlPageBudget(options.maxPages);
-  chargeQuota(options.tenantId, reserved - 1);
-  let scraped = 0;
+  const day = quotaDay(); // 日をまたぐ crawl でも、足した日の行から戻す
+  chargeQuota(options.tenantId, reserved - 1, day);
+  const meter: CrawlMeter = { attempts: 0 };
   try {
-    return await crawlSiteUrlCore({
-      ...options,
-      onPageScraped: (page) => {
-        scraped++;
-        options.onPageScraped?.(page);
-      },
-    });
+    return await crawlSiteUrlCore(options, meter);
   } finally {
-    refundQuota(options.tenantId, Math.max(0, reserved - 1) - Math.max(0, scraped - 1));
+    // 数えるのは、取得を試みた回数（失敗したリンクも含む）。最大ページ数を超えた分は、戻す量が 0 以下になり、戻さない（先に数えた分より多くは数えない）
+    refundQuota(options.tenantId, Math.max(0, reserved - 1) - Math.max(0, meter.attempts - 1), day);
   }
 }
+
+/** crawl 1 回の取得の試みの数（日次クォータが数える）。本体が、取得を始めるたびに足す */
+interface CrawlMeter {
+  attempts: number;
+}
+
+/** crawl が試みる取得の数の上限は、最大ページ数のこの倍数（取れないリンクを大量に並べたサイトで、試みが際限なく続かないように） */
+const CRAWL_ATTEMPT_FACTOR = 3;
 
 async function crawlSiteUrlCore(options: {
   url: string;
@@ -1515,7 +1519,7 @@ async function crawlSiteUrlCore(options: {
   onPageScraped?: (page: ScrapeResult) => void;
   /** 応答の pages と同じ整形をかけた 1 ページを渡す */
   onPageCrawled?: (page: CrawledPage, count: number) => void;
-}): Promise<{
+}, meter: CrawlMeter): Promise<{
   url: string;
   baseUrl: string;
   count: number;
@@ -1580,10 +1584,11 @@ async function crawlSiteUrlCore(options: {
     return true;
   };
 
+  const attemptLimit = targetLimit * CRAWL_ATTEMPT_FACTOR;
   while (queue.length > 0 && pages.length < targetLimit) {
-    // 幅優先の順序を保ったまま、残りページ枠を超えない範囲で最大 workers 件ずつ並行取得する
+    // 幅優先の順序を保ったまま、残りページ枠・残りの試みの数を超えない範囲で最大 workers 件ずつ並行取得する
     const batch: Array<{ url: string; depth: number }> = [];
-    const room = Math.min(workers, targetLimit - pages.length);
+    const room = Math.min(workers, targetLimit - pages.length, attemptLimit - meter.attempts);
     while (batch.length < room && queue.length > 0) {
       const item = queue.shift()!;
       const key = visitKey(item.url);
@@ -1593,6 +1598,7 @@ async function crawlSiteUrlCore(options: {
       batch.push(item);
     }
     if (batch.length === 0) break;
+    meter.attempts += batch.length; // 取得を始める前に数える（失敗しても、途中で中断されても、試みた分は数える）
 
     const settled = await Promise.all(
       batch.map(async (item) => {

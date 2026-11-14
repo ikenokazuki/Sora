@@ -1,13 +1,20 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { randomUUID } from 'node:crypto';
-import { hashApiKey } from './auth.js';
-import { dbGetApiUsage } from './db.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer as createTcpServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Hono } from 'hono';
+import { createAuthMiddleware, hashApiKey } from './auth.js';
+import { dbAddApiUsage, dbGetApiUsage } from './db.js';
 import { app } from './index.js';
 import { createMcpServer } from './mcp.js';
 import { ScrapeInputError } from './errors.js';
+import { scrapeRoutes } from './routes/scrape.js';
 import { crawlPageBudget, crawlSiteUrl, scrapeBatchUrls } from './scraper.js';
+import { resetApiKeyStoreCache } from './security/api_keys.js';
 import { withEnv } from './test_fixtures/env.js';
 
 /**
@@ -266,6 +273,182 @@ describe('MCP（scrape の urls・crawl_site）も、同じ件数を数え、超
       expect(textOf(refused)).toContain('日次クォータ');
       expect(hits).toBe(0);
       expect(dbGetApiUsage(tenant, today())).toBe(0);
+    });
+  });
+});
+
+describe('crawl の取得に失敗したリンクも、試みた回数として数える（数えずに無制限に試せない）', () => {
+  /** ルートだけ、60 本の同じサイトのリンクを返し、ほかの取得は接続を切る（失敗させる）素の TCP サーバー */
+  async function failingLinksSite(): Promise<{ url: string; requests: () => number; stop: () => void }> {
+    let requests = 0;
+    const links = Array.from({ length: 60 }, (_, i) => `<a href="/dead${i}">d${i}</a>`).join(' ');
+    const html = `<!doctype html><html><head><title>root</title></head><body><h1>root</h1><p>起点のページです。</p>${links}</body></html>`;
+    const server = createTcpServer((socket) => {
+      socket.on('error', () => {});
+      socket.once('data', (data) => {
+        requests++;
+        const first = data.toString('utf8').split('\r\n')[0] ?? '';
+        if (first.startsWith('GET / ')) {
+          socket.end(`HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: ${Buffer.byteLength(html)}\r\nConnection: close\r\n\r\n${html}`);
+        } else {
+          socket.destroy();
+        }
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+    return { url: `http://127.0.0.1:${port}/`, requests: () => requests, stop: () => server.close() };
+  }
+
+  test('起点だけ成功し、60 本のリンクがすべて失敗しても、試みる回数に上限（最大ページ数の 3 倍）があり、最大ページ数ぶんは数える', async () => {
+    const dead = await failingLinksSite();
+    try {
+      await rest('100', async (call, usage) => {
+        const res = await call('/crawl', { url: dead.url, maxPages: 3, maxDepth: 2, noCache: true });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { count: number }).count).toBe(1);
+        // 取得を試みたのは、最大で 3 × 3 = 9 回（起点 1 回 + 失敗 8 回）。60 回まで試みない
+        expect(dead.requests()).toBe(9);
+        // 試みた回数が最大ページ数（3）以上なので、先に数えた分（要求の 1 回 + 2）がそのまま残る
+        expect(usage()).toBe(3);
+      });
+    } finally {
+      dead.stop();
+    }
+  });
+
+  test('試みる回数は、並行数（3）の端数が出ても、最大ページ数の 3 倍を超えない（最大ページ数 4 で 12 回ちょうど）', async () => {
+    const dead = await failingLinksSite();
+    try {
+      await withEnv({ SORA_AUTH_DAILY_LIMIT: '100' }, async () => {
+        const result = await crawlSiteUrl({ url: dead.url, maxPages: 4, maxDepth: 2, tenantId: `name:attempts-${randomUUID()}`, noCache: true });
+        expect(result.count).toBe(1);
+        expect(dead.requests()).toBe(12);
+      });
+    } finally {
+      dead.stop();
+    }
+  });
+
+  test('起点が取れずに失敗した crawl は、先に数えた分をすべて戻し、要求の 1 回（認証が数えた分）だけが残る', async () => {
+    await withEnv({ SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'false' }, async () => {
+      await rest('100', async (call, usage) => {
+        const res = await call('/crawl', { url: siteUrl, maxPages: 20, maxDepth: 1, noCache: true });
+        expect(res.status).not.toBe(200); // 内部のアドレスは取れない
+        expect(usage()).toBe(1);
+      });
+    });
+  });
+});
+
+describe('呼び出し側の関数が投げても、数えは落ちない', () => {
+  test('onPageCrawled が投げても、取ったページは数える（戻し過ぎない）', async () => {
+    await withEnv({ SORA_AUTH_DAILY_LIMIT: '100' }, async () => {
+      const tenant = `name:throw-${randomUUID()}`;
+      const result = await crawlSiteUrl({
+        url: siteUrl,
+        maxPages: 4,
+        maxDepth: 1,
+        tenantId: tenant,
+        noCache: true,
+        onPageCrawled: () => {
+          throw new Error('boom');
+        },
+      });
+      expect(result.count).toBe(4);
+      expect(dbGetApiUsage(tenant, today())).toBe(3); // 4 ページのうち、要求の 1 回の分を除いた 3
+    });
+  });
+});
+
+describe('UTC の日の変わり目をまたぐ crawl は、足した日の行を戻す', () => {
+  test('日 D に足し、日 D+1 に終わっても、D の行から戻し、D+1 の行（その日の要求の回数）は減らさない', async () => {
+    const tenant = `name:midnight-${randomUUID()}`;
+    await withEnv({ SORA_AUTH_DAILY_LIMIT: '1000' }, async () => {
+      setSystemTime(new Date('2031-03-10T23:59:59Z'));
+      try {
+        dbAddApiUsage(tenant, '2031-03-11', 60); // 翌日の行
+        let crossed = false;
+        await crawlSiteUrl({
+          url: siteUrl,
+          maxPages: 20, // 4 ページしかないサイト。19 を先に足し、16 を戻す
+          maxDepth: 1,
+          tenantId: tenant,
+          noCache: true,
+          onPageScraped: () => {
+            if (!crossed) {
+              crossed = true;
+              setSystemTime(new Date('2031-03-11T00:00:05Z')); // 最初のページのあとで日が変わる
+            }
+          },
+        });
+        expect(dbGetApiUsage(tenant, '2031-03-10')).toBe(3); // 19 − 16
+        expect(dbGetApiUsage(tenant, '2031-03-11')).toBe(60);
+      } finally {
+        setSystemTime();
+      }
+    });
+  });
+});
+
+describe('数える行が、認証のミドルウェアの数える行と同じ（匿名・鍵ファイル）', () => {
+  test('鍵なし（匿名）の運用: 要求の 1 回と一括の件数が、同じ行（anonymous）に合算され、上限が効く', async () => {
+    await withEnv({ SORA_API_KEY: undefined, SORA_AUTH_KEYS_FILE: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_DAILY_LIMIT: '500' }, async () => {
+      const before = dbGetApiUsage('anonymous', today());
+      const res = await app.request('/scrape/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ urls: urlsOf(4), fastOnly: true, noCache: true }) });
+      expect(res.status).toBe(200);
+      expect(dbGetApiUsage('anonymous', today()) - before).toBe(4); // 要求の 1 回 + 件数の残り 3
+    });
+  });
+
+  test('鍵ファイルの運用: 要求の 1 回と一括の件数が、同じ行（name:<name>）に合算される', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'sora-quota-keys-'));
+    try {
+      const name = `weights-${randomUUID().slice(0, 8)}`;
+      const path = join(dir, 'keys.json');
+      writeFileSync(path, JSON.stringify({ keys: [{ name, key: `quota-weights-key-${randomUUID()}` }] }), { mode: 0o600 });
+      const key = (JSON.parse(await Bun.file(path).text()) as { keys: Array<{ key: string }> }).keys[0].key;
+      await withEnv({ SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined, SORA_AUTH_KEYS_FILE: path, SORA_AUTH_DAILY_LIMIT: '500' }, async () => {
+        resetApiKeyStoreCache();
+        try {
+          const keyed = new Hono();
+          keyed.use('*', createAuthMiddleware());
+          keyed.route('/', scrapeRoutes);
+          const res = await keyed.request('/scrape/batch', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': key }, body: JSON.stringify({ urls: urlsOf(4), fastOnly: true, noCache: true }) });
+          expect(res.status).toBe(200);
+          expect(dbGetApiUsage(`name:${name}`, today())).toBe(4);
+        } finally {
+          resetApiKeyStoreCache();
+        }
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('MCP の JSON-RPC のバッチ（配列）は、入っている呼び出しの数を数える', () => {
+  const batchOf = (n: number) => Array.from({ length: n }, (_, i) => ({ jsonrpc: '2.0', id: i + 1, method: 'ping' }));
+
+  test('残りを超える数の配列は、MCP に渡さず 429。収まる数は渡し、増えた分を数える', async () => {
+    await rest('5', async (call, usage) => {
+      const send = (n: number) => call('/mcp', batchOf(n));
+      const refused = await send(10);
+      expect(refused.status).toBe(429);
+      expect(await refused.json()).toMatchObject({ code: 'RATE_LIMIT_EXCEEDED', limit: 5, requested: 9 });
+      expect(Number(refused.headers.get('Retry-After'))).toBeGreaterThan(0);
+      expect(usage()).toBe(1); // 断った分の要求 1 回だけ
+      const accepted = await send(3);
+      expect(accepted.status).not.toBe(429);
+      expect(usage()).toBe(1 + 1 + 2); // 断った分 1 + 要求 1 + 配列の残り 2
+    });
+  });
+
+  test('配列でない（1 つの呼び出し）本文は、これまでどおり増えない', async () => {
+    await rest('5', async (call, usage) => {
+      const res = await call('/mcp', { jsonrpc: '2.0', id: 1, method: 'ping' });
+      expect(res.status).not.toBe(429);
+      expect(usage()).toBe(1);
     });
   });
 });

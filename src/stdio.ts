@@ -2,12 +2,15 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer, slimToolsListMessage } from './mcp.js';
 import { installEgressFetch } from './net/egress_fetch.js';
+import { setQuotaEnabled } from './security/quota.js';
 import { checkStartupEnv } from './startup_check.js';
 
 async function main() {
   // 環境変数の検査（出力は標準エラーだけ。標準出力は JSON-RPC の流れ）。誤りがあれば、接続する前に exit(1)。
   // stdio は待ち受けず認証も無いので、PORT と認証の汎用の旧名は見ない
   checkStartupEnv({ transport: 'stdio' });
+  // 日次クォータは、HTTP の層（認証のミドルウェアが要求を数える）の機能。stdio には要求を数える層が無いので、一括・crawl の件数だけが数えられる半端を避け、数えない
+  setQuotaEnabled(false);
   // SORA_EGRESS_GATEWAY=on のとき、Bun の fetch も、出口のゲートウェイに通す。使わないときは、何も変えない
   installEgressFetch();
   const server = createMcpServer({
