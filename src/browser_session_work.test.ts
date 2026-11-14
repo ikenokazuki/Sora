@@ -224,13 +224,13 @@ describe('使用中のセッションは、期限切れ・追い出しで閉じ�
       expect((await act({ sessionId: 'x', closeSession: true, tenantId: 'name:alice' })).sessionClosed).toBe(true);
       await create('name:alice', { sessionId: 'x' }); // 新しい x
       expect(getActiveSessionCount()).toBe(1);
-      oldTimer?.handler(); // 閉じられた側のタイマーが、あとから発火しても、同じ ID の新しい x を閉じない
-      await sleep(20);
-      expect(getActiveSessionCount()).toBe(1);
-      expect(closed).toBe(1);
       const countBeforeEnd = timerCount();
       await using;
       expect(timerCount()).toBe(countBeforeEnd); // 閉じられた側は、期限を数え直さない
+      oldTimer?.handler(); // 閉じられた側のタイマーが、使い終わったあとに発火しても、同じ ID の新しい x を閉じない
+      await sleep(20);
+      expect(getActiveSessionCount()).toBe(1);
+      expect(closed).toBe(1);
       expect(getActiveSessionCount()).toBe(1);
       expect(closed).toBe(1); // 閉じたのは、最初の x だけ
       const before = opened;
