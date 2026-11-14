@@ -20,7 +20,8 @@ import {
   type Lease,
 } from './scraper.js';
 import { envBool } from './config.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ScrapeInputError } from './errors.js';
+import { type Limits, limits } from './security/limits.js';
 import { browserResolvesLocally } from './net/egress.js';
 
 const EVALUATE_FORBIDDEN = 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set SORA_BROWSER_ALLOW_EVALUATE=true to enable)';
@@ -201,26 +202,102 @@ export function getActiveSessionCount(): number {
   return activeSessions.size;
 }
 
-/** 単一ページに対するアクションシーケンスの実行 */
-async function runActionsOnPage(
+/**
+ * 決まっている待ち時間（ミリ秒）の見込み。assertBrowserActionInputs が、始める前に合計を数える。
+ * 実行（runActionsOnPage）と同じ読み方: ms が 0 の wait は 1 秒、セレクタを待つ wait の ms を省くと 10 秒、fill・type の間隔を省くと 1 文字 20〜39ms（上限の 40ms で見込む）
+ */
+function declaredDurationMs(action: BrowserActionStep): number {
+  switch (action.type) {
+    case 'wait':
+      return action.selector ? (action.ms ?? 10_000) : action.ms || 1000;
+    case 'click':
+      return action.delay ?? 0;
+    case 'fill':
+    case 'type':
+      return (action.delay ?? 40) * (action.text?.length ?? 0);
+    default:
+      return 0;
+  }
+}
+
+/** 0 以上 max 以下でない値（負の値・NaN・上限超え）。比較を「範囲の外」でなく「範囲の中でない」で書くのは、NaN を通さないため */
+const outOfRange = (value: number, max: number): boolean => !(value >= 0 && value <= max);
+
+/**
+ * browser_action 1 回の入力の上限（設計 6。穴 23）。値は水準（SORA_ISOLATION）の表（security/limits.ts）。
+ * 超えたら、ブラウザも枠も使う前に、入力の誤り（ScrapeInputError。REST は 400）にする。
+ * 時間と文字数は、0 以上 上限以下（負の ms・delay は、決まっている待ち時間の合計を減らして、検査をすり抜けるために使える）
+ */
+export function assertBrowserActionInputs(
+  options: { actions?: BrowserActionStep[]; timeout?: number; extract?: { maxChars?: number; clipSelector?: string } },
+  lim: Readonly<Limits> = limits(),
+): void {
+  const actions = options.actions ?? [];
+  if (actions.length > lim.browserActionCount) throw new ScrapeInputError(`actions は ${lim.browserActionCount} 個までです（${actions.length} 個）`);
+  if (options.timeout !== undefined && outOfRange(options.timeout, lim.browserActionTimeoutMs)) {
+    throw new ScrapeInputError(`timeout は 0〜${lim.browserActionTimeoutMs} ミリ秒です（${options.timeout}）`);
+  }
+  const { maxChars, clipSelector } = options.extract ?? {};
+  if (maxChars !== undefined && outOfRange(maxChars, lim.browserExtractChars)) throw new ScrapeInputError(`extract.maxChars は 0〜${lim.browserExtractChars} 文字です（${maxChars}）`);
+  if (clipSelector !== undefined && clipSelector.length > lim.selectorLength) throw new ScrapeInputError(`extract.clipSelector は ${lim.selectorLength} 文字までです`);
+  let declaredMs = 0;
+  actions.forEach((action, index) => {
+    const at = `actions[${index}]（${action.type}）`;
+    if (action.ms !== undefined && outOfRange(action.ms, lim.browserActionWaitMs)) throw new ScrapeInputError(`${at} の ms は 0〜${lim.browserActionWaitMs} ミリ秒です（${action.ms}）`);
+    if (action.delay !== undefined && outOfRange(action.delay, lim.browserActionDelayMs)) throw new ScrapeInputError(`${at} の delay は 0〜${lim.browserActionDelayMs} ミリ秒です（${action.delay}）`);
+    for (const [field, value] of [['text', action.text], ['script', action.script]] as const) {
+      if (value !== undefined && value.length > lim.browserActionTextLength) throw new ScrapeInputError(`${at} の ${field} は ${lim.browserActionTextLength} 文字までです`);
+    }
+    if (action.selector !== undefined && action.selector.length > lim.selectorLength) throw new ScrapeInputError(`${at} の selector は ${lim.selectorLength} 文字までです`);
+    declaredMs += declaredDurationMs(action);
+  });
+  if (declaredMs > lim.browserActionTotalMs) {
+    throw new ScrapeInputError(`決まっている待ち時間の合計（${Math.ceil(declaredMs / 1000)} 秒）が、全体の制限時間（${lim.browserActionTotalMs / 1000} 秒）を超えます`);
+  }
+}
+
+/** 残りの時間がこれ以下（ミリ秒）なら、次のアクションを始めない（タイマーの誤差で、残りが少し残っても、始めないため） */
+const DEADLINE_SLACK_MS = 5;
+
+/**
+ * 単一ページに対するアクションシーケンスの実行。deadline（Date.now() の絶対時刻）を過ぎたら、残りのアクションは実行しない。
+ * 待ちとページ遷移の待ちは、残りの時間で切る（締め切りを渡さなければ、制限しない）
+ */
+export async function runActionsOnPage(
   page: Page,
   actions: BrowserActionStep[],
   timeoutMs: number,
+  deadline: number = Number.POSITIVE_INFINITY,
 ): Promise<{ actionLogs: any[]; finalUrl: string; title: string }> {
   const actionLogs: any[] = [];
   let stepIndex = 1;
+  const remaining = () => deadline - Date.now();
+  /** セレクタを待つ時間（既定 10 秒）を、残りの時間で切る。0 は「待たない」でなく「制限なし」なので、最低 1ms */
+  const selectorTimeout = (ms = 10_000) => Math.max(1, Math.min(ms, remaining()));
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, Math.max(0, Math.min(ms, remaining()))));
   const viewport = page.viewport();
   let mouseX = (viewport?.width ?? 1920) * (0.3 + Math.random() * 0.4);
   let mouseY = (viewport?.height ?? 1080) * (0.3 + Math.random() * 0.4);
 
   for (const action of actions) {
+    if (remaining() <= DEADLINE_SLACK_MS) {
+      actionLogs.push({
+        step: stepIndex++,
+        type: action.type,
+        target: action.selector || action.text || action.key || action.url,
+        success: false,
+        message: '全体の制限時間を超えたので、実行しませんでした',
+        elapsedMs: 0,
+      });
+      continue;
+    }
     const stepStart = performance.now();
     try {
       switch (action.type) {
         case 'click': {
           let box: { x: number; y: number } | null = null;
           if (action.selector) {
-            await page.waitForSelector(action.selector, { timeout: 10000 });
+            await page.waitForSelector(action.selector, { timeout: selectorTimeout() });
             box = await page.$eval(action.selector, (el: any) => {
               el.scrollIntoView?.({ behavior: 'instant', block: 'center' });
               const r = el.getBoundingClientRect();
@@ -269,13 +346,13 @@ async function runActionsOnPage(
           await page.mouse.down();
           await new Promise((r) => setTimeout(r, 30 + Math.random() * 50));
           await page.mouse.up();
-          if (action.delay) await new Promise((r) => setTimeout(r, action.delay));
+          if (action.delay) await sleep(action.delay);
           break;
         }
         case 'fill':
         case 'type': {
           if (!action.selector) throw new Error('Fill action requires selector');
-          await page.waitForSelector(action.selector, { timeout: 10000 });
+          await page.waitForSelector(action.selector, { timeout: selectorTimeout() });
           if (action.clear !== false) {
             await page.click(action.selector, { clickCount: 3 });
             await page.keyboard.press('Backspace');
@@ -295,7 +372,7 @@ async function runActionsOnPage(
           if (!action.selector || action.value === undefined) {
             throw new Error('Select action requires selector and value');
           }
-          await page.waitForSelector(action.selector, { timeout: 10000 });
+          await page.waitForSelector(action.selector, { timeout: selectorTimeout() });
           await page.select(action.selector, action.value);
           await new Promise((r) => setTimeout(r, 50));
           break;
@@ -311,11 +388,11 @@ async function runActionsOnPage(
         }
         case 'wait': {
           if (action.selector) {
-            await page.waitForSelector(action.selector, { timeout: action.ms ?? 10000 });
+            await page.waitForSelector(action.selector, { timeout: selectorTimeout(action.ms) });
           } else if (action.ms) {
-            await new Promise((r) => setTimeout(r, action.ms));
+            await sleep(action.ms);
           } else {
-            await new Promise((r) => setTimeout(r, 1000));
+            await sleep(1000);
           }
           break;
         }
@@ -341,14 +418,14 @@ async function runActionsOnPage(
           if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
             await validateHostIpDns(parsedUrl.hostname, { failClosed: browserResolvesLocally(parsedUrl.hostname) });
           }
-          await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+          await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, remaining())) });
           await bypassCloudflareTurnstile(page);
           await new Promise((r) => setTimeout(r, 300));
           break;
         }
         case 'screenshot': {
           if (action.selector) {
-            await page.waitForSelector(action.selector, { timeout: 10000 });
+            await page.waitForSelector(action.selector, { timeout: selectorTimeout() });
           }
           break;
         }
@@ -385,6 +462,8 @@ async function runActionsOnPage(
 // ==========================================
 export async function handleBrowserSessionAction(
   options: BrowserSessionOptions,
+  /** 入力と時間の上限。既定は、水準（SORA_ISOLATION）の表 */
+  lim: Readonly<Limits> = limits(),
 ): Promise<BrowserSessionResult> {
   const timeoutMs = options.timeout ?? 30000;
   const actions = options.actions ?? [];
@@ -408,6 +487,9 @@ export async function handleBrowserSessionAction(
       renderedWithBrowser: true,
     };
   }
+
+  // 1.0 入力の上限（設計 6。穴 23）。ブラウザも枠も使う前に断る
+  assertBrowserActionInputs(options, lim);
 
   // 1.1 evaluate アクションの事前検証 (SORA_BROWSER_ALLOW_EVALUATE が真でないときの早期防御)
   if (!envBool('SORA_BROWSER_ALLOW_EVALUATE') && actions.some((a) => a.type === 'evaluate')) {
@@ -538,6 +620,8 @@ export async function handleBrowserSessionAction(
   }
 
   try {
+    // 全体の時間の締め切り。ブラウザとページの用意が済んだあと、最初の URL への遷移の前から数える（枠を待った時間・ブラウザの用意の時間は数えない。最初の遷移は数える）
+    const deadline = Date.now() + lim.browserActionTotalMs;
     // 初期 URL が指定されている場合、ページ遷移を実行
     if (options.url) {
       if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && isBlockedHostname(new URL(options.url).hostname)) {
@@ -546,7 +630,7 @@ export async function handleBrowserSessionAction(
       const currentUrl = page.url();
       if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
         await throttleDomain(new URL(options.url).hostname);
-        await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+        await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, deadline - Date.now())) });
         await bypassCloudflareTurnstile(page);
         // SPA hydration 安定化
         await new Promise((r) => setTimeout(r, 400));
@@ -554,7 +638,7 @@ export async function handleBrowserSessionAction(
     }
 
     // アクションの実行
-    const { actionLogs, finalUrl, title } = await runActionsOnPage(page, actions, timeoutMs);
+    const { actionLogs, finalUrl, title } = await runActionsOnPage(page, actions, timeoutMs, deadline);
 
     // セッションクローズ指定があった場合は即座に閉じて返却
     if (options.closeSession) {

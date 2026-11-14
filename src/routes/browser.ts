@@ -3,7 +3,7 @@ import { executeBrowserActions } from '../scraper.js';
 import { BrowserActionRequestSchema } from '../types.js';
 import { extractAuthToken } from '../auth.js';
 import { busyResponse, formatError } from './utils.js';
-import { errorMessage } from '../errors.js';
+import { errorMessage, ScrapeInputError } from '../errors.js';
 
 export const browserRoutes = new Hono();
 
@@ -48,6 +48,7 @@ export const handleBrowserAction = async (c: Context) => {
     const busy = busyResponse(c, err);
     if (busy) return busy;
     const msg = errorMessage(err) || 'Browser action failed';
+    if (err instanceof ScrapeInputError) return formatError(c, msg, 'INVALID_INPUT', 400, false);
     const isForbidden = msg.includes('Forbidden') || msg.includes('permission');
     const isSecurity = isForbidden || msg.includes('private or blocked') || msg.includes('遮断');
     const isTimeout = msg.includes('timeout') || msg.includes('タイムアウト');

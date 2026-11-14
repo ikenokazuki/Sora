@@ -12,7 +12,7 @@
  *  (8) 管理者の鍵と POST /cache/clear（設計 5。穴 19）: admin: true の鍵だけが、全員分（共有のキャッシュも）を消せる。ほかの鍵は、自分の tenant のキャッシュだけを消す
  *  (9) REST のモジュール（設計 5。穴 20）: SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求は 401 で、設定を教えない）。文書（/openapi.json）にも載らない
  *  (10) 増幅の上限（設計 6。穴 11・21）: SORA_ISOLATION=strict で、map_site は robots.txt の Sitemap: 行の先頭 5 つだけを取り、crawl のパターンとセレクタは 20 個まで（超えたら 400）。standard（既定）では、緩い値
- *  (11) ブラウザの枠（設計 6。穴 22・25）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant（bob）の待ちを上限（10 件）まで埋めると、bob の次の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき・code: BROWSER_BUSY）。別の tenant（alice）は断られず、待つ（以前は、全体で 1 本の列で、上限も時間切れも無く、どの tenant も同じように待たされ続けた）
+ *  (11) ブラウザの枠（設計 6。穴 22・25）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant（bob）の待ちを上限（10 件）まで埋めると、bob の次の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき・code: BROWSER_BUSY）。browser_action の入力の上限（21 個のアクション）は、枠の待ちより先に検査され、429 でなく 400（INVALID_INPUT）。別の tenant（alice）は断られず、待つ（以前は、全体で 1 本の列で、上限も時間切れも無く、どの tenant も同じように待たされ続けた）
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -473,6 +473,9 @@ await scenario('ブラウザの枠（strict）', { SORA_AUTH_KEYS_FILE: keyPath,
     check(bob.status === 429 && bob.json?.code === 'BROWSER_BUSY' && bob.json?.retryable === true, `ブラウザの枠: bob の待ちが上限のとき、/browser/action が 429（BROWSER_BUSY）でない: ${bob.status} ${bob.text.slice(0, 160)}`);
     check(bob.headers.get('retry-after') === '5', `ブラウザの枠: 429 に Retry-After: 5 が付いていない（${bob.headers.get('retry-after')}）`);
   }
+  // browser_action の入力の上限は、枠の待ちより先に検査する（待ちが上限でも、21 個のアクションは、429 でなく 400）
+  const tooMany = await restAs(MAP_BOB, 'POST', '/browser/action', { url: amplificationUrl, actions: Array.from({ length: 21 }, () => ({ type: 'press', key: 'a' })) });
+  check(tooMany.status === 400 && tooMany.json?.code === 'INVALID_INPUT', `ブラウザの枠: strict で、21 個のアクションが 400（INVALID_INPUT）でない: ${tooMany.status} ${tooMany.text.slice(0, 160)}`);
   // 荷物追跡（UPS。資格情報なし = ブラウザ取得）と楽曲認識（ファイルのアップロード = 音声のデコード）も、同じ利用者の枠として数える
   const track = await Promise.race([restAs(MAP_BOB, 'GET', '/tracking/ups/1Z999AA10123456784'), pendingAfter(5000)]);
   if (track === 'pending') {
@@ -502,5 +505,5 @@ if (failures.length > 0) {
   console.error(failures.join('\n'));
   process.exit(1);
 }
-console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締め、ブラウザの枠は、tenant ごとの待ちが上限に達すると、待たせずに 429 で断り（browser_action・荷物追跡・楽曲認識）、別の tenant は断らない');
+console.log('ok: 本物のサーバーで、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）。ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイルは、鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、別の tenant に返らない（共有キャッシュ）。ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site の結果は、保存済みのセッションで見えた分を、別の tenant に返さない。/cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締め、ブラウザの枠は、tenant ごとの待ちが上限に達すると、待たせずに 429 で断り（browser_action・荷物追跡・楽曲認識）、別の tenant は断らない。browser_action の入力の上限（strict は 20 個のアクションまで）は、枠の待ちより先に検査して 400');
 process.exit(0);

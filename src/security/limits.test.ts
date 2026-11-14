@@ -65,6 +65,32 @@ describe('limits', () => {
     }
   });
 
+  test('browser_action の値（件数・待ち・間隔・文字数・遷移の待ち・全体の時間・抽出の文字数）: strict は設計の値、standard は緩い値', () => {
+    expect(STRICT_LIMITS).toMatchObject({
+      browserActionCount: 20,
+      browserActionWaitMs: 15_000,
+      browserActionDelayMs: 2_000,
+      browserActionTextLength: 10_000,
+      browserActionTimeoutMs: 60_000,
+      browserActionTotalMs: 120_000,
+      browserExtractChars: 100_000,
+    });
+    expect(STANDARD_LIMITS).toMatchObject({
+      browserActionCount: 100,
+      browserActionWaitMs: 120_000,
+      browserActionDelayMs: 10_000,
+      browserActionTextLength: 100_000,
+      browserActionTimeoutMs: 180_000,
+      browserActionTotalMs: 600_000,
+      browserExtractChars: 1_000_000,
+    });
+    for (const table of [STANDARD_LIMITS, STRICT_LIMITS]) {
+      // 1 回の待ちや遷移の待ちが、全体の時間を超える値にはしない（超えても、全体の時間が先に効くだけで、意味がない）
+      expect(table.browserActionWaitMs).toBeLessThanOrEqual(table.browserActionTotalMs);
+      expect(table.browserActionTimeoutMs).toBeLessThanOrEqual(table.browserActionTotalMs);
+    }
+  });
+
   test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());
