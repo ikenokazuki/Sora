@@ -129,6 +129,14 @@ describe('利用者ごとの上限', () => {
     expect(registry.size).toBe(3);
   });
 
+  test('使われた時刻が同じなら、先に作ったほうを追い出す', () => {
+    const registry = new SessionRegistry<Fake>();
+    const first = fake('name:alice', 'a1', 7);
+    create(registry, first, caps(2, 20));
+    create(registry, fake('name:alice', 'a2', 7), caps(2, 20));
+    expect(registry.reserve('name:alice', 'a3', caps(2, 20))).toBe(first);
+  });
+
   test('上限に達していなければ、何も追い出さない（上限ちょうどの 1 つ手前まで）', () => {
     const registry = new SessionRegistry<Fake>();
     create(registry, fake('name:alice', 'a1'), caps(3, 20));

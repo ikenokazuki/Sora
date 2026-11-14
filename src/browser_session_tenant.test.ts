@@ -179,6 +179,13 @@ describe('数の上限', () => {
     expect(closed).toBe(1);
   });
 
+  test('tenant を渡さない呼び出し（legacy）も、同じ上限を受ける', async () => {
+    const lim = caps(2, 20);
+    for (let i = 0; i < 3; i++) await act({ createSession: true }, lim);
+    expect(getActiveSessionCount()).toBe(2);
+    expect(closed).toBe(1);
+  });
+
   test('作成に失敗したら、予約は残らない（同じ ID で作り直せる。数にも入らない）', async () => {
     const lim = caps(1, 1);
     failNextContext = true;
@@ -190,6 +197,30 @@ describe('数の上限', () => {
   });
 });
 
+test('使われなくなって期限が切れたら、その利用者のセッションだけを閉じる（同じ ID のほかの利用者のセッションは残る）', async () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const expiries: Array<() => void> = [];
+  // 5 分のタイマーだけを捕まえて、手で発火させる（ほかの待ちは、そのまま動かす）
+  spies.push(
+    spyOn(globalThis, 'setTimeout').mockImplementation(((handler: () => void, ms?: number) => {
+      if (ms === 5 * 60 * 1000) {
+        expiries.push(handler);
+        return 0 as never;
+      }
+      return realSetTimeout(handler, ms);
+    }) as never),
+  );
+  await create('name:alice', { sessionId: 'same' });
+  await create('name:bob', { sessionId: 'same' });
+  expect(expiries).toHaveLength(2);
+  expiries[0](); // alice の期限
+  await new Promise((resolve) => realSetTimeout(resolve, 20));
+  expect(closed).toBe(1);
+  expect(getActiveSessionCount()).toBe(1);
+  await act({ sessionId: 'same', tenantId: 'name:bob' }); // bob のセッションは残っている（新しい文脈は開かない）
+  expect(opened).toBe(2);
+});
+
 test('作成の途中（ページの初期化）で失敗したら、開いた文脈を閉じ、予約も戻す（漏れない。同じ ID で作り直せる）', async () => {
   failSetup = true;
   await expect(act({ createSession: true, sessionId: 'half', tenantId: 'name:alice' }, caps(1, 1))).rejects.toThrow('ページの初期化に失敗');
@@ -199,6 +230,14 @@ test('作成の途中（ページの初期化）で失敗したら、開いた�
   failSetup = false;
   await expect(act({ createSession: true, sessionId: 'half', tenantId: 'name:alice' }, caps(1, 1))).resolves.toBeDefined();
   expect(getActiveSessionCount()).toBe(1);
+});
+
+test('作成と同時に閉じる指定（ID なし）は、作ったセッションを、その利用者の空間から閉じる', async () => {
+  const result = await act({ createSession: true, closeSession: true, tenantId: 'name:alice' });
+  expect(result.sessionClosed).toBe(true);
+  expect(opened).toBe(1);
+  expect(closed).toBe(1);
+  expect(getActiveSessionCount()).toBe(0);
 });
 
 describe('同じ ID の同時の作成', () => {
@@ -249,7 +288,7 @@ describe('セッション ID の形', () => {
   });
 
   test('制御文字（改行など）を含む ID は入力の誤り（ログの行を偽装できない）', async () => {
-    for (const bad of ['a\nb', 'a\rb', 'a\u0000b', 'a\u001bb', 'a\u007fb']) {
+    for (const bad of ['a\nb', 'a\rb', 'a\u0000b', 'a\u001bb', 'a\u001fb', 'a\u007fb']) {
       await expect(act({ createSession: true, sessionId: bad, tenantId: 'name:alice' }), JSON.stringify(bad)).rejects.toThrow(ScrapeInputError);
     }
     expect(opened).toBe(0);
