@@ -559,8 +559,16 @@ export async function handleBrowserSessionAction(
       const lease = await browserSemaphore.acquire(tenantId);
       recordBrowserUsage();
       try {
-        // 枠を待つ間に、同じ ID のセッションが作られていたら、それを使う（同じ ID の同時の呼び出し）
-        const raced = options.sessionId ? sessionRegistry.get(tenantId, options.sessionId) : undefined;
+        // 枠を待つ間に、同じ ID のセッションが作られていたら、それを使う。同じ ID の作成が走っているなら、終わるのを待って、引き直す
+        // （同じ ID の同時の呼び出し。空いている枠の数に左右されずに、同じ結果になる。先の作成が失敗したら、自分で作る）
+        let raced: BrowserSession | undefined;
+        if (options.sessionId) {
+          raced = sessionRegistry.get(tenantId, options.sessionId);
+          for (let waiting = sessionRegistry.pending(tenantId, options.sessionId); !raced && waiting; waiting = sessionRegistry.pending(tenantId, options.sessionId)) {
+            await waiting;
+            raced = sessionRegistry.get(tenantId, options.sessionId);
+          }
+        }
         if (raced) {
           session = useExistingSession(raced, options, needScreenshot);
           page = session.page;

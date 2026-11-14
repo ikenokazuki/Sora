@@ -10,6 +10,8 @@ import { incrementSecurityCounter } from './security/metrics.js';
  *    （lastActive が一番古い）セッションを追い出す。全体がいっぱいなら、ほかの利用者のセッションは閉じずに、断る（ResourceBusyError）
  *  - 作成は、予約（reserve）→ 登録（commit）の 2 段。reserve は同期で、数の検査と同じ ID の重複の検査を一緒に行うので、
  *    await をまたぐ同時の作成でも、数も ID も食い違わない。断るときは、何も変えない
+ *  - 同じ ID の作成が重なったとき、あとの呼び出しは、pending で先の作成が終わる（登録か取り消し）のを待ち、引き直す
+ *    （空いている枠の数に左右されずに、同じ結果になる）
  */
 
 export const DEFAULT_SESSION_TENANT = 'legacy';
@@ -42,8 +44,8 @@ function limitReached(message: string): ResourceBusyError {
 
 export class SessionRegistry<S extends RegistrySession> {
   private readonly sessions = new Map<string, S>();
-  /** 作成中の予約。鍵 → tenant */
-  private readonly creating = new Map<string, string>();
+  /** 作成中の予約。鍵 → tenant と、終わった（登録か取り消し）ことを知らせる関数・待つ Promise */
+  private readonly creating = new Map<string, { tenant: string; finish: () => void; done: Promise<void> }>();
 
   /** 登録済みの数（作成中は含まない） */
   get size(): number {
@@ -63,8 +65,13 @@ export class SessionRegistry<S extends RegistrySession> {
     const tenant = tenantId || DEFAULT_SESSION_TENANT;
     let count = 0;
     for (const s of this.sessions.values()) if (s.tenantId === tenant) count++;
-    for (const t of this.creating.values()) if (t === tenant) count++;
+    for (const entry of this.creating.values()) if (entry.tenant === tenant) count++;
     return count;
+  }
+
+  /** 同じ鍵の作成中なら、その作成が終わる（登録か取り消し）のを待つ Promise。作成中でなければ undefined。待ったあとは、get で引き直す */
+  pending(tenantId: string | undefined, id: string): Promise<void> | undefined {
+    return this.creating.get(sessionKey(tenantId, id))?.done;
   }
 
   /**
@@ -88,20 +95,29 @@ export class SessionRegistry<S extends RegistrySession> {
       throw limitReached(`ブラウザセッションが全体の上限（${caps.total} 件）に達しています。ほかの利用者のセッションは閉じません。しばらくしてから、もう一度試してください`);
     }
     if (evicted) this.sessions.delete(sessionKey(evicted.tenantId, evicted.id));
-    this.creating.set(key, tenant);
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    this.creating.set(key, { tenant, finish, done });
     return evicted;
   }
 
   /** 予約したセッションを登録する */
   commit(session: S): void {
     const key = sessionKey(session.tenantId, session.id);
+    const entry = this.creating.get(key);
     this.creating.delete(key);
     this.sessions.set(key, session);
+    entry?.finish();
   }
 
   /** 作成の予約を取り消す（作成に失敗したとき）。登録済みのセッションは消さない */
   cancel(tenantId: string | undefined, id: string): void {
-    this.creating.delete(sessionKey(tenantId, id));
+    const key = sessionKey(tenantId, id);
+    const entry = this.creating.get(key);
+    this.creating.delete(key);
+    entry?.finish();
   }
 
   /** 登録簿から外す。外したセッションを返す（無ければ undefined） */

@@ -114,6 +114,50 @@ describe('作成の予約', () => {
   });
 });
 
+describe('作成中の待ち（pending）', () => {
+  test('作成中でなければ undefined。作成中は、登録か取り消しで終わる Promise（鍵ごと）', async () => {
+    const registry = new SessionRegistry<Fake>();
+    expect(registry.pending('name:alice', 'x')).toBeUndefined();
+    registry.reserve('name:alice', 'x', caps(5, 20));
+    const waiting = registry.pending('name:alice', 'x');
+    expect(waiting).toBeInstanceOf(Promise);
+    expect(registry.pending('name:bob', 'x')).toBeUndefined(); // ほかの利用者の同じ ID は、別の空間
+    expect(registry.pending('name:alice', 'y')).toBeUndefined();
+    const session = fake('name:alice', 'x');
+    let settled = false;
+    void waiting?.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false); // 作成が終わるまで、終わらない
+    registry.commit(session);
+    await waiting;
+    expect(settled).toBe(true);
+    expect(registry.get('name:alice', 'x')).toBe(session); // 待っていた側は、終わったあとに引けば、作られたセッションがある
+    expect(registry.pending('name:alice', 'x')).toBeUndefined();
+  });
+
+  test('作成が取り消されても終わる（待っていた側は、引いても無ければ、自分で作る）', async () => {
+    const registry = new SessionRegistry<Fake>();
+    registry.reserve('name:alice', 'x', caps(5, 20));
+    const waiting = registry.pending('name:alice', 'x');
+    registry.cancel('name:alice', 'x');
+    await waiting;
+    expect(registry.get('name:alice', 'x')).toBeUndefined();
+    expect(registry.pending('name:alice', 'x')).toBeUndefined();
+    expect(() => registry.reserve('name:alice', 'x', caps(5, 20))).not.toThrow();
+  });
+
+  test('待っている側が複数いても、全員が終わる', async () => {
+    const registry = new SessionRegistry<Fake>();
+    registry.reserve('name:alice', 'x', caps(5, 20));
+    const waiters = [registry.pending('name:alice', 'x'), registry.pending('name:alice', 'x')];
+    registry.commit(fake('name:alice', 'x'));
+    await Promise.all(waiters);
+    expect(waiters.every((w) => w instanceof Promise)).toBe(true);
+  });
+});
+
 describe('利用者ごとの上限', () => {
   test('上限に達した利用者の新しい作成は、その利用者の中で一番使われていないセッションを追い出す（返す）。登録簿から先に消える', () => {
     const registry = new SessionRegistry<Fake>();

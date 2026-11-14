@@ -15,6 +15,8 @@ let opened = 0;
 let closed = 0;
 let failNextContext = false;
 let failSetup = false;
+let failBrowser = false;
+let failNewPage = false;
 const spies: Array<{ mockRestore: () => void }> = [];
 const previous: Record<string, string | undefined> = {};
 
@@ -43,7 +45,16 @@ const fakeBrowser = {
     }
     opened++;
     await new Promise((resolve) => setTimeout(resolve, 10));
-    return { newPage: async () => makePage(), close: async () => void closed++ };
+    return {
+      newPage: async () => {
+        if (failNewPage) {
+          failNewPage = false;
+          throw new Error('newPage に失敗');
+        }
+        return makePage();
+      },
+      close: async () => void closed++,
+    };
   },
 };
 
@@ -55,7 +66,17 @@ beforeEach(async () => {
   closed = 0;
   failNextContext = false;
   failSetup = false;
-  spies.push(spyOn(engine, 'getBrowser').mockResolvedValue({ browser: fakeBrowser, isDedicated: false } as never));
+  failBrowser = false;
+  failNewPage = false;
+  spies.push(
+    spyOn(engine, 'getBrowser').mockImplementation((async () => {
+      if (failBrowser) {
+        failBrowser = false;
+        throw new Error('ブラウザを起動できません');
+      }
+      return { browser: fakeBrowser, isDedicated: false };
+    }) as never),
+  );
 });
 
 afterEach(async () => {
@@ -248,31 +269,95 @@ describe('同じ ID の同時の作成', () => {
     return held;
   }
 
-  test('枠が 1 つしか空いていないとき（順番に動く）: 2 つ目は、1 つ目が作ったセッションを使う。文脈は 1 つだけ開く', async () => {
-    const held = await leaveFree(1);
-    try {
-      const results = await Promise.all([act({ sessionId: 'dup', tenantId: 'name:alice' }), act({ sessionId: 'dup', tenantId: 'name:alice' })]);
-      expect(results.map((r) => r.sessionId)).toEqual(['dup', 'dup']);
-      expect(opened).toBe(1);
-      expect(closed).toBe(0);
-      expect(getActiveSessionCount()).toBe(1);
-    } finally {
-      for (const release of held) release();
-    }
+  // 空きが 1 つ: 順番に動く（2 つ目は、枠を待つ間に、先のセッションができる）。空きが 2 つ以上: 作成が同時に走る（2 つ目は、先の作成の終わりを待つ）。どちらも、同じ結果になる
+  for (const free of engine.browserSemaphore.max < 2 ? [1] : [1, 2]) {
+    describe(`空きの枠が ${free} 個`, () => {
+      test('2 つ目は、先に作られたセッションを使う。文脈は 1 つだけ開き、漏れない', async () => {
+        const held = await leaveFree(free);
+        try {
+          const results = await Promise.all([act({ sessionId: 'dup', tenantId: 'name:alice' }), act({ sessionId: 'dup', tenantId: 'name:alice' })]);
+          expect(results.map((r) => r.sessionId)).toEqual(['dup', 'dup']);
+          expect(opened).toBe(1);
+          expect(closed).toBe(0);
+          expect(getActiveSessionCount()).toBe(1);
+        } finally {
+          for (const release of held) release();
+        }
+      });
+
+      test('所有者トークンが違えば、2 つ目は Forbidden（待つ間に作られたセッションにも、同じ検査）。枠は戻り、登録は 1 つで、作った人は使える', async () => {
+        const held = await leaveFree(free);
+        try {
+          const base = engine.browserSemaphore.activeCount;
+          const results = await Promise.allSettled([
+            act({ sessionId: 'dup', tenantId: 'name:alice', ownerToken: 'T1' }),
+            act({ sessionId: 'dup', tenantId: 'name:alice', ownerToken: 'T2' }),
+          ]);
+          expect(results.map((r) => r.status)).toEqual(['fulfilled', 'rejected']);
+          expect(String((results[1] as PromiseRejectedResult).reason)).toContain('Forbidden');
+          expect(engine.browserSemaphore.activeCount).toBe(base);
+          expect(getActiveSessionCount()).toBe(1);
+          expect(opened).toBe(1);
+          await expect(act({ sessionId: 'dup', tenantId: 'name:alice', ownerToken: 'T1' })).resolves.toBeDefined();
+        } finally {
+          for (const release of held) release();
+        }
+      });
+
+      test('所有者トークンなしで作ったセッションは、これまでどおり、同じ利用者の中の誰でも使える', async () => {
+        const held = await leaveFree(free);
+        try {
+          const results = await Promise.allSettled([act({ sessionId: 'dup', tenantId: 'name:alice' }), act({ sessionId: 'dup', tenantId: 'name:alice', ownerToken: 'T2' })]);
+          expect(results.map((r) => r.status)).toEqual(['fulfilled', 'fulfilled']);
+        } finally {
+          for (const release of held) release();
+        }
+      });
+
+      test('先の作成が失敗したら、待っていた 2 つ目は、予約が残らず、自分で作る', async () => {
+        const held = await leaveFree(free);
+        try {
+          failNextContext = true;
+          const results = await Promise.allSettled([act({ sessionId: 'dup', tenantId: 'name:alice' }, caps(1, 1)), act({ sessionId: 'dup', tenantId: 'name:alice' }, caps(1, 1))]);
+          expect(results.map((r) => r.status)).toEqual(['rejected', 'fulfilled']);
+          expect(getActiveSessionCount()).toBe(1);
+          expect(opened - closed).toBe(1);
+        } finally {
+          for (const release of held) release();
+        }
+      });
+    });
+  }
+});
+
+describe('作成の失敗のどの段でも、予約と枠が戻る', () => {
+  test('getBrowser が失敗', async () => {
+    failBrowser = true;
+    const base = engine.browserSemaphore.activeCount;
+    await expect(act({ createSession: true, sessionId: 'x', tenantId: 'name:alice' }, caps(1, 1))).rejects.toThrow('ブラウザを起動できません');
+    expect(engine.browserSemaphore.activeCount).toBe(base);
+    expect(getActiveSessionCount()).toBe(0);
+    await expect(act({ createSession: true, sessionId: 'x', tenantId: 'name:alice' }, caps(1, 1))).resolves.toBeDefined();
   });
 
-  test.skipIf(engine.browserSemaphore.max < 2)('枠が 2 つ空いていて同時に作るとき: 2 つ目は「作成中」で断られ（入力の誤り）、文脈は漏れない', async () => {
-    const held = await leaveFree(2);
-    try {
-      const settled = await Promise.allSettled([act({ sessionId: 'dup', tenantId: 'name:alice' }), act({ sessionId: 'dup', tenantId: 'name:alice' })]);
-      const rejected = settled.filter((s): s is PromiseRejectedResult => s.status === 'rejected');
-      expect(rejected).toHaveLength(1);
-      expect(rejected[0].reason).toBeInstanceOf(ScrapeInputError);
-      expect(opened - closed).toBe(getActiveSessionCount()); // 開いた文脈は、すべて登録されている
-      expect(getActiveSessionCount()).toBe(1);
-    } finally {
-      for (const release of held) release();
-    }
+  test('newPage が失敗（文脈は開いたあと）: 文脈を閉じる', async () => {
+    failNewPage = true;
+    const base = engine.browserSemaphore.activeCount;
+    await expect(act({ createSession: true, sessionId: 'x', tenantId: 'name:alice' }, caps(1, 1))).rejects.toThrow('newPage に失敗');
+    expect(engine.browserSemaphore.activeCount).toBe(base);
+    expect(opened).toBe(1);
+    expect(closed).toBe(1);
+    expect(getActiveSessionCount()).toBe(0);
+    await expect(act({ createSession: true, sessionId: 'x', tenantId: 'name:alice' }, caps(1, 1))).resolves.toBeDefined();
+  });
+
+  test('追い出したあとに作成が失敗したら、追い出されたセッションは閉じていて、予約は戻る（作り直せる）', async () => {
+    await create('name:alice', { sessionId: 'old' }, caps(1, 5));
+    failNextContext = true;
+    await expect(act({ createSession: true, sessionId: 'new', tenantId: 'name:alice' }, caps(1, 5))).rejects.toThrow('文脈を作れません');
+    expect(getActiveSessionCount()).toBe(0); // old は追い出されて閉じた。new は作れなかった
+    expect(opened - closed).toBe(0);
+    await expect(act({ createSession: true, sessionId: 'new', tenantId: 'name:alice' }, caps(1, 5))).resolves.toBeDefined();
   });
 });
 
