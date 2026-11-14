@@ -13,3 +13,6 @@ data/
 *.db-shm
 *.tsbuildinfo
 wreq-native-update/
+
+# Python のコンパイル済みファイル（scripts/ の台本を動かすとできる）
+__pycache__/
