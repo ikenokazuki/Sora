@@ -177,7 +177,7 @@ export const SETTINGS = {
   SORA_AUTH_DAILY_LIMIT: {
     area: 'auth', kind: 'int', min: 1, legacy: ['DAILY_REQUEST_LIMIT'], legacyOnly: 'error',
     defaultDoc: '*(無制限)*',
-    doc: 'API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます',
+    doc: 'API キーごとの 1 日（UTC）の最大リクエスト数。超えると `429` を返します。キー無しの匿名の要求は、まとめて 1 つの枠で数えます。一括（`urls`）は URL の件数、crawl は取ったページ数も数えます（始める前に、最大ページ数ぶんを数え、残りを超えるなら 1 つも取らずに `429` にします。取らなかった分は戻します）',
   },
 
   // --- ログ・通知 ---
