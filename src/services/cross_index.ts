@@ -10,12 +10,12 @@ import { errorMessage } from '../errors.js';
 import type { CrossRuling } from './cbp_cross.js';
 import { htsDirectory, queryTerms } from './hts_data.js';
 
-export const CROSS_INDEX_URL = 'https://github.com/ikenokazuki/Sora/releases/download/cross-index-1/cross-rulings-index-1.jsonl.gz';
-export const CROSS_INDEX_SHA256 = 'cdb7b121d62a969aa73492b285616b5b661047bf09e82ce522f92fadb029d861';
+export const CROSS_INDEX_URL = 'https://github.com/ikenokazuki/Sora/releases/download/cross-index-2/cross-rulings-index-2.jsonl.gz';
+export const CROSS_INDEX_SHA256 = 'a5a605b2f81de5c38aeb732d6a5f4e86d3950518fcc65a6300145d74f8a9cd93';
 export const CROSS_RULING_URL = 'https://rulings.cbp.gov/ruling/';
-/** 索引に ATLAS の判例が入るときに表示する出典（Apache-2.0 の表示の義務）。 */
+/** 索引を使ったときに表示する出典（2012 年からの判例の公開データは MIT、ATLAS は Apache-2.0 の表示の義務）。 */
 export const CROSS_INDEX_ATTRIBUTION =
-  'CBP の分類判例（米国政府の著作物）から作った索引。品名・説明は判例の原文を書き直したもの。一部の判例は “CROSS Rulings HTS Dataset for Tariff Classification by Flexify.AI Inc. (https://www.flexify.ai)” （https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs）の問い文を、名前を消して使用。';
+  'CBP の分類判例（米国政府の著作物）から作った索引。2011 年までの判例の品名・説明は、判例の原文を書き直したもの。2012 年からの判例は “AI-Extracted CBP Customs Rulings Dataset”（fklc/cbp-rulings-past-2012、https://huggingface.co/datasets/fklc/cbp-rulings-past-2012、Copyright (c) 2026 Fatih Kilic、MIT License）の品名・説明・コードを、名前を消して使用（同じ判例が無いものは、原文を書き直したもの）。一部の判例は “CROSS Rulings HTS Dataset for Tariff Classification by Flexify.AI Inc. (https://www.flexify.ai)” （https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs）の問い文を、名前を消して使用。';
 const SCHEMA_VERSION = '1';
 const FETCH_TIMEOUT_MS = 120_000;
 const RETRY_MS = 60 * 60 * 1000;
