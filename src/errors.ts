@@ -26,11 +26,12 @@ export class ScrapeInputError extends Error {}
 /**
  * 断った理由（ブラウザの枠の待ち行列。設計 6。穴 25）:
  * tenant_queue_full = その利用者が待てる数の上限・queue_full = 全体で待てる数の上限・queue_timeout = 待ち時間の上限
+ * （ブラウザセッションの数。設計 6。穴 22）session_limit = 全体のセッション数の上限（ほかの利用者のセッションは閉じない）
  */
-export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout';
+export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'session_limit';
 
 /**
- * 資源（ブラウザの枠）が混み合っていて、待たせずに（または待たせたあとに）断ったときの例外。
+ * 資源（ブラウザの枠・セッションの数）が混み合っていて、待たせずに（または待たせたあとに）断ったときの例外。
  * REST では 429 と Retry-After（秒）、MCP ではエラーの文になる。再試行してよい
  */
 export class ResourceBusyError extends Error {

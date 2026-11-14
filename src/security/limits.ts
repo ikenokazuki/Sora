@@ -50,6 +50,10 @@ export interface Limits {
   browserActionTotalMs: number;
   /** browser_action の extract.maxChars（抽出する本文の最大文字数）の上限 */
   browserExtractChars: number;
+  /** ブラウザセッションを持てる数。tenant ごと（作成中を含む）。超えたら、その tenant の一番使われていないセッションを閉じて作る */
+  browserSessionsPerTenant: number;
+  /** ブラウザセッションを持てる数。全体（tenant の合計。作成中を含む）。超えたら、ほかの tenant のセッションは閉じずに、断る（429） */
+  browserSessionsTotal: number;
 }
 
 const MB = 1024 * 1024;
@@ -76,6 +80,8 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserActionTimeoutMs: 180_000,
   browserActionTotalMs: 600_000,
   browserExtractChars: 1_000_000,
+  browserSessionsPerTenant: 20,
+  browserSessionsTotal: 20,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -100,6 +106,8 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserActionTimeoutMs: 60_000,
   browserActionTotalMs: 120_000,
   browserExtractChars: 100_000,
+  browserSessionsPerTenant: 5,
+  browserSessionsTotal: 20,
 });
 
 /**

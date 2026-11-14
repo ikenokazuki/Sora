@@ -91,6 +91,15 @@ describe('limits', () => {
     }
   });
 
+  test('ブラウザセッションの数の値（利用者ごと・全体）: strict は利用者ごとに 5・全体 20、standard は利用者ごとも全体と同じ 20（利用者が 1 人なら、今までと同じ）', () => {
+    expect(STRICT_LIMITS).toMatchObject({ browserSessionsPerTenant: 5, browserSessionsTotal: 20 });
+    expect(STANDARD_LIMITS).toMatchObject({ browserSessionsPerTenant: 20, browserSessionsTotal: 20 });
+    for (const table of [STANDARD_LIMITS, STRICT_LIMITS]) {
+      // 1 人の上限が、全体を超える値にはしない（超えても、全体の上限が先に効くだけで、意味がない）
+      expect(table.browserSessionsPerTenant).toBeLessThanOrEqual(table.browserSessionsTotal);
+    }
+  });
+
   test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());

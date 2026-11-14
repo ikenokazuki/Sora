@@ -35,6 +35,11 @@ describe('混み合って断られたら、429 と Retry-After', () => {
     await expectBusy429(await appFor(browserRoutes).request('/browser/action', post({ url: 'https://example.com/' })));
   });
 
+  test('POST /browser/action: セッション数の上限（session_limit）も同じ。429 と Retry-After', async () => {
+    spies.push(spyOn(scraper, 'executeBrowserActions').mockRejectedValue(new ResourceBusyError('ブラウザセッションが全体の上限（20 件）に達しています', 'session_limit', 30)));
+    await expectBusy429(await appFor(browserRoutes).request('/browser/action', post({ createSession: true, url: 'https://example.com/' })), '30');
+  });
+
   test('POST /scrape', async () => {
     spies.push(spyOn(scraper, 'scrapeUrl').mockRejectedValue(busy()));
     await expectBusy429(await appFor(scrapeRoutes).request('/scrape', post({ url: 'https://example.com/' })));

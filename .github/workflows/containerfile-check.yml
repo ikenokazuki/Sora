@@ -49,6 +49,7 @@ on:
       - src/routes/utils.ts
       - src/browser_semaphore.ts
       - src/browser_session.ts
+      - src/browser_session_registry.ts
       - src/errors.ts
       - src/routes/tracking.ts
       - src/routes/song_recognition.ts
