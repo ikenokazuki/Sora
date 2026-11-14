@@ -125,6 +125,7 @@ describe('local CROSS ruling index', () => {
       expect(res.evidence.crossStatus).toBe('ok');
       expect(res.detectedSubheading).toBe('6912.00');
       expect(res.evidence.attribution).toContain('Flexify.AI');
+      expect(res.evidence.attribution).toContain('fklc/cbp-rulings-past-2012');
       expect(res.evidence.rulings.length).toBeGreaterThan(0);
       expect(res.evidence.rulings.every((r) => r.url.startsWith('https://rulings.cbp.gov/ruling/'))).toBe(true);
     } finally {
