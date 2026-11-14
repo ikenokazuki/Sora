@@ -13,6 +13,7 @@
  *  (9) REST のモジュール（設計 5。穴 20）: SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求は 401 で、設定を教えない）。文書（/openapi.json）にも載らない
  *  (10) 増幅の上限（設計 6。穴 11・21）: SORA_ISOLATION=strict で、map_site は robots.txt の Sitemap: 行の先頭 5 つだけを取り、crawl のパターンとセレクタは 20 個まで（超えたら 400）。standard（既定）では、緩い値
  *  (11) ブラウザの枠（設計 6。穴 22・25）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant（bob）の待ちを上限（10 件）まで埋めると、bob の次の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき・code: BROWSER_BUSY）。browser_action の入力の上限（21 個のアクション）は、枠の待ちより先に検査され、429 でなく 400（INVALID_INPUT）。別の tenant（alice）は断られず、待つ（以前は、全体で 1 本の列で、上限も時間切れも無く、どの tenant も同じように待たされ続けた）
+ *  (12) ブラウザセッション（設計 6。穴 22・23）: 本物のブラウザ（イメージの Chromium）で、SORA_ISOLATION=strict のとき、同じ ID を別の tenant が使え（以前は 403 で、ほかの tenant の ID の存在が分かった）、bob が閉じても alice のセッションは残る。1 人が持てるのは 5 件で、6 件目の作成は、その人の一番使われていないセッションだけを閉じる。全体が 20 件になると、新しい作成は 429（BROWSER_BUSY・Retry-After: 30）で断り、ほかの tenant のセッションは閉じない
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -26,6 +27,7 @@ import { join } from 'node:path';
 import { LEGACY } from '../src/config.js';
 import { getFromCache, setToCache } from '../src/cache.js';
 import { browserSemaphore } from '../src/browser_engine.js';
+import { closeAllBrowserSessions } from '../src/browser_session.js';
 import { dbSaveTenantCookies } from '../src/db.js';
 import { closeHttpSession } from '../src/http_fetcher.js';
 import { app, mcpSessionManager } from '../src/index.js';
@@ -460,6 +462,65 @@ await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(key
   } finally {
     console.error = originalError;
   }
+});
+// (12) ブラウザセッションと tenant。本物のブラウザ（イメージの Chromium）で、本物のサーバー越しに確かめる。(11) は枠を手放さないので、その前に置く
+const SESSION_NAMES = ['alice', 'bob', 'carol', 'dave', 'erin'];
+const sessionKey = (name: string) => `session-${name}-key-0123456789abcdef`;
+const sessionKeyPath = join(keyDir, 'session-keys.json');
+writeFileSync(sessionKeyPath, JSON.stringify({ keys: SESSION_NAMES.map((name) => ({ name: `session-${name}`, key: sessionKey(name) })) }));
+chmodSync(sessionKeyPath, 0o600);
+await scenario('ブラウザセッション（strict）', { SORA_AUTH_KEYS_FILE: sessionKeyPath, SORA_ISOLATION: 'strict', SORA_FETCH_ALLOW_PRIVATE_NETWORK: 'true' }, async () => {
+  const act = (name: string, body: object) => restAs(sessionKey(name), 'POST', '/browser/action', { extract: { markdown: false }, ...body });
+  const at = (result: { json?: any }, path: string) => result.json?.url === `${siteBase}${path}`;
+  const note = (result: { status: number; text: string }) => `${result.status} ${result.text.slice(0, 160)}`;
+
+  // 名前の空間: 同じ ID を別の tenant が使える（以前は 403 で、ほかの tenant の ID の存在が分かった）。互いのセッションは別で、bob が閉じても alice のは残る
+  const a = await act('alice', { createSession: true, sessionId: 'shared', url: `${siteBase}/a` });
+  check(a.status === 200 && a.json?.sessionId === 'shared' && at(a, '/a'), `ブラウザセッション: alice の作成が失敗した: ${note(a)}`);
+  const b = await act('bob', { sessionId: 'shared', url: `${siteBase}/b` });
+  check(b.status === 200 && at(b, '/b'), `ブラウザセッション: bob が alice と同じ ID を使えない（403 は、alice の ID の存在が分かってしまう）: ${note(b)}`);
+  const bobClosed = await act('bob', { sessionId: 'shared', closeSession: true });
+  check(bobClosed.status === 200 && bobClosed.json?.sessionClosed === true, `ブラウザセッション: bob が自分のセッションを閉じられない: ${note(bobClosed)}`);
+  const aliceKept = await act('alice', { sessionId: 'shared' });
+  check(aliceKept.status === 200 && at(aliceKept, '/a'), `ブラウザセッション: bob が閉じたあと、alice のセッションが残っていない（url が /a でない）: ${note(aliceKept)}`);
+  const bobClosedAgain = await act('bob', { sessionId: 'shared', closeSession: true });
+  check(bobClosedAgain.status === 200 && bobClosedAgain.json?.sessionClosed === false, `ブラウザセッション: bob の 2 回目の closeSession が false でない（alice のセッションを閉じた疑い）: ${note(bobClosedAgain)}`);
+
+  // 1 人の数（strict は 5 件）: carol が 6 件作ると、carol の一番使われていないセッション（c1）だけが閉じる
+  for (let i = 1; i <= 6; i++) {
+    const created = await act('carol', { createSession: true, sessionId: `c${i}`, url: `${siteBase}/c${i}` });
+    check(created.status === 200 && created.json?.sessionId === `c${i}`, `ブラウザセッション: carol の c${i} の作成が失敗した: ${note(created)}`);
+  }
+  for (let i = 2; i <= 6; i++) {
+    const kept = await act('carol', { sessionId: `c${i}` });
+    check(kept.status === 200 && at(kept, `/c${i}`), `ブラウザセッション: carol の c${i} が残っていない（url が /c${i} でない）: ${note(kept)}`);
+  }
+  const evicted = await act('carol', { sessionId: 'c1' });
+  check(evicted.status === 200 && evicted.json?.url === 'about:blank', `ブラウザセッション: carol の 6 件目の作成で、一番使われていない c1 が閉じていない（url=${evicted.json?.url}）: ${note(evicted)}`);
+  const aliceStill = await act('alice', { sessionId: 'shared' });
+  check(aliceStill.status === 200 && at(aliceStill, '/a'), `ブラウザセッション: carol の追い出しで、alice のセッションが閉じた: ${note(aliceStill)}`);
+
+  // 全体の数（20 件）: alice 1 + carol 5 + dave 5 + erin 5 + bob 4 = 20。alice の 2 件目の作成は、429 で断り、ほかの tenant のセッションは閉じない
+  for (const [name, count] of [['dave', 5], ['erin', 5], ['bob', 4]] as const) {
+    for (let i = 1; i <= count; i++) {
+      const created = await act(name, { createSession: true, sessionId: `${name[0]}${i}`, url: `${siteBase}/${name[0]}${i}` });
+      check(created.status === 200, `ブラウザセッション: ${name} の ${name[0]}${i} の作成が失敗した: ${note(created)}`);
+    }
+  }
+  const full = await act('alice', { createSession: true, sessionId: 'second' });
+  check(full.status === 429 && full.json?.code === 'BROWSER_BUSY' && full.json?.retryable === true, `ブラウザセッション: 全体が 20 件のとき、alice の 2 件目の作成が 429（BROWSER_BUSY）でない: ${note(full)}`);
+  check(full.headers.get('retry-after') === '30', `ブラウザセッション: 429 に Retry-After: 30 が付いていない（${full.headers.get('retry-after')}）`);
+  check(String(full.json?.error).includes('20'), `ブラウザセッション: 429 の文に全体の上限（20）が無い: ${note(full)}`);
+  for (const [name, id] of [['dave', 'd1'], ['erin', 'e5'], ['carol', 'c6'], ['bob', 'b4']] as const) {
+    const kept = await act(name, { sessionId: id });
+    check(kept.status === 200 && at(kept, `/${id}`), `ブラウザセッション: 断られた作成のせいで、${name} の ${id} が閉じた（url が /${id} でない）: ${note(kept)}`);
+  }
+  // 空きができれば、作れる（断った予約が残らない）
+  const erinClosed = await act('erin', { sessionId: 'e1', closeSession: true });
+  check(erinClosed.status === 200 && erinClosed.json?.sessionClosed === true, `ブラウザセッション: erin の e1 を閉じられない: ${note(erinClosed)}`);
+  const second = await act('alice', { createSession: true, sessionId: 'second', url: `${siteBase}/second` });
+  check(second.status === 200 && at(second, '/second'), `ブラウザセッション: 空きができたあとも、alice の 2 件目の作成が通らない: ${note(second)}`);
+  await closeAllBrowserSessions();
 });
 // (11) ブラウザの枠。枠は手放さない（確認の終わりまで）。alice の待っている要求が、枠を得てブラウザを起動しないように、確認はプロセスの終了で終える
 const pendingAfter = (ms: number) => new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), ms));

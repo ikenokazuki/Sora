@@ -101,6 +101,7 @@ docker run --rm \
 #     REST のモジュール（設計 5。E29）: SORA_MODULES=web にすると、/watch/*・/trade/* など web 以外の経路は、REST でも 404（MODULE_DISABLED）。認証のあとに検査する（鍵のない要求は 401）。/openapi.json にも載らない。既定（all）では開いている
 #     増幅の上限（設計 6。E30）: SORA_ISOLATION=strict で、map_site は robots.txt の Sitemap: 行の先頭 5 つだけを取り（100 行並べた悪意のあるサイトでも、通信は 5 回）、crawl のパターンとセレクタは 20 個まで（21 個は 400）。既定（standard）では、緩い値（51 個のセレクタは通り、Sitemap: は 5 行より多く取る）
 #     ブラウザの枠（設計 6。E31・E32）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant の待ちを上限（10 件）まで埋めると、その tenant の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき）。browser_action の入力の上限（21 個のアクション）は、枠の待ちより先に検査して 400。別の tenant は断られない（main の src に当てると、待たされて失敗する）
+#     ブラウザセッション（設計 6。E34）: SORA_ISOLATION=strict で、本物のブラウザ（イメージの Chromium）に、同じ ID を別の tenant が使え（403 にならない）、bob が閉じても alice のセッションは残り、1 人は 5 件まで（6 件目は、その人の一番使われていないセッションだけを閉じる）、全体が 20 件になったら 429（Retry-After: 30）で断り、ほかの tenant のセッションを閉じない
 #     アプリ全体（src/index.ts）を読み込むので、楽曲認識の指紋のパッケージ（packages/audio-signature。src が相対で読む）も /app に置く
 docker run --rm \
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
