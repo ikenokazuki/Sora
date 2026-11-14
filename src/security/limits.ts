@@ -54,6 +54,8 @@ export interface Limits {
   browserSessionsPerTenant: number;
   /** ブラウザセッションを持てる数。全体（tenant の合計。作成中を含む）。超えたら、ほかの tenant のセッションは閉じずに、断る（429） */
   browserSessionsTotal: number;
+  /** ブラウザセッションの最長の時間（ミリ秒）。作成からの時間で、使い続けても延びない。過ぎたら、使っていないときに閉じる */
+  browserSessionMaxMs: number;
 }
 
 const MB = 1024 * 1024;
@@ -82,6 +84,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserExtractChars: 1_000_000,
   browserSessionsPerTenant: 20,
   browserSessionsTotal: 20,
+  browserSessionMaxMs: 86_400_000,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -108,6 +111,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserExtractChars: 100_000,
   browserSessionsPerTenant: 5,
   browserSessionsTotal: 20,
+  browserSessionMaxMs: 3_600_000,
 });
 
 /**

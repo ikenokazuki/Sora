@@ -100,6 +100,11 @@ describe('limits', () => {
     }
   });
 
+  test('ブラウザセッションの最長の時間（作成から。使い続けても延びない）: strict は 1 時間、standard は 24 時間', () => {
+    expect(STRICT_LIMITS.browserSessionMaxMs).toBe(3_600_000);
+    expect(STANDARD_LIMITS.browserSessionMaxMs).toBe(86_400_000);
+  });
+
   test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());

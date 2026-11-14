@@ -21,7 +21,7 @@ import {
 } from './scraper.js';
 import { envBool } from './config.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
-import { type Limits, limits } from './security/limits.js';
+import { isolationLevel, type Limits, limits } from './security/limits.js';
 import { browserResolvesLocally } from './net/egress.js';
 import { DEFAULT_SESSION_TENANT, SessionRegistry } from './browser_session_registry.js';
 
@@ -87,6 +87,10 @@ export interface BrowserSession {
   /** blockMedia を外したあと、開いたままのページの画像をまだ読み直していない（読み直しが済むまで true。失敗した呼び出しをまたいで残る） */
   imagesStale?: boolean;
   lastActive: number;
+  /** 作成した時刻。最長の時間（browserSessionMaxMs）は、ここから数える。使い続けても延びない */
+  createdAt: number;
+  /** いま使っている呼び出しの数（枠を待っている間も含む）。1 以上のセッションは、期限切れ・追い出しで閉じない */
+  inUse: number;
   timer: any;
 }
 
@@ -146,16 +150,44 @@ export function assertSessionId(sessionId: string | undefined): void {
   if ([...sessionId].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) throw new ScrapeInputError('sessionId に制御文字は使えません');
 }
 
-/** セッションタイマーのリセット */
-function refreshSessionTimer(session: BrowserSession) {
+/** 作成から最長の時間を過ぎたか */
+const pastLifetime = (session: BrowserSession, lim: Readonly<Limits>): boolean => Date.now() - session.createdAt >= lim.browserSessionMaxMs;
+
+/** 期限のタイマー。使っていないまま 5 分たつか、最長の時間（作成から）が来るかの、早いほうで閉じる。使用中は閉じない（使い終わりで、数え直す） */
+function refreshSessionTimer(session: BrowserSession, lim: Readonly<Limits>) {
   if (session.timer) {
     clearTimeout(session.timer);
   }
   session.lastActive = Date.now();
+  const untilLifetimeEnd = session.createdAt + lim.browserSessionMaxMs - Date.now();
   session.timer = setTimeout(async () => {
-    console.log(`[Sora] Session ${session.id} expired due to inactivity. Closing...`);
+    if (session.inUse > 0) return;
+    if (sessionRegistry.get(session.tenantId, session.id) !== session) return;
+    console.log(`[Sora] Session ${session.id} expired (inactivity or lifetime). Closing...`);
     await closeBrowserSession(session.id, session.tenantId);
-  }, SESSION_TTL_MS);
+  }, Math.max(0, Math.min(SESSION_TTL_MS, untilLifetimeEnd)));
+}
+
+/**
+ * 呼び出しが終わったあとの、セッションの扱い（inUse を戻したあとに呼ぶ）。登録簿にもう無い（持ち主が閉じた・追い出された）なら、何もしない
+ * （同じ ID の新しいセッションに、触らない）。ほかの呼び出しがまだ使っているなら、何もしない（最後に終わった呼び出しが扱う）。
+ * 最長の時間を過ぎていたら閉じ、そうでなければ、終わりから期限を数え直す
+ */
+function settleAfterUse(session: BrowserSession, lim: Readonly<Limits>): void {
+  if (sessionRegistry.get(session.tenantId, session.id) !== session) return;
+  if (session.inUse > 0) return; // ほかの呼び出しがまだ使っている。最後に終わった呼び出しが、数え直す
+  if (pastLifetime(session, lim)) {
+    void closeBrowserSession(session.id, session.tenantId);
+    return;
+  }
+  refreshSessionTimer(session, lim);
+}
+
+/** strict では、tenant の無い（legacy）セッションを使えない（所有者を決められないので、ほかの呼び出しと区別できない） */
+function assertSessionsAllowed(tenantId: string): void {
+  if (tenantId === DEFAULT_SESSION_TENANT && isolationLevel() === 'strict') {
+    throw new Error('Forbidden: SORA_ISOLATION=strict では、利用者を決める鍵が無い呼び出し（legacy）は、ブラウザセッションを使えません');
+  }
 }
 
 /** セッションの資源（タイマー・ページ・文脈・専用ブラウザ）を閉じる。登録簿からは外さない（外してから呼ぶ） */
@@ -191,6 +223,60 @@ export async function closeAllBrowserSessions(): Promise<void> {
 /** アクティブセッション数の取得（作成中は含まない） */
 export function getActiveSessionCount(): number {
   return sessionRegistry.size;
+}
+
+/**
+ * 新しいセッションを作って、登録する（呼んだ呼び出しが使用中の状態で）。
+ * 予約は同期（数の上限・同じ ID の作成中の検査と一緒）。自分の上限なら、自分の使っていない一番古いセッションを閉じる。
+ * 全体がいっぱいなら、ほかの利用者のセッションは閉じずに、ここで断る。作成の途中で失敗したら、予約を取り消し、開いた文脈を閉じる（漏らさない）
+ */
+async function createBrowserSession(options: BrowserSessionOptions, tenantId: string, id: string, needScreenshot: boolean, lim: Readonly<Limits>): Promise<BrowserSession> {
+  const evicted = sessionRegistry.reserve(tenantId, id, { perTenant: lim.browserSessionsPerTenant, total: lim.browserSessionsTotal });
+  let browserInstance: Browser | undefined;
+  let context: BrowserContext | undefined;
+  let isDedicated = false;
+  try {
+    if (evicted) {
+      console.log(`[Sora] Evicting least recently used browser session ${evicted.id} of ${tenantId} due to its session limit (${lim.browserSessionsPerTenant})`);
+      await disposeSession(evicted);
+    }
+    const browserRes = await getBrowser();
+    browserInstance = browserRes.browser;
+    isDedicated = browserRes.isDedicated;
+    // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
+    context = await browserInstance.createBrowserContext();
+    const page = await context.newPage();
+    const created: BrowserSession = {
+      id,
+      page,
+      context,
+      dedicatedBrowser: isDedicated ? browserInstance : undefined,
+      ownerTokenHash: hashToken(options.ownerToken),
+      tenantId,
+      blockMedia: !needScreenshot,
+      lastActive: Date.now(),
+      createdAt: Date.now(),
+      inUse: 1,
+      timer: null,
+    };
+    await setupPageSecurity(page, () => created.blockMedia);
+
+    // ダイアログ (alert / confirm / prompt) の自動承認
+    page.on('dialog', async (dialog) => {
+      try {
+        await dialog.accept();
+      } catch {}
+    });
+
+    await applyStealthEvasions(page);
+
+    sessionRegistry.commit(created);
+    return created;
+  } catch (err) {
+    sessionRegistry.cancel(tenantId, id);
+    await (isDedicated ? browserInstance?.close() : context?.close())?.catch(() => {});
+    throw err;
+  }
 }
 
 /**
@@ -546,86 +632,67 @@ export async function handleBrowserSessionAction(
   /** ワンショット実行が持つ枠（実行の終わりまで持つ）。セッション作成の枠は、作成の間だけ持つ */
   let oneShotLease: Lease | undefined;
 
+  /** ステートフルな呼び出しが持つ枠（呼び出しの終わりまで持つ） */
+  let statefulLease: Lease | undefined;
+  /** この呼び出しが使用中にしたセッション（inUse を足したもの）。終わりで戻す */
+  let using: BrowserSession | undefined;
+  /** ステートフルな呼び出しの終わり（失敗も含む）: 枠を戻し、使用中の印を外し、期限を数え直す（最長の時間を過ぎていたら閉じる） */
+  const endStatefulUse = () => {
+    statefulLease?.();
+    statefulLease = undefined;
+    if (using) {
+      using.inUse--;
+      settleAfterUse(using, lim);
+      using = undefined;
+    }
+  };
+
   if (isStateful) {
     // 既存セッションの取得または新規作成。ID は、呼んだ利用者の空間の中だけで引く
     const tenantId = options.tenantId || DEFAULT_SESSION_TENANT;
+    assertSessionsAllowed(tenantId);
     const requestedId = options.sessionId || `sess_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-    const found = options.sessionId ? sessionRegistry.get(tenantId, options.sessionId) : undefined;
-    if (found) {
-      session = useExistingSession(found, options, needScreenshot);
-      page = session.page;
-    } else {
-      // 新規セッションの初期化。枠を得てから、数の上限の検査と予約をする（枠を断られたときに、ほかの人のセッションを閉じない）
-      const lease = await browserSemaphore.acquire(tenantId);
+    try {
+      let existing = options.sessionId ? sessionRegistry.get(tenantId, options.sessionId) : undefined;
+      if (existing && existing.inUse === 0 && pastLifetime(existing, lim)) {
+        // 最長の時間を過ぎた、使っていないセッション。閉じて、新しく作る（期限のタイマーを待たない）
+        await closeBrowserSession(existing.id, tenantId);
+        existing = undefined;
+      }
+      if (existing) {
+        // 所有者+テナントの検証のあと、使用中にする（枠を待つ間も、期限切れ・追い出しで閉じない）
+        using = existing = useExistingSession(existing, options, needScreenshot);
+        existing.inUse++;
+      }
+      // 作成済みでも新規でも、枠の下で動く（ワンショットと同じ。呼び出しの終わりまで持つ）。枠を断られたら、ここで例外
+      statefulLease = await browserSemaphore.acquire(tenantId);
       recordBrowserUsage();
-      try {
+      if (existing && sessionRegistry.get(tenantId, existing.id) !== existing) {
+        // 枠を待つ間に、持ち主の closeSession で閉じられた。見つからないときと同じに、新しく作る
+        existing.inUse--;
+        existing = undefined;
+        using = undefined;
+      }
+      if (!existing && options.sessionId) {
         // 枠を待つ間に、同じ ID のセッションが作られていたら、それを使う。同じ ID の作成が走っているなら、終わるのを待って、引き直す
         // （同じ ID の同時の呼び出し。空いている枠の数に左右されずに、同じ結果になる。先の作成が失敗したら、自分で作る）
-        let raced: BrowserSession | undefined;
-        if (options.sessionId) {
-          raced = sessionRegistry.get(tenantId, options.sessionId);
-          for (let waiting = sessionRegistry.pending(tenantId, options.sessionId); !raced && waiting; waiting = sessionRegistry.pending(tenantId, options.sessionId)) {
-            await waiting;
-            raced = sessionRegistry.get(tenantId, options.sessionId);
-          }
+        existing = sessionRegistry.get(tenantId, options.sessionId);
+        for (let waiting = sessionRegistry.pending(tenantId, options.sessionId); !existing && waiting; waiting = sessionRegistry.pending(tenantId, options.sessionId)) {
+          await waiting;
+          existing = sessionRegistry.get(tenantId, options.sessionId);
         }
-        if (raced) {
-          session = useExistingSession(raced, options, needScreenshot);
-          page = session.page;
-        } else {
-          // 予約は同期（数の上限・同じ ID の作成中の検査と一緒）。自分の上限なら、自分の一番使われていないセッションを閉じる。
-          // 全体がいっぱいなら、ほかの利用者のセッションは閉じずに、ここで断る
-          const evicted = sessionRegistry.reserve(tenantId, requestedId, {
-            perTenant: lim.browserSessionsPerTenant,
-            total: lim.browserSessionsTotal,
-          });
-          try {
-            if (evicted) {
-              console.log(`[Sora] Evicting least recently used browser session ${evicted.id} of ${tenantId} due to its session limit (${lim.browserSessionsPerTenant})`);
-              await disposeSession(evicted);
-            }
-            const browserRes = await getBrowser();
-            browserInstance = browserRes.browser;
-            isDedicated = browserRes.isDedicated;
-            // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
-            context = await browserInstance.createBrowserContext();
-            page = await context.newPage();
-            const created: BrowserSession = {
-              id: requestedId,
-              page,
-              context,
-              dedicatedBrowser: isDedicated ? browserInstance : undefined,
-              ownerTokenHash: hashToken(options.ownerToken),
-              tenantId,
-              blockMedia: !needScreenshot,
-              lastActive: Date.now(),
-              timer: null,
-            };
-            await setupPageSecurity(page, () => created.blockMedia);
-
-            // ダイアログ (alert / confirm / prompt) の自動承認
-            page.on('dialog', async (dialog) => {
-              try {
-                await dialog.accept();
-              } catch {}
-            });
-
-            await applyStealthEvasions(page);
-
-            session = created;
-            sessionRegistry.commit(session);
-          } catch (err) {
-            // 作成の途中で失敗したら、予約を取り消し、開いた文脈を閉じる（漏らさない）
-            sessionRegistry.cancel(tenantId, requestedId);
-            await (isDedicated ? browserInstance?.close() : context?.close())?.catch(() => {});
-            throw err;
-          }
+        if (existing) {
+          using = existing = useExistingSession(existing, options, needScreenshot);
+          existing.inUse++;
         }
-      } finally {
-        lease();
       }
+      session = existing ?? (using = await createBrowserSession(options, tenantId, requestedId, needScreenshot, lim));
+      page = session.page;
+      refreshSessionTimer(session, lim);
+    } catch (err) {
+      endStatefulUse();
+      throw err;
     }
-    refreshSessionTimer(session);
   } else {
     // ワンショット実行（セッション管理なし・即破棄）
     oneShotLease = await browserSemaphore.acquire(options.tenantId);
@@ -782,6 +849,8 @@ export async function handleBrowserSessionAction(
       } finally {
         oneShotLease?.();
       }
+    } else {
+      endStatefulUse();
     }
   }
 }

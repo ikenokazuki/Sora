@@ -13,8 +13,9 @@ interface Fake {
   id: string;
   tenantId: string;
   lastActive: number;
+  inUse: number;
 }
-const fake = (tenantId: string, id: string, lastActive = 0): Fake => ({ id, tenantId, lastActive });
+const fake = (tenantId: string, id: string, lastActive = 0, inUse = 0): Fake => ({ id, tenantId, lastActive, inUse });
 const caps = (perTenant: number, total: number): SessionCaps => ({ perTenant, total });
 
 /** 予約して、登録まで進める。追い出されたセッションを返す */
@@ -171,6 +172,40 @@ describe('利用者ごとの上限', () => {
     expect(registry.size).toBe(2);
     registry.commit(fake('name:alice', 'a4'));
     expect(registry.size).toBe(3);
+  });
+
+  test('使用中（inUse が 1 以上。枠を待っている呼び出しも含む）のセッションは追い出さない。一番使われていない、使っていないものを追い出す', () => {
+    const registry = new SessionRegistry<Fake>();
+    const busyOldest = fake('name:alice', 'a1', 1, 1);
+    const idle = fake('name:alice', 'a2', 50);
+    create(registry, busyOldest, caps(2, 20));
+    create(registry, idle, caps(2, 20));
+    expect(registry.reserve('name:alice', 'a3', caps(2, 20))).toBe(idle);
+    expect(registry.get('name:alice', 'a1')).toBe(busyOldest);
+  });
+
+  test('その利用者のセッションが全部、使用中か作成中なら、追い出さずに断る（session_limit。何も変えない。数える）', () => {
+    const registry = new SessionRegistry<Fake>();
+    const a1 = fake('name:alice', 'a1', 1, 1);
+    const a2 = fake('name:alice', 'a2', 2, 3);
+    create(registry, a1, caps(2, 20));
+    create(registry, a2, caps(2, 20));
+    let error: unknown;
+    try {
+      registry.reserve('name:alice', 'a3', caps(2, 20));
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(ResourceBusyError);
+    expect((error as ResourceBusyError).reason).toBe('session_limit');
+    expect((error as ResourceBusyError).message).toContain('使用中');
+    expect(getSecurityMetrics().sora_browser_busy_session_limit_total).toBe(1);
+    expect(registry.size).toBe(2);
+    expect(registry.get('name:alice', 'a1')).toBe(a1);
+    expect(registry.get('name:alice', 'a2')).toBe(a2);
+    // 使い終われば、追い出せる
+    a1.inUse = 0;
+    expect(registry.reserve('name:alice', 'a3', caps(2, 20))).toBe(a1);
   });
 
   test('使われた時刻が同じなら、先に作ったほうを追い出す', () => {

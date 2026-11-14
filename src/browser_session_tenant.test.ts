@@ -232,9 +232,10 @@ test('使われなくなって期限が切れたら、その利用者のセッ�
     }) as never),
   );
   await create('name:alice', { sessionId: 'same' });
+  const aliceExpiry = expiries.at(-1); // alice のセッションの、いちばん新しい期限のタイマー
   await create('name:bob', { sessionId: 'same' });
-  expect(expiries).toHaveLength(2);
-  expiries[0](); // alice の期限
+  expect(aliceExpiry).toBeDefined();
+  aliceExpiry?.(); // alice の期限
   await new Promise((resolve) => realSetTimeout(resolve, 20));
   expect(closed).toBe(1);
   expect(getActiveSessionCount()).toBe(1);
