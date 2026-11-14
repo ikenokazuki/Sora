@@ -135,6 +135,7 @@ import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
+import { chargeQuota, quotaDay, refundQuota } from './security/quota.js';
 
 // ==========================================
 // 2. ブラウザ自動操作 (browser_action)
@@ -1140,6 +1141,8 @@ export async function scrapeBatchUrls(options: {
 }): Promise<BatchScrapeResult> {
   const { urls, concurrency = 3, webhookUrl, ...scrapeOpts } = options;
   assertScrapeInputs(scrapeOpts);
+  // 日次クォータは、URL の件数を数える（要求の 1 回は、HTTP の層がもう数えている）。超えるなら、1 件も取らずに断る（設計 6。穴 26）
+  chargeQuota(options.tenantId, urls.length - 1);
   const limitWorkers = Math.min(Math.max(concurrency, 1), 5);
 
   const results: ScrapeResult[] = [];
@@ -1460,7 +1463,38 @@ type CrawledPage = Record<string, any> & { url: string };
 /** crawl でたどるリンクの URL の長さの上限（これより長いリンクは、たどらない） */
 const MAX_CRAWL_URL_LENGTH = 8192;
 
-export async function crawlSiteUrl(options: {
+/** crawl が取るページ数の上限（maxPages の既定 10・最大 50）。本体の targetLimit と同じ */
+export function crawlPageBudget(maxPages: number | undefined = 10): number {
+  return Number.isFinite(maxPages) ? Math.max(0, Math.min(Math.floor(maxPages), 50)) : 10;
+}
+
+/**
+ * 再帰クロール。日次クォータは、取ったページ数を数える（設計 6。穴 26）: 始める前に、最大ページ数ぶんを数えて（超えるなら 1 ページも取らずに断る）、
+ * 終わったら、取らなかった分を戻す。途中で失敗したときも、取れたページの分だけ残す。要求の 1 回は、HTTP の層がもう数えている
+ */
+export async function crawlSiteUrl(options: Parameters<typeof crawlSiteUrlCore>[0]): ReturnType<typeof crawlSiteUrlCore> {
+  assertCrawlInputs(options);
+  const reserved = crawlPageBudget(options.maxPages);
+  const day = quotaDay(); // 日をまたぐ crawl でも、足した日の行から戻す
+  chargeQuota(options.tenantId, reserved - 1, day);
+  const meter: CrawlMeter = { attempts: 0 };
+  try {
+    return await crawlSiteUrlCore(options, meter);
+  } finally {
+    // 数えるのは、取得を試みた回数（失敗したリンクも含む）。最大ページ数を超えた分は、戻す量が 0 以下になり、戻さない（先に数えた分より多くは数えない）
+    refundQuota(options.tenantId, Math.max(0, reserved - 1) - Math.max(0, meter.attempts - 1), day);
+  }
+}
+
+/** crawl 1 回の取得の試みの数（日次クォータが数える）。本体が、取得を始めるたびに足す */
+interface CrawlMeter {
+  attempts: number;
+}
+
+/** crawl が試みる取得の数の上限は、最大ページ数のこの倍数（取れないリンクを大量に並べたサイトで、試みが際限なく続かないように） */
+const CRAWL_ATTEMPT_FACTOR = 3;
+
+async function crawlSiteUrlCore(options: {
   url: string;
   maxPages?: number;
   maxDepth?: number;
@@ -1485,7 +1519,7 @@ export async function crawlSiteUrl(options: {
   onPageScraped?: (page: ScrapeResult) => void;
   /** 応答の pages と同じ整形をかけた 1 ページを渡す */
   onPageCrawled?: (page: CrawledPage, count: number) => void;
-}): Promise<{
+}, meter: CrawlMeter): Promise<{
   url: string;
   baseUrl: string;
   count: number;
@@ -1512,7 +1546,7 @@ export async function crawlSiteUrl(options: {
     onPageCrawled,
   } = options;
 
-  const targetLimit = Number.isFinite(maxPages) ? Math.max(0, Math.min(Math.floor(maxPages), 50)) : 10;
+  const targetLimit = crawlPageBudget(maxPages);
   // 並行度は OpenAPI（CrawlRequestSchema）の記載どおり 1〜10、既定 3。
   const workers = Number.isFinite(options.concurrency) ? Math.max(1, Math.min(Math.floor(options.concurrency as number), 10)) : 3;
 
@@ -1550,10 +1584,11 @@ export async function crawlSiteUrl(options: {
     return true;
   };
 
+  const attemptLimit = targetLimit * CRAWL_ATTEMPT_FACTOR;
   while (queue.length > 0 && pages.length < targetLimit) {
-    // 幅優先の順序を保ったまま、残りページ枠を超えない範囲で最大 workers 件ずつ並行取得する
+    // 幅優先の順序を保ったまま、残りページ枠・残りの試みの数を超えない範囲で最大 workers 件ずつ並行取得する
     const batch: Array<{ url: string; depth: number }> = [];
-    const room = Math.min(workers, targetLimit - pages.length);
+    const room = Math.min(workers, targetLimit - pages.length, attemptLimit - meter.attempts);
     while (batch.length < room && queue.length > 0) {
       const item = queue.shift()!;
       const key = visitKey(item.url);
@@ -1563,6 +1598,7 @@ export async function crawlSiteUrl(options: {
       batch.push(item);
     }
     if (batch.length === 0) break;
+    meter.attempts += batch.length; // 取得を始める前に数える（失敗しても、途中で中断されても、試みた分は数える）
 
     const settled = await Promise.all(
       batch.map(async (item) => {

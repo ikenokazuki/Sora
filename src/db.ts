@@ -472,6 +472,37 @@ export function dbIncrementApiUsage(apiKeyHash: string, dateStr: string): number
   }
 }
 
+/** 今日の API 使用量（回数）。行がなければ 0。DB が使えないときも 0（日次クォータは、DB の失敗では断らない） */
+export function dbGetApiUsage(apiKeyHash: string, dateStr: string): number {
+  try {
+    const row = getDb()
+      .query<{ request_count: number }, [string, string]>('SELECT request_count FROM api_usage WHERE api_key_hash = ? AND date = ?')
+      .get(apiKeyHash, dateStr);
+    return row ? row.request_count : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * API 使用量を units 回ぶん足して（負の数は戻して、0 で止める）、足したあとの回数を返す。一括・crawl の件数分の数え方に使う。
+ * 同期で 1 つの文で行うので、同じプロセスの中では、ほかの呼び出しと混ざらない
+ */
+export function dbAddApiUsage(apiKeyHash: string, dateStr: string, units: number): number {
+  try {
+    const db = getDb();
+    db.query(`
+      INSERT INTO api_usage (api_key_hash, date, request_count)
+      VALUES (?, ?, MAX(0, ?))
+      ON CONFLICT(api_key_hash, date) DO UPDATE SET
+        request_count = MAX(0, request_count + ?)
+    `).run(apiKeyHash, dateStr, units, units);
+    return dbGetApiUsage(apiKeyHash, dateStr);
+  } catch {
+    return 0;
+  }
+}
+
 // ==========================================
 // ドメイン単位 Cookie 永続化 DAO
 // ==========================================

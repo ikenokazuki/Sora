@@ -1,5 +1,7 @@
 import { Hono, type Context } from 'hono';
 import { McpSessionManager } from '../mcp.js';
+import { chargeQuota } from '../security/quota.js';
+import { quotaResponse } from './utils.js';
 
 export const mcpSessionManager = new McpSessionManager();
 
@@ -11,6 +13,18 @@ export async function handleMcpRequest(c: Context) {
       parsedBody = await c.req.json();
     } catch {
       // no json or invalid
+    }
+  }
+
+  // JSON-RPC のバッチ（配列）は、入っている呼び出しの数を日次クォータに数える（要求の 1 回は、認証が数えている）。
+  // 超えるなら、MCP に渡さず 429（設計 6。穴 26）
+  if (Array.isArray(parsedBody)) {
+    try {
+      chargeQuota(c.get('tenant')?.tenantId ?? 'legacy', parsedBody.length - 1);
+    } catch (err) {
+      const overQuota = quotaResponse(c, err);
+      if (overQuota) return overQuota;
+      throw err;
     }
   }
 

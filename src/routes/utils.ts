@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { ResourceBusyError } from '../errors.js';
+import { QuotaExceededError, ResourceBusyError } from '../errors.js';
 
 /**
  * JSON の本文の最上位で null の項目を、指定なしとして取り除く（None・nil を「未指定」として送るクライアント向け）。
@@ -57,4 +57,25 @@ export function busyResponse(c: Context, err: unknown): Response | undefined {
   if (!fields) return undefined;
   c.header('Retry-After', String(fields.retryAfterSec));
   return formatError(c, (err as ResourceBusyError).message, fields.code, fields.status, fields.retryable);
+}
+
+/** 日次クォータの 429 の本文（認証のミドルウェアの 429 と同じ形。件数を数える呼び出しは、求めた件数 requested も付く） */
+export function quotaBody(err: QuotaExceededError) {
+  return {
+    error: 'Too Many Requests: Daily quota limit exceeded',
+    code: 'RATE_LIMIT_EXCEEDED' as const,
+    status: 429 as const,
+    retryable: false,
+    limit: err.limit,
+    current: err.current,
+    requested: err.requested,
+    message: err.message,
+  };
+}
+
+/** 日次クォータを超える件数の呼び出しを断ったとき（QuotaExceededError。設計 6。穴 26）の応答: 429 と Retry-After（次の UTC の日の始まりまでの秒）。ほかの失敗は undefined */
+export function quotaResponse(c: Context, err: unknown): Response | undefined {
+  if (!(err instanceof QuotaExceededError)) return undefined;
+  c.header('Retry-After', String(err.retryAfterSec));
+  return c.json(quotaBody(err), 429);
 }
