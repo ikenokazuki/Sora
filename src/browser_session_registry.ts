@@ -7,7 +7,8 @@ import { incrementSecurityCounter } from './security/metrics.js';
  *  - セッションの名前（ID）は、利用者（tenant）ごとの空間。同じ ID でも、tenant が違えば別のセッションで、
  *    ほかの tenant の ID を引いても見つからない（存在は分からない）
  *  - 数の上限は、利用者ごとと全体の 2 つ。利用者が自分の上限に達したら、その利用者の中で一番使われていない
- *    （lastActive が一番古い）セッションを追い出す。全体がいっぱいなら、ほかの利用者のセッションは閉じずに、断る（ResourceBusyError）
+ *    （使っていないものの中で、lastActive が一番古い）セッションを追い出す。全部が使用中なら、追い出さずに断る。
+ *    全体がいっぱいなら、ほかの利用者のセッションは閉じずに、断る（ResourceBusyError）
  *  - 作成は、予約（reserve）→ 登録（commit）の 2 段。reserve は同期で、数の検査と同じ ID の重複の検査を一緒に行うので、
  *    await をまたぐ同時の作成でも、数も ID も食い違わない。断るときは、何も変えない
  *  - 同じ ID の作成が重なったとき、あとの呼び出しは、pending で先の作成が終わる（登録か取り消し）のを待ち、引き直す
@@ -30,6 +31,8 @@ export interface RegistrySession {
   readonly id: string;
   readonly tenantId: string;
   lastActive: number;
+  /** いま使っている呼び出しの数（枠を待っている間も含む）。1 以上のセッションは、追い出さない */
+  inUse: number;
 }
 
 /** tenant と ID の組の鍵。区切りの曖昧さが無いよう JSON にする（別の組が同じ鍵にならない） */
@@ -76,7 +79,8 @@ export class SessionRegistry<S extends RegistrySession> {
 
   /**
    * 作成を予約する（同期）。同じ ID が、すでにある・作成中なら ScrapeInputError。
-   * 利用者が自分の上限に達していれば、その利用者の一番使われていないセッションを登録簿から外して返す（呼ぶ側が閉じる）。
+   * 利用者が自分の上限に達していれば、その利用者の、使っていないセッションのうち一番使われていないものを登録簿から外して返す（呼ぶ側が閉じる）。
+   * 追い出せるものが無ければ（全部が使用中か作成中）ResourceBusyError。
    * 全体がいっぱいなら ResourceBusyError（ほかの利用者のセッションは外さない）。断るときは、何も変えない
    */
   reserve(tenantId: string | undefined, id: string, caps: SessionCaps): S | undefined {
@@ -88,7 +92,7 @@ export class SessionRegistry<S extends RegistrySession> {
     let evicted: S | undefined;
     if (this.countFor(tenant) >= caps.perTenant) {
       evicted = this.oldestOf(tenant);
-      if (!evicted) throw limitReached(`この利用者のブラウザセッションが、すべて作成中です（上限 ${caps.perTenant} 件）。作成が終わってから、もう一度試してください`);
+      if (!evicted) throw limitReached(`この利用者のブラウザセッションが、すべて使用中か作成中です（上限 ${caps.perTenant} 件）。終わってから、もう一度試してください`);
     }
     const used = this.sessions.size + this.creating.size - (evicted ? 1 : 0);
     if (used >= caps.total) {
@@ -131,7 +135,7 @@ export class SessionRegistry<S extends RegistrySession> {
   private oldestOf(tenant: string): S | undefined {
     let oldest: S | undefined;
     for (const s of this.sessions.values()) {
-      if (s.tenantId === tenant && (!oldest || s.lastActive < oldest.lastActive)) oldest = s;
+      if (s.tenantId === tenant && s.inUse === 0 && (!oldest || s.lastActive < oldest.lastActive)) oldest = s;
     }
     return oldest;
   }

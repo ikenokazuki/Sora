@@ -63,6 +63,15 @@ describe('POST /browser/action', () => {
     }
   });
 
+  test('strict: 利用者を決める鍵が無い（legacy）呼び出しの、セッションの作成・続きは 403（FORBIDDEN）。standard は通る（ここでは、入力の検査まで）', async () => {
+    process.env.SORA_ISOLATION = 'strict';
+    for (const body of [{ createSession: true, url: 'https://example.com/' }, { sessionId: 'x' }]) {
+      const res = await app().request('/browser/action', post(body));
+      expect(res.status).toBe(403);
+      expect(await res.json()).toMatchObject({ code: 'FORBIDDEN', status: 403 });
+    }
+  });
+
   test('timeout と extract.maxChars の上限も 400', async () => {
     process.env.SORA_ISOLATION = 'strict';
     expect((await app().request('/browser/action', post({ url: 'https://example.com/', timeout: 60_001 }))).status).toBe(400);

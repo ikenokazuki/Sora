@@ -26,6 +26,19 @@ export async function releaseAll(): Promise<void> {
   await Promise.allSettled(waiting.splice(0).map((promise) => promise.then((lease) => lease())));
 }
 
+/**
+ * 呼び出しが終わらないとき（枠が戻らず待ち続ける・予約が残るなど）に、テストが止まらずに失敗するようにする。
+ * Bun は、終わらない Promise を expect().rejects で待つと、テストの時間切れを効かせずに止まる（CPU を使い続ける）ので、待つ前に時間切れの拒否と競わせる。
+ * 呼び出しの普通の長さ（ミリ秒）より十分長く、テストの既定の時間切れ（5 秒）より短い
+ */
+export function within<T>(promise: Promise<T>, ms = 3000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`呼び出しが ${ms} ミリ秒たっても終わりません（枠や予約が戻っていない可能性）`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /** 失敗するはずの呼び出しが、枠を断られて（ResourceBusyError）失敗したことを確かめて、その例外を返す */
 export async function busyOf(promise: Promise<unknown>): Promise<ResourceBusyError> {
   const error = await promise.then(

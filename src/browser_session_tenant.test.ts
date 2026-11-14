@@ -4,6 +4,7 @@ import { closeAllBrowserSessions, closeBrowserSession, getActiveSessionCount, ha
 import { ResourceBusyError, ScrapeInputError } from './errors.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 import { STANDARD_LIMITS, STRICT_LIMITS } from './security/limits.js';
+import { within } from './test_fixtures/browser_slots.js';
 
 /**
  * ブラウザセッションの管理が、利用者（tenant）ごとに分かれること（設計 6。穴 22・23）:
@@ -90,7 +91,7 @@ afterEach(async () => {
 /** 上限を小さくした値（standard の他の値はそのまま） */
 const caps = (perTenant: number, total: number) => ({ ...STANDARD_LIMITS, browserSessionsPerTenant: perTenant, browserSessionsTotal: total });
 const act = (options: Record<string, unknown>, lim = STANDARD_LIMITS as Readonly<typeof STANDARD_LIMITS>) =>
-  handleBrowserSessionAction({ extract: { markdown: false }, actions: [], ...options } as never, lim);
+  within(handleBrowserSessionAction({ extract: { markdown: false }, actions: [], ...options } as never, lim));
 const create = async (tenantId: string, options: Record<string, unknown> = {}, lim?: typeof STANDARD_LIMITS) => (await act({ createSession: true, tenantId, ...options }, lim)).sessionId as string;
 
 describe('名前の空間', () => {
@@ -232,9 +233,10 @@ test('使われなくなって期限が切れたら、その利用者のセッ�
     }) as never),
   );
   await create('name:alice', { sessionId: 'same' });
+  const aliceExpiry = expiries.at(-1); // alice のセッションの、いちばん新しい期限のタイマー
   await create('name:bob', { sessionId: 'same' });
-  expect(expiries).toHaveLength(2);
-  expiries[0](); // alice の期限
+  expect(aliceExpiry).toBeDefined();
+  aliceExpiry?.(); // alice の期限
   await new Promise((resolve) => realSetTimeout(resolve, 20));
   expect(closed).toBe(1);
   expect(getActiveSessionCount()).toBe(1);
