@@ -390,6 +390,36 @@ export function dbListWatchTargets(tenantId: string): WatchTargetRecord[] {
   }
 }
 
+/** その tenant の監視対象の件数（登録数の上限に使う）。DB が使えないときは 0（上限で断らない） */
+export function dbCountWatchTargets(tenantId: string): number {
+  try {
+    const row = getDb().query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM watch_targets WHERE tenant_id = ?').get(tenantId);
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * 監視対象の確認の権利を取る（最小の間隔）。前の確認から minIntervalMs 以上たっている（または一度も確認していない）ときだけ、
+ * 確認の時刻を now にして true を返す。間隔の中なら何もせず、あと何ミリ秒かを返す。1 つの文で行うので、同時の確認でも 1 つだけが取れる。
+ * tenant が違う id・存在しない id は、権利を取れず、残りも無い（waitMs 0）
+ */
+export function dbClaimWatchCheck(id: string, tenantId: string, minIntervalMs: number, now = Date.now()): { claimed: true } | { claimed: false; waitMs: number } {
+  try {
+    const db = getDb();
+    const res = db
+      .query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ? AND tenant_id = ? AND (last_checked_at IS NULL OR last_checked_at <= ?)')
+      .run(now, id, tenantId, now - minIntervalMs);
+    if (res.changes > 0) return { claimed: true };
+    const row = db.query<{ last_checked_at: number | null }, [string, string]>('SELECT last_checked_at FROM watch_targets WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+    if (!row) return { claimed: false, waitMs: 0 }; // その id は、この tenant には無い（呼ぶ側が、先に読んで確かめる）
+    return { claimed: false, waitMs: (row.last_checked_at ?? 0) + minIntervalMs - now }; // 取れなかったのは、間隔の中だから。1 以上
+  } catch {
+    return { claimed: true }; // DB が使えないときは断らない（日次クォータと同じ。DB の失敗の扱いは別に決める）
+  }
+}
+
 export function dbUpdateWatchTargetCheck(id: string, hash: string, content?: string): void {
   try {
     const db = getDb();

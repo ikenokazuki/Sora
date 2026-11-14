@@ -73,3 +73,24 @@ export function secondsUntilNextUtcDay(now = new Date()): number {
   const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
   return Math.max(1, Math.ceil((next - now.getTime()) / 1000));
 }
+
+/**
+ * ウォッチの上限を超える呼び出しを、取得も保存もせずに断ったときの例外（設計 6。穴 18・24）:
+ * WATCH_LIMIT_EXCEEDED = 1 人の登録数の上限・WATCH_TOO_FREQUENT = 同じウォッチを確認できる最小の間隔の中。
+ * REST では 429（と、間隔のときは Retry-After の秒）、MCP ではエラーの文になる
+ */
+export class WatchLimitError extends Error {
+  constructor(
+    readonly code: 'WATCH_LIMIT_EXCEEDED' | 'WATCH_TOO_FREQUENT',
+    message: string,
+    /** 登録数の上限（WATCH_LIMIT_EXCEEDED のとき）または最小の間隔の秒（WATCH_TOO_FREQUENT のとき） */
+    readonly limit: number,
+    /** いまの登録数（WATCH_LIMIT_EXCEEDED のとき） */
+    readonly current = 0,
+    /** もう一度試せるまでの秒（WATCH_TOO_FREQUENT のとき） */
+    readonly retryAfterSec = 0,
+  ) {
+    super(message);
+    this.name = 'WatchLimitError';
+  }
+}

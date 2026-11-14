@@ -54,6 +54,10 @@ export interface Limits {
   browserSessionsPerTenant: number;
   /** ブラウザセッションを持てる数。全体（tenant の合計。作成中を含む）。超えたら、ほかの tenant のセッションは閉じずに、断る（429） */
   browserSessionsTotal: number;
+  /** ウォッチ（watch）の登録数の上限。tenant ごと。超える登録は断る（既存の id の更新は数えない） */
+  watchTargetsPerTenant: number;
+  /** 同じウォッチを確認できる最小の間隔（ミリ秒）。前の確認（登録の初回も、失敗も含む）からこの間隔が過ぎるまで、取得せずに断る（一括の確認は見送る）。0 は制限なし。下限なので、standard が小さい */
+  watchMinIntervalMs: number;
   /** ブラウザセッションの最長の時間（ミリ秒）。作成からの時間で、使い続けても延びない。過ぎたら、使っていないときに閉じる */
   browserSessionMaxMs: number;
 }
@@ -85,6 +89,8 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsPerTenant: 20,
   browserSessionsTotal: 20,
   browserSessionMaxMs: 86_400_000,
+  watchTargetsPerTenant: 1000,
+  watchMinIntervalMs: 0,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -112,6 +118,8 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsPerTenant: 5,
   browserSessionsTotal: 20,
   browserSessionMaxMs: 3_600_000,
+  watchTargetsPerTenant: 50,
+  watchMinIntervalMs: 900_000,
 });
 
 /**
