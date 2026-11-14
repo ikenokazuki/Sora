@@ -170,12 +170,11 @@ function refreshSessionTimer(session: BrowserSession, lim: Readonly<Limits>) {
 
 /**
  * 呼び出しが終わったあとの、セッションの扱い（inUse を戻したあとに呼ぶ）。登録簿にもう無い（持ち主が閉じた・追い出された）なら、何もしない
- * （同じ ID の新しいセッションに、触らない）。ほかの呼び出しがまだ使っているなら、何もしない（最後に終わった呼び出しが扱う）。
- * 終わりから、期限を数え直す（最長の時間を過ぎていれば、すぐに期限が来て、閉じる）
+ * （同じ ID の新しいセッションに、触らない）。終わりから、期限を数え直す（最長の時間を過ぎていれば、すぐに期限が来て、閉じる）。
+ * ほかの呼び出しがまだ使っていても、期限のタイマーは使用中なら閉じないので、ここで分けない（最後に終わった呼び出しが、最後に数え直す）
  */
 function settleAfterUse(session: BrowserSession, lim: Readonly<Limits>): void {
   if (sessionRegistry.get(session.tenantId, session.id) !== session) return;
-  if (session.inUse > 0) return; // ほかの呼び出しがまだ使っている。最後に終わった呼び出しが、数え直す
   refreshSessionTimer(session, lim);
 }
 
