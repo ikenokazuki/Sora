@@ -50,6 +50,19 @@ describe('POST /browser/action', () => {
     }
   });
 
+  test('sessionId は 128 文字まで・制御文字なし（超えたら 400。セッションを閉じるだけの呼び出しも）', async () => {
+    delete process.env.SORA_ISOLATION;
+    for (const body of [
+      { sessionId: 'x'.repeat(129), createSession: true },
+      { sessionId: 'x'.repeat(129), closeSession: true },
+      { sessionId: 'a\nb', url: 'https://example.com/' },
+    ]) {
+      const res = await app().request('/browser/action', post(body));
+      expect(res.status).toBe(400);
+      expect(await res.json()).toMatchObject({ code: 'INVALID_INPUT', retryable: false, error: expect.stringContaining('sessionId') });
+    }
+  });
+
   test('timeout と extract.maxChars の上限も 400', async () => {
     process.env.SORA_ISOLATION = 'strict';
     expect((await app().request('/browser/action', post({ url: 'https://example.com/', timeout: 60_001 }))).status).toBe(400);
