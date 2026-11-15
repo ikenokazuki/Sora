@@ -7,6 +7,7 @@ import { WatchLimitError } from '../errors.js';
 import { app as fullApp } from '../index.js';
 import { createMcpServer } from '../mcp.js';
 import { registerWatchTarget } from '../services/watch.js';
+import { tenantIdForApiKey } from '../security/tenant_context.js';
 import { withEnv } from '../test_fixtures/env.js';
 import { createWatchRoutes, type WatchRouteDeps } from './watch.js';
 
@@ -89,18 +90,21 @@ describe('本物のサービスで: strict の上限が、REST と MCP に届く
   test('REST: 51 件目の登録は 429。登録の直後の確認は 429（最小の間隔）、間隔が過ぎれば通る。一括は見送りが載る。standard は何も変わらない', async () => {
     apiKey = `watch-limits-${crypto.randomUUID()}`;
     await withEnv({ SORA_ISOLATION: 'strict', SORA_API_KEY: apiKey, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
+      // REST の登録は、必ず初回の取得をする（strict は取得ごとにブラウザが要り、50 回だと時間がかかる）。
+      // 49 件はサービスを直接呼んで（初回の取得なし）、残りの 1 件を REST で登録する。確認した記録は、登録の直後の状態にそろえる
+      const tenant = tenantIdForApiKey(apiKey);
       const ids: string[] = [];
-      for (let i = 0; i < 50; i++) {
-        const res = await post('/watch/register', { url: `${siteUrl}w${i}` });
-        expect(res.status).toBe(200);
-        ids.push(((await res.json()) as { target: { id: string } }).target.id);
-      }
+      for (let i = 0; i < 49; i++) ids.push((await registerWatchTarget({ tenantId: tenant, url: `${siteUrl}w${i}`, initialFetch: false })).target.id);
+      getDb().query('UPDATE watch_targets SET last_checked_at = ? WHERE tenant_id = ?').run(Date.now(), tenant);
+      const last = await post('/watch/register', { url: `${siteUrl}w49` });
+      expect(last.status).toBe(200);
+      ids.push(((await last.json()) as { target: { id: string } }).target.id);
       expect(((await (await get('/watch/list')).json()) as { count: number }).count).toBe(50);
       const over = await post('/watch/register', { url: `${siteUrl}over` });
       expect(over.status).toBe(429);
       expect(await over.json()).toMatchObject({ code: 'WATCH_LIMIT_EXCEEDED', details: { limit: 50, current: 50 } });
       // 登録の直後の確認は、間隔の中
-      const tooSoon = await post('/watch/check', { id: ids[0] });
+      const tooSoon = await post('/watch/check', { id: ids[49] }); // REST で登録した 1 件（登録の初回の確認が、間隔に数えられている）
       expect(tooSoon.status).toBe(429);
       expect(Number(tooSoon.headers.get('Retry-After'))).toBeGreaterThan(800);
       // 一括: 登録で確認したものは見送り。確認した記録を 20 分前にした 1 件だけ、取得する
