@@ -45,4 +45,16 @@ export const SECURITY_MIGRATIONS: readonly DbMigration[] = [
       database.run('CREATE INDEX IF NOT EXISTS idx_watch_targets_tenant ON watch_targets(tenant_id, created_at)');
     },
   },
+  {
+    version: 103,
+    name: 'cache entry size',
+    up(database) {
+      // キャッシュの容量の上限（穴 24）のため、行ごとの大きさ（JSON の UTF-8 のバイト数）を持つ。古い行は、いまの中身から埋める。
+      // 索引は (expires_at, size): 期限の近い順に消すときの並びと、行数・容量の合計（表の本体を読まない）に使う。古い索引 idx_cache_expires は、これに含まれる
+      database.run('ALTER TABLE cache_entries ADD COLUMN size INTEGER NOT NULL DEFAULT 0');
+      database.run('UPDATE cache_entries SET size = LENGTH(CAST(value AS BLOB))');
+      database.run('CREATE INDEX IF NOT EXISTS idx_cache_expires_size ON cache_entries(expires_at, size)');
+      database.run('DROP INDEX IF EXISTS idx_cache_expires');
+    },
+  },
 ];

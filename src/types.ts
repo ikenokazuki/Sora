@@ -1198,6 +1198,10 @@ export const MetricsResponseSchema = z.object({
   cache: z.object({
     size: z.number().describe('現在のキャッシュ件数'),
     maxSize: z.number().describe('キャッシュ件数の上限'),
+    bytes: z.number().describe('メモリキャッシュの容量 (JSON の UTF-8 のバイト数の合計)'),
+    maxBytes: z.number().describe('メモリキャッシュの容量の上限 (SORA_ISOLATION の水準で決まる)'),
+    dbEntries: z.number().describe('DB（永続）キャッシュの行数'),
+    dbBytes: z.number().describe('DB（永続）キャッシュの容量 (JSON の UTF-8 のバイト数の合計)'),
     hits: z.number().describe('キャッシュヒット累計回数'),
     misses: z.number().describe('キャッシュミス累計回数'),
     hitRatio: z.number().describe('キャッシュヒット率 (0.0〜1.0)'),

@@ -9,12 +9,15 @@ import {
   dbPurgeOldApiUsage,
   dbPurgeOldWatchHistory,
 } from './db.js';
+import { type Limits, limits } from './security/limits.js';
 import { tenantCacheKey } from './security/tenant_state.js';
 
 interface CacheEntry<T> {
   data: T;
   expiresAt: number;
   createdAt: number;
+  /** JSON にしたときの UTF-8 のバイト数（メモリの容量の上限に数える。DB の行の size と同じ） */
+  size: number;
 }
 
 export const CACHE_TTL_DEFAULT = 30 * 60 * 1000; // 30分
@@ -59,6 +62,33 @@ const MAX_CACHE_SIZE = 3000;
 const MAX_CACHE_ENTRY_BYTES = 2 * 1024 * 1024; // 1エントリ最大2MB
 
 const memoryCache = new Map<string, CacheEntry<any>>();
+/** memoryCache のエントリの size の合計。memoryCache を変えるときは、必ず memoryDelete・memorySet・memoryClear を通す（直接 delete・set しない） */
+let memoryBytes = 0;
+
+function memoryDelete(key: string): void {
+  const entry = memoryCache.get(key);
+  if (!entry) return;
+  memoryBytes -= entry.size;
+  memoryCache.delete(key);
+}
+
+/** メモリに入れる。容量の上限（maxBytes）を超えるなら、古い（先頭の）エントリから外す。1 件が上限より大きいなら、入れない（ほかを全部外さない） */
+function memorySet(key: string, entry: CacheEntry<any>, maxBytes: number): void {
+  memoryDelete(key);
+  if (entry.size > maxBytes) return;
+  while (memoryBytes + entry.size > maxBytes) {
+    const oldest = memoryCache.keys().next();
+    if (oldest.done) break;
+    memoryDelete(oldest.value);
+  }
+  memoryCache.set(key, entry);
+  memoryBytes += entry.size;
+}
+
+function memoryClear(): void {
+  memoryCache.clear();
+  memoryBytes = 0;
+}
 
 let cacheHits = 0;
 let cacheMisses = 0;
@@ -68,6 +98,8 @@ export function getCacheMetrics() {
   return {
     size: memoryCache.size,
     maxSize: MAX_CACHE_SIZE,
+    bytes: memoryBytes,
+    maxBytes: limits().cacheMemoryMaxBytes,
     hits: cacheHits,
     misses: cacheMisses,
     hitRatio: total > 0 ? parseFloat((cacheHits / total).toFixed(4)) : 0,
@@ -80,7 +112,7 @@ export function getCacheSize(): number {
 
 export function clearCache(): number {
   const count = memoryCache.size;
-  memoryCache.clear();
+  memoryClear();
   dbClearAllCache();
   cacheHits = 0;
   cacheMisses = 0;
@@ -96,7 +128,7 @@ export function clearTenantCache(tenantId: string): number {
   let count = 0;
   for (const key of memoryCache.keys()) {
     if (key.startsWith(prefix)) {
-      memoryCache.delete(key);
+      memoryDelete(key);
       count++;
     }
   }
@@ -110,7 +142,7 @@ export function sweepExpiredEntries(): number {
   let deletedCount = 0;
   for (const [key, entry] of memoryCache.entries()) {
     if (now > entry.expiresAt) {
-      memoryCache.delete(key);
+      memoryDelete(key);
       deletedCount++;
     }
   }
@@ -139,12 +171,12 @@ export function getFromCache<T>(key: string, { countMiss = true }: { countMiss?:
   const entry = memoryCache.get(key);
   if (entry) {
     if (now > entry.expiresAt) {
-      memoryCache.delete(key);
+      memoryDelete(key);
       dbDeleteCache(key);
       if (countMiss) cacheMisses++;
       return null;
     }
-    // 真の LRU: 参照されたエントリを末尾（最新）に移動
+    // 真の LRU: 参照されたエントリを末尾（最新）に移動（同じエントリを入れ直すだけなので、memoryBytes は変わらない）
     memoryCache.delete(key);
     memoryCache.set(key, entry);
 
@@ -167,11 +199,12 @@ export function getFromCache<T>(key: string, { countMiss = true }: { countMiss?:
         ? persistent.createdAt
         : persistent.expiresAt - CACHE_TTL_DEFAULT;
     // L1 メモリキャッシュへ昇格
-    memoryCache.set(key, {
+    memorySet(key, {
       data: { ...persistent.value, cached: false },
       expiresAt: persistent.expiresAt,
       createdAt,
-    });
+      size: persistent.size,
+    }, limits().cacheMemoryMaxBytes);
     cacheHits++;
     const ageSeconds = Math.max(0, Math.floor((now - createdAt) / 1000));
     return {
@@ -186,12 +219,14 @@ export function getFromCache<T>(key: string, { countMiss = true }: { countMiss?:
   return null;
 }
 
-export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT): boolean {
+export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT, lim: Pick<Limits, 'cacheDbMaxRows' | 'cacheDbMaxBytes' | 'cacheMemoryMaxBytes'> = limits()): boolean {
   // 巨大エントリ（2MB 超過）のキャッシュ保存スキップによるメモリ保護
+  let size = 0;
   try {
     const serialized = JSON.stringify(data);
-    if (serialized && serialized.length > MAX_CACHE_ENTRY_BYTES) {
-      return false;
+    if (serialized) {
+      size = Buffer.byteLength(serialized);
+      if (size > MAX_CACHE_ENTRY_BYTES) return false;
     }
   } catch {
     return false;
@@ -200,24 +235,20 @@ export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT): 
   if (memoryCache.size >= MAX_CACHE_SIZE) {
     // LRU: 最も古い（先頭の）15% を削除
     const keysToDelete = Array.from(memoryCache.keys()).slice(0, Math.floor(MAX_CACHE_SIZE * 0.15));
-    for (const k of keysToDelete) memoryCache.delete(k);
-  }
-
-  // 既存キーがあれば一度削除して末尾に追加
-  if (memoryCache.has(key)) {
-    memoryCache.delete(key);
+    for (const k of keysToDelete) memoryDelete(k);
   }
 
   const now = Date.now();
   const expiresAt = now + ttlMs;
-  memoryCache.set(key, {
+  memorySet(key, {
     data: { ...data, cached: false },
     expiresAt,
     createdAt: now,
-  });
+    size,
+  }, lim.cacheMemoryMaxBytes);
 
   // L2 SQLite へ非同期的に永続保存
-  dbSetCache(key, data, Math.ceil(ttlMs / 1000));
+  dbSetCache(key, data, Math.ceil(ttlMs / 1000), lim);
   return true;
 }
 
