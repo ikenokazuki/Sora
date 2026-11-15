@@ -66,6 +66,12 @@ export interface Limits {
   cacheDbMaxBytes: number;
   /** メモリのキャッシュの容量（JSON の UTF-8 のバイト数の合計）の上限。超えたら、古い（長く使われていない）エントリから外す。DB の行は消さない */
   cacheMemoryMaxBytes: number;
+  /** 保存した Cookie・localStorage（domain_cookies_v2・domain_storage_v2）の 1 行の大きさ（JSON の UTF-8 のバイト数）の上限。超える保存はしない（同じ場所の前の保存も消す） */
+  savedStateMaxBytes: number;
+  /** 保存した Cookie・localStorage の行数の上限。tenant ごと、表ごと（場所 scope が違えば別の行）。超えたら、保存した時刻の古い行から消す */
+  savedStateRowsPerTenant: number;
+  /** 保存した Cookie・localStorage を持つ期間（ミリ秒）。最後に保存してからこれを過ぎた行は、読まず、定期の掃除で消す */
+  savedStateMaxAgeMs: number;
 }
 
 const MB = 1024 * 1024;
@@ -100,6 +106,9 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   cacheDbMaxRows: 20_000,
   cacheDbMaxBytes: 512 * MB,
   cacheMemoryMaxBytes: 256 * MB,
+  savedStateMaxBytes: 256 * 1024,
+  savedStateRowsPerTenant: 5000,
+  savedStateMaxAgeMs: 90 * 86_400_000,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -132,6 +141,9 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   cacheDbMaxRows: 5_000,
   cacheDbMaxBytes: 128 * MB,
   cacheMemoryMaxBytes: 64 * MB,
+  savedStateMaxBytes: 128 * 1024,
+  savedStateRowsPerTenant: 100,
+  savedStateMaxAgeMs: 14 * 86_400_000,
 });
 
 /**

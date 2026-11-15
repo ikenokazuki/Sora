@@ -605,19 +605,74 @@ export interface PersistedCookie {
   expiresAtMs?: number;
 }
 
-/** public の tenant（利用者を持たない取得）は、保存済みの Cookie・localStorage を、読まず、書かない */
-export function dbSaveTenantCookies(tenantId: string, domain: string, cookies: PersistedCookie[], scope = 'default'): void {
+type SavedStateTable = 'domain_cookies_v2' | 'domain_storage_v2';
+const SAVED_STATE_COLUMN: Record<SavedStateTable, 'cookies_json' | 'storage_json'> = { domain_cookies_v2: 'cookies_json', domain_storage_v2: 'storage_json' };
+
+/**
+ * 保存した状態（Cookie・localStorage）を 1 行書く。public の tenant（利用者を持たない取得）は、読まず、書かない。
+ * 上限（設計 6。穴 24）: JSON の UTF-8 のバイト数が 1 行の上限を超える保存はせず、同じ場所の前の保存も消す（古い状態を、新しい状態の代わりに戻さない）。
+ * 書いたあと、その tenant の行数（この表の、場所 scope が違う行も別に数える）が上限を超えていれば、保存した時刻の古い行から消す。
+ * いま書いた行は消さない（時計が戻って、いまの時刻が一番古くなっても）。
+ * 書き込みと掃除は、別々の文（トランザクションで囲まない）: 保存が掃除の失敗に巻き込まれて落ちない（掃除は、次の保存でやり直す）。
+ * 同じ接続に実行中の文が残っていると、トランザクションの COMMIT が「SQL statements in progress」で失敗し、保存が黙って落ちる
+ * （全件テストで、別のテストの残した文により起きた。これまでの 1 文の書き込みは、影響を受けない）。複数のプロセスが同じ DB を使っても、
+ * 行数は、数え方の差の 1 行ぶんずれるだけで、次の保存で戻る。
+ */
+function saveSavedState(table: SavedStateTable, tenantId: string, domain: string, scope: string, value: unknown, lim: Limits): void {
   if (tenantId === PUBLIC_TENANT_ID) return;
   try {
     const db = getDb();
+    const column = SAVED_STATE_COLUMN[table];
+    const json = JSON.stringify(value);
+    if (Buffer.byteLength(json) > lim.savedStateMaxBytes) {
+      db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
+      return;
+    }
     db.query(`
-      INSERT INTO domain_cookies_v2 (tenant_id, domain, scope, cookies_json, updated_at)
+      INSERT INTO ${table} (tenant_id, domain, scope, ${column}, updated_at)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
-        cookies_json = excluded.cookies_json,
+        ${column} = excluded.${column},
         updated_at = excluded.updated_at
-    `).run(tenantId, domain, scope, JSON.stringify(cookies), Date.now());
+    `).run(tenantId, domain, scope, json, Date.now());
+    const rows = db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ?`).get(tenantId)?.n ?? 0;
+    if (rows > lim.savedStateRowsPerTenant) {
+      db.query(`
+        DELETE FROM ${table} WHERE rowid IN (
+          SELECT rowid FROM ${table} WHERE tenant_id = ? AND NOT (domain = ? AND scope = ?) ORDER BY updated_at, rowid LIMIT ?
+        )
+      `).run(tenantId, domain, scope, rows - lim.savedStateRowsPerTenant);
+    }
   } catch {}
+}
+
+/** 保存した状態の JSON を読む。最後に保存してから期限（savedStateMaxAgeMs）を過ぎた行は、読まない（行は、定期の掃除が消す） */
+function readSavedState(table: SavedStateTable, tenantId: string, domain: string, scope: string, lim: Limits): string | undefined {
+  if (tenantId === PUBLIC_TENANT_ID) return undefined;
+  const column = SAVED_STATE_COLUMN[table];
+  const row = getDb()
+    .query<{ json: string }, [string, string, string, number]>(`SELECT ${column} AS json FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ? AND updated_at > ?`)
+    .get(tenantId, domain, scope, Date.now() - lim.savedStateMaxAgeMs);
+  return row?.json;
+}
+
+/** 期限を過ぎた保存した状態（Cookie・localStorage）を、全員ぶん消す。消した行数を返す。定期の掃除（sweepExpiredEntries）から呼ぶ */
+export function dbPurgeStaleSavedState(lim: Limits = limits(), now = Date.now()): number {
+  try {
+    const db = getDb();
+    const cutoff = now - lim.savedStateMaxAgeMs;
+    let deleted = 0;
+    for (const table of ['domain_cookies_v2', 'domain_storage_v2'] satisfies SavedStateTable[]) {
+      deleted += db.query(`DELETE FROM ${table} WHERE updated_at <= ?`).run(cutoff).changes;
+    }
+    return deleted;
+  } catch {
+    return 0;
+  }
+}
+
+export function dbSaveTenantCookies(tenantId: string, domain: string, cookies: PersistedCookie[], scope = 'default', lim: Limits = limits()): void {
+  saveSavedState('domain_cookies_v2', tenantId, domain, scope, cookies, lim);
 }
 
 export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]): void {
@@ -634,15 +689,11 @@ export function dbDeleteTenantSession(tenantId: string, domain: string, scope = 
   } catch {}
 }
 
-export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default'): PersistedCookie[] | undefined {
-  if (tenantId === PUBLIC_TENANT_ID) return undefined;
+export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default', lim: Limits = limits()): PersistedCookie[] | undefined {
   try {
-    const db = getDb();
-    const row = db.query<{ cookies_json: string }, [string, string, string]>(
-      'SELECT cookies_json FROM domain_cookies_v2 WHERE tenant_id = ? AND domain = ? AND scope = ?',
-    ).get(tenantId, domain, scope);
-    if (!row) return undefined;
-    const cookies: PersistedCookie[] = JSON.parse(row.cookies_json);
+    const json = readSavedState('domain_cookies_v2', tenantId, domain, scope, lim);
+    if (json === undefined) return undefined;
+    const cookies: PersistedCookie[] = JSON.parse(json);
     const now = Date.now();
     return cookies.filter((c) => c.expiresAtMs === undefined || c.expiresAtMs > now);
   } catch {
@@ -654,33 +705,18 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
   return dbGetTenantCookies('legacy', domain);
 }
 
-export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default'): void {
-  if (tenantId === PUBLIC_TENANT_ID) return;
-  try {
-    const db = getDb();
-    db.query(`
-      INSERT INTO domain_storage_v2 (tenant_id, domain, scope, storage_json, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
-        storage_json = excluded.storage_json,
-        updated_at = excluded.updated_at
-    `).run(tenantId, domain, scope, JSON.stringify(storage), Date.now());
-  } catch {}
+export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default', lim: Limits = limits()): void {
+  saveSavedState('domain_storage_v2', tenantId, domain, scope, storage, lim);
 }
 
 export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {
   dbSaveTenantStorage('legacy', domain, storage);
 }
 
-export function dbGetTenantStorage(tenantId: string, domain: string, scope = 'default'): Record<string, string> | undefined {
-  if (tenantId === PUBLIC_TENANT_ID) return undefined;
+export function dbGetTenantStorage(tenantId: string, domain: string, scope = 'default', lim: Limits = limits()): Record<string, string> | undefined {
   try {
-    const db = getDb();
-    const row = db.query<{ storage_json: string }, [string, string, string]>(
-      'SELECT storage_json FROM domain_storage_v2 WHERE tenant_id = ? AND domain = ? AND scope = ?',
-    ).get(tenantId, domain, scope);
-    if (!row) return undefined;
-    return JSON.parse(row.storage_json);
+    const json = readSavedState('domain_storage_v2', tenantId, domain, scope, lim);
+    return json === undefined ? undefined : JSON.parse(json);
   } catch {
     return undefined;
   }
