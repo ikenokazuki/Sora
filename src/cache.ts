@@ -9,6 +9,7 @@ import {
   dbPurgeOldApiUsage,
   dbPurgeOldWatchHistory,
   dbPurgeStaleSavedState,
+  countWriteDropped,
 } from './db.js';
 import { type Limits, limits } from './security/limits.js';
 import { tenantCacheKey } from './security/tenant_state.js';
@@ -228,7 +229,10 @@ export function setToCache<T>(key: string, data: T, ttlMs = CACHE_TTL_DEFAULT, l
     const serialized = JSON.stringify(data);
     if (serialized) {
       size = Buffer.byteLength(serialized);
-      if (size > MAX_CACHE_ENTRY_BYTES) return false;
+      if (size > MAX_CACHE_ENTRY_BYTES) {
+        countWriteDropped();
+        return false;
+      }
     }
   } catch {
     return false;

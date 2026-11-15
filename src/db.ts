@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { envPath, envStr } from './config.js';
 import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
 import { type Limits, limits } from './security/limits.js';
+import { incrementSecurityCounter } from './security/metrics.js';
 import { SECURITY_MIGRATIONS } from './security/migrations.js';
 import { PUBLIC_TENANT_ID } from './security/tenant_context.js';
 
@@ -177,6 +178,24 @@ export function closeDb(): void {
 }
 
 // ==========================================
+// 書き込みの失敗・入れなかった書き込みの計数
+// ==========================================
+
+/**
+ * DB への書き込みは、失敗しても握りつぶして続ける（取得そのものを、保存の失敗で止めない）。そのため、数えないと、
+ * DB が読み取り専用・満杯・壊れていても、静かに保存されないだけで、運用者が気づけない（設計 6。穴 24）。握りつぶす書き込みの catch で呼ぶ。
+ * 読み出しの失敗は数えない。GET /metrics の sora_db_write_failures_total
+ */
+export function countWriteFailure(): void {
+  incrementSecurityCounter('sora_db_write_failures_total');
+}
+
+/** 大きさの上限を超えるため、入れなかった書き込みを数える（失敗ではない）。GET /metrics の sora_db_write_dropped_total。DAO の外（setToCache の 1 件 2MB の上限）からも呼ぶ */
+export function countWriteDropped(): void {
+  incrementSecurityCounter('sora_db_write_dropped_total');
+}
+
+// ==========================================
 // 永続キャッシュ DAO
 // ==========================================
 
@@ -248,6 +267,7 @@ export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number, l
     const size = Buffer.byteLength(jsonStr);
     if (size > lim.cacheDbMaxBytes) {
       db.query('DELETE FROM cache_entries WHERE key = ?').run(key);
+      countWriteDropped();
       return;
     }
 
@@ -262,6 +282,7 @@ export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number, l
     `).run(key, jsonStr, expiresAt, now, size);
     trimCacheToLimits(db, lim);
   } catch (err) {
+    countWriteFailure();
     console.warn('[Sora/DB] Failed to set cache entry:', err);
   }
 }
@@ -272,6 +293,7 @@ export function dbDeleteCache(key: string): boolean {
     const res = db.query('DELETE FROM cache_entries WHERE key = ?').run(key);
     return res.changes > 0;
   } catch {
+    countWriteFailure();
     return false;
   }
 }
@@ -282,6 +304,7 @@ export function dbClearExpiredCache(): number {
     const res = db.query('DELETE FROM cache_entries WHERE expires_at <= ?').run(Date.now());
     return res.changes;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -292,6 +315,7 @@ export function dbClearAllCache(): number {
     const res = db.query('DELETE FROM cache_entries').run();
     return res.changes;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -310,6 +334,7 @@ export function dbClearCacheByPrefix(prefix: string): number {
     const db = getDb();
     return db.query(CLEAR_CACHE_BY_PREFIX_SQL).run(prefix, upper).changes;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -322,6 +347,7 @@ export function dbPurgeOldApiUsage(maxAgeDays = 90): number {
     const res = db.query('DELETE FROM api_usage WHERE date < ?').run(cutoffDate);
     return res.changes;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -334,6 +360,7 @@ export function dbPurgeOldWatchHistory(maxAgeDays = 180): number {
     const res = db.query('DELETE FROM watch_history WHERE detected_at < ?').run(cutoff);
     return res.changes;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -472,6 +499,7 @@ export function dbReleaseWatchCheck(id: string, tenantId: string, at: number, pr
   try {
     getDb().query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ? AND tenant_id = ? AND last_checked_at = ?').run(previous, id, tenantId, at);
   } catch (err) {
+    countWriteFailure();
     console.warn('[Sora/DB] Failed to release watch check claim:', err);
   }
 }
@@ -486,6 +514,7 @@ export function dbUpdateWatchTargetCheck(id: string, hash: string, content?: str
       WHERE id = ?
     `).run(hash, content || null, at ?? Date.now(), id);
   } catch (err) {
+    countWriteFailure();
     console.warn('[Sora/DB] Failed to update watch target check:', err);
   }
 }
@@ -497,15 +526,26 @@ export function dbDeleteWatchTarget(id: string, tenantId: string): boolean {
     const res = db.query('DELETE FROM watch_targets WHERE id = ? AND tenant_id = ?').run(id, tenantId);
     return res.changes > 0;
   } catch {
+    countWriteFailure();
     return false;
   }
 }
 
+/** 1 回の追加で消す履歴の行数の上限。同期の処理なので、すでに何十万行も持つ対象でも、1 回の追加で長く止まらない（5,000 行で約 50ms） */
+export const WATCH_HISTORY_TRIM_BATCH = 5000;
+
+/**
+ * 履歴を 1 行足す。足したあと、その対象の履歴が上限（watchHistoryPerTarget）を超えていれば、書いた時刻の古い行から消す（設計 6。穴 24）。
+ * いま足した行は消さない（時計が戻って、いまの時刻が一番古くなっても）。すでに上限を超えている対象（上限を入れる前の行）は、
+ * 1 回の追加で WATCH_HISTORY_TRIM_BATCH 行ずつ減り、数回の追加で上限に収まる（通常は、1 回に 1 行）。
+ * 足す文の失敗は、これまでどおり投げる。古い行を消す文の失敗は、足した行を巻き込まない（投げず、書き込みの失敗に数える。次の追加でやり直す）。
+ * 足す文と消す文は別々（トランザクションで囲まない。saveSavedState と同じ理由）
+ */
 export function dbInsertWatchHistory(history: {
   watch_target_id: string;
   diff_summary?: string;
   snapshot?: string;
-}): WatchHistoryRecord {
+}, lim: Pick<Limits, 'watchHistoryPerTarget'> = limits()): WatchHistoryRecord {
   const db = getDb();
   const id = `wh_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
   const now = Date.now();
@@ -514,6 +554,20 @@ export function dbInsertWatchHistory(history: {
     INSERT INTO watch_history (id, watch_target_id, diff_summary, snapshot, detected_at)
     VALUES (?, ?, ?, ?, ?)
   `).run(id, history.watch_target_id, history.diff_summary || null, history.snapshot || null, now);
+
+  try {
+    const cap = Math.max(1, Math.floor(lim.watchHistoryPerTarget) || 1);
+    const rows = db.query<{ n: number }, [string]>('SELECT COUNT(*) AS n FROM watch_history WHERE watch_target_id = ?').get(history.watch_target_id)?.n ?? 0;
+    if (rows > cap) {
+      db.query(`
+        DELETE FROM watch_history WHERE rowid IN (
+          SELECT rowid FROM watch_history WHERE watch_target_id = ? AND id <> ? ORDER BY detected_at, rowid LIMIT ?
+        )
+      `).run(history.watch_target_id, id, Math.min(rows - cap, WATCH_HISTORY_TRIM_BATCH));
+    }
+  } catch {
+    countWriteFailure();
+  }
 
   return {
     id,
@@ -555,6 +609,7 @@ export function dbIncrementApiUsage(apiKeyHash: string, dateStr: string): number
 
     return row ? row.request_count : 1;
   } catch {
+    countWriteFailure();
     return 1;
   }
 }
@@ -586,6 +641,7 @@ export function dbAddApiUsage(apiKeyHash: string, dateStr: string, units: number
     `).run(apiKeyHash, dateStr, units, units);
     return dbGetApiUsage(apiKeyHash, dateStr);
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -626,6 +682,7 @@ function saveSavedState(table: SavedStateTable, tenantId: string, domain: string
     const json = JSON.stringify(value);
     if (Buffer.byteLength(json) > lim.savedStateMaxBytes) {
       db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
+      countWriteDropped();
       return;
     }
     db.query(`
@@ -643,7 +700,9 @@ function saveSavedState(table: SavedStateTable, tenantId: string, domain: string
         )
       `).run(tenantId, domain, scope, rows - lim.savedStateRowsPerTenant);
     }
-  } catch {}
+  } catch {
+    countWriteFailure();
+  }
 }
 
 /** 保存した状態の JSON を読む。最後に保存してから期限（savedStateMaxAgeMs）を過ぎた行は、読まない（行は、定期の掃除が消す） */
@@ -667,6 +726,7 @@ export function dbPurgeStaleSavedState(lim: Limits = limits(), now = Date.now())
     }
     return deleted;
   } catch {
+    countWriteFailure();
     return 0;
   }
 }
@@ -686,7 +746,9 @@ export function dbDeleteTenantSession(tenantId: string, domain: string, scope = 
     for (const table of ['domain_cookies_v2', 'domain_storage_v2']) {
       db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
     }
-  } catch {}
+  } catch {
+    countWriteFailure();
+  }
 }
 
 export function dbGetTenantCookies(tenantId: string, domain: string, scope = 'default', lim: Limits = limits()): PersistedCookie[] | undefined {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clearCache, sweepExpiredEntries } from './cache.js';
@@ -316,7 +316,11 @@ describe('期限を過ぎた行の掃除', () => {
   test('DB が読めなくても投げない（0 を返す）', () => {
     getDb();
     closeDb();
-    process.env.SORA_DB_PATH = join(directory, 'no-such-dir', 'x.db');
+    // DB のファイルの置き場所の親が、ディレクトリではなくファイルなら、getDb() は投げる（存在しないディレクトリは、initDatabase が作る）
+    const blocker = join(directory, 'blocker');
+    writeFileSync(blocker, '');
+    process.env.SORA_DB_PATH = join(blocker, 'x.db');
+    expect(() => getDb()).toThrow();
     expect(dbPurgeStaleSavedState(lim())).toBe(0);
   });
 });

@@ -18,6 +18,7 @@ import { type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { limits } from './security/limits.js';
+import { trimMap } from './security/bounded_map.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
@@ -522,6 +523,27 @@ export const browserSemaphore = new SimpleSemaphore(resolveBrowserConcurrency(en
 const dnsValidationCache = new Map<string, { addresses: string[]; expiresAt: number }>();
 const DNS_CACHE_TTL_MS = 60_000;
 
+/**
+ * DNS の検証結果を覚える。別々のホストが来るたびに増えるので、上限（hostMapMaxEntries）で押さえる（設計 6。穴 24）。
+ * 超えたら、期限（60 秒）を過ぎた項目を先に、次に入れた順に古い方から外す（外れたホストは、次に来たとき、名前を引き直すだけ）。
+ * 書き直す項目は、入れた順の最後に動かす
+ */
+export function rememberDnsValidation(host: string, addresses: string[], now: number, maxHosts: number = limits().hostMapMaxEntries): void {
+  dnsValidationCache.delete(host);
+  dnsValidationCache.set(host, { addresses, expiresAt: now + DNS_CACHE_TTL_MS });
+  trimMap(dnsValidationCache, maxHosts, (entry) => entry.expiresAt <= now);
+}
+
+/** 覚えている検証結果の数（テストと確認用） */
+export function dnsValidationCacheSize(): number {
+  return dnsValidationCache.size;
+}
+
+/** 覚えている検証結果を空にする（テスト用） */
+export function clearDnsValidationCache(): void {
+  dnsValidationCache.clear();
+}
+
 export const BLOCKED_TRACKER_DOMAINS = [
   'google-analytics.com',
   'googletagmanager.com',
@@ -566,7 +588,7 @@ export async function validateHostIpDns(hostname: string, options: { failClosed?
     }
   }
   const result = addresses.map((a) => a.address);
-  dnsValidationCache.set(cleanHost, { addresses: result, expiresAt: now + DNS_CACHE_TTL_MS });
+  rememberDnsValidation(cleanHost, result, now);
   return result;
 }
 
@@ -649,10 +671,7 @@ export async function setupPageSecurity(
             return req.abort('accessdenied');
           }
         }
-        dnsValidationCache.set(host, {
-          addresses: addresses.map((a) => a.address),
-          expiresAt: now + DNS_CACHE_TTL_MS,
-        });
+        rememberDnsValidation(host, addresses.map((a) => a.address), now);
         proceed();
       } catch {
         req.abort('failed');

@@ -120,6 +120,11 @@ describe('limits', () => {
     expect(STANDARD_LIMITS).toMatchObject({ savedStateMaxBytes: 256 * 1024, savedStateRowsPerTenant: 5000, savedStateMaxAgeMs: 90 * 86_400_000 });
   });
 
+  test('ホスト名ごとの Map（5e-3）: 件数は strict が 2,000、standard が 10,000。ウォッチの履歴は、対象ごとに strict が 100、standard が 1,000', () => {
+    expect(STRICT_LIMITS).toMatchObject({ hostMapMaxEntries: 2000, watchHistoryPerTarget: 100 });
+    expect(STANDARD_LIMITS).toMatchObject({ hostMapMaxEntries: 10_000, watchHistoryPerTarget: 1000 });
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
 

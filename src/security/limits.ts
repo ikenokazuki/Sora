@@ -72,6 +72,10 @@ export interface Limits {
   savedStateRowsPerTenant: number;
   /** 保存した Cookie・localStorage を持つ期間（ミリ秒）。最後に保存してからこれを過ぎた行は、読まず、定期の掃除で消す */
   savedStateMaxAgeMs: number;
+  /** ホスト名で引く Map（throttleDomain の覚え・DNS の検証結果の覚え）の件数の上限。それぞれの Map ごと。超えたら、役目を終えた項目を先に、次に入れた順に古い方から外す */
+  hostMapMaxEntries: number;
+  /** ウォッチの履歴（watch_history）の件数の上限。対象ごと。超えたら、書いた時刻の古い行から消す（いま足した行は消さない） */
+  watchHistoryPerTarget: number;
 }
 
 const MB = 1024 * 1024;
@@ -109,6 +113,8 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   savedStateMaxBytes: 256 * 1024,
   savedStateRowsPerTenant: 5000,
   savedStateMaxAgeMs: 90 * 86_400_000,
+  hostMapMaxEntries: 10_000,
+  watchHistoryPerTarget: 1000,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -144,6 +150,8 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   savedStateMaxBytes: 128 * 1024,
   savedStateRowsPerTenant: 100,
   savedStateMaxAgeMs: 14 * 86_400_000,
+  hostMapMaxEntries: 2000,
+  watchHistoryPerTarget: 100,
 });
 
 /**

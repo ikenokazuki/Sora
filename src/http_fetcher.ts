@@ -8,6 +8,8 @@ import { getFallbackUserAgent } from './browser_stealth.js';
 import { envBool, envError, envInt, envList, envRaw } from './config.js';
 import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { limits } from './security/limits.js';
+import { trimMap } from './security/bounded_map.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { markTenantStateUsed } from './security/tenant_state.js';
 import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
@@ -49,7 +51,12 @@ export interface UniversalHttpSession {
 const domainLastAccess = new Map<string, number>();
 const DOMAIN_MIN_INTERVAL_MS = 150; // 同一ドメインへの最小待機間隔
 
-export async function throttleDomain(urlStr: string): Promise<void> {
+/**
+ * 同じホストへの取得の間隔を空ける。最後の取得の時刻は、別々のホストが来るたびに増えるので、上限（hostMapMaxEntries）で押さえる
+ * （設計 6。穴 24）。間隔（150ms）を過ぎた項目は、あっても待たないので、先に外す（動きは変わらない）。
+ * 間隔の中の項目が上限を超えたときだけ、入れた順に古い方から外す（外れたホストは、その 1 回だけ間隔を空けない）
+ */
+export async function throttleDomain(urlStr: string, maxHosts?: number): Promise<void> {
   try {
     const hostname = new URL(urlStr).hostname.toLowerCase();
     const now = Date.now();
@@ -60,8 +67,21 @@ export async function throttleDomain(urlStr: string): Promise<void> {
       const waitTime = DOMAIN_MIN_INTERVAL_MS - elapsed + Math.floor(Math.random() * 100);
       await new Promise((r) => setTimeout(r, waitTime));
     }
-    domainLastAccess.set(hostname, Date.now());
+    const at = Date.now();
+    domainLastAccess.delete(hostname); // 入れた順の最後に動かす
+    domainLastAccess.set(hostname, at);
+    trimMap(domainLastAccess, maxHosts ?? limits().hostMapMaxEntries, (accessedAt) => at - accessedAt >= DOMAIN_MIN_INTERVAL_MS);
   } catch {}
+}
+
+/** throttleDomain が覚えているホストの数（テストと確認用） */
+export function throttledHostCount(): number {
+  return domainLastAccess.size;
+}
+
+/** throttleDomain の覚えを空にする（テスト用） */
+export function clearThrottledHosts(): void {
+  domainLastAccess.clear();
 }
 
 // ==========================================
