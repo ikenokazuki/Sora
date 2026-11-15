@@ -60,6 +60,12 @@ export interface Limits {
   watchMinIntervalMs: number;
   /** ブラウザセッションの最長の時間（ミリ秒）。作成からの時間で、使い続けても延びない。過ぎたら、使っていないときに閉じる */
   browserSessionMaxMs: number;
+  /** DB のキャッシュ（cache_entries）の行数の上限。超えたら、期限の近い（期限切れが先の）行から消す */
+  cacheDbMaxRows: number;
+  /** DB のキャッシュの容量（JSON の UTF-8 のバイト数の合計）の上限。超えたら、期限の近い行から消す。1 件がこれより大きいときは、その 1 件を入れない */
+  cacheDbMaxBytes: number;
+  /** メモリのキャッシュの容量（JSON の UTF-8 のバイト数の合計）の上限。超えたら、古い（長く使われていない）エントリから外す。DB の行は消さない */
+  cacheMemoryMaxBytes: number;
 }
 
 const MB = 1024 * 1024;
@@ -91,6 +97,9 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionMaxMs: 86_400_000,
   watchTargetsPerTenant: 1000,
   watchMinIntervalMs: 0,
+  cacheDbMaxRows: 20_000,
+  cacheDbMaxBytes: 512 * MB,
+  cacheMemoryMaxBytes: 256 * MB,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -120,6 +129,9 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionMaxMs: 3_600_000,
   watchTargetsPerTenant: 50,
   watchMinIntervalMs: 900_000,
+  cacheDbMaxRows: 5_000,
+  cacheDbMaxBytes: 128 * MB,
+  cacheMemoryMaxBytes: 64 * MB,
 });
 
 /**

@@ -12,6 +12,7 @@ import {
 } from '../scraper.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { clearTenantCache } from '../cache.js';
+import { dbCacheStats } from '../db.js';
 import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
 import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
@@ -117,6 +118,11 @@ systemRoutes.get('/metrics', (c) => {
   const accept = c.req.header('accept') || '';
   const mem = process.memoryUsage();
   const cache = getCacheMetrics();
+  // DB が読めなくても、/metrics は返す。そのときは、DB の欄を出さない（0 を返すと、空のキャッシュと見分けがつかない）
+  let dbCache: { rows: number; bytes: number } | undefined;
+  try {
+    dbCache = dbCacheStats();
+  } catch {}
   const botDetection = getBotDetectionMetrics();
   const activeSessions = getActiveSessionCount();
   const uptime = Math.floor(process.uptime());
@@ -135,6 +141,19 @@ systemRoutes.get('/metrics', (c) => {
       '# HELP sora_cache_entries Total cache entries',
       '# TYPE sora_cache_entries gauge',
       `sora_cache_entries ${cache.size}`,
+      '# HELP sora_cache_memory_bytes Memory cache size in bytes (JSON, UTF-8)',
+      '# TYPE sora_cache_memory_bytes gauge',
+      `sora_cache_memory_bytes ${cache.bytes}`,
+      ...(dbCache
+        ? [
+            '# HELP sora_cache_db_entries Persistent (SQLite) cache rows',
+            '# TYPE sora_cache_db_entries gauge',
+            `sora_cache_db_entries ${dbCache.rows}`,
+            '# HELP sora_cache_db_bytes Persistent (SQLite) cache size in bytes (JSON, UTF-8)',
+            '# TYPE sora_cache_db_bytes gauge',
+            `sora_cache_db_bytes ${dbCache.bytes}`,
+          ]
+        : []),
       '# HELP sora_cache_hits_total Total cache hits',
       '# TYPE sora_cache_hits_total counter',
       `sora_cache_hits_total ${cache.hits}`,
@@ -167,7 +186,7 @@ systemRoutes.get('/metrics', (c) => {
     service: 'sora',
     version: SORA_VERSION,
     uptimeSeconds: uptime,
-    cache,
+    cache: { ...cache, ...(dbCache ? { dbEntries: dbCache.rows, dbBytes: dbCache.bytes } : {}) },
     botDetection,
     activeSessions,
     counters: getSecurityMetrics(),

@@ -4,6 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { envPath, envStr } from './config.js';
 import { COUNTRY_INTEL_MIGRATIONS } from './services/country_intel/migrations.js';
+import { type Limits, limits } from './security/limits.js';
 import { SECURITY_MIGRATIONS } from './security/migrations.js';
 import { PUBLIC_TENANT_ID } from './security/tenant_context.js';
 
@@ -82,7 +83,7 @@ export function initDatabase(dbPath?: string): Database {
       created_at INTEGER NOT NULL
     );
   `);
-  db.run(`CREATE INDEX IF NOT EXISTS idx_cache_expires ON cache_entries(expires_at);`);
+  // cache_entries の索引 (expires_at, size) と size の列は、マイグレーション 103（security/migrations.ts）で作る
 
   // 2. API キー使用量 & レート制限テーブル
   db.run(`
@@ -179,11 +180,11 @@ export function closeDb(): void {
 // 永続キャッシュ DAO
 // ==========================================
 
-export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number; createdAt: number } | undefined {
+export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number; createdAt: number; size: number } | undefined {
   try {
     const db = getDb();
-    const row = db.query<{ value: string; expires_at: number; created_at: number }, [string, number]>(
-      'SELECT value, expires_at, created_at FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
+    const row = db.query<{ value: string; expires_at: number; created_at: number; size: number }, [string, number]>(
+      'SELECT value, expires_at, created_at, size FROM cache_entries WHERE key = ? AND expires_at > ? LIMIT 1',
     ).get(key, Date.now());
 
     if (!row) return undefined;
@@ -192,27 +193,74 @@ export function dbGetCache<T = any>(key: string): { value: T; expiresAt: number;
       expiresAt: row.expires_at,
       // created_at が無い古い行へのフォールバックは呼出側で行う
       createdAt: row.created_at,
+      size: row.size,
     };
   } catch {
     return undefined;
   }
 }
 
-export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number): void {
+/** DB のキャッシュの行数と容量（size の合計）。索引 (expires_at, size) だけで数える（表の本体の大きな中身を読まない） */
+export function dbCacheStats(): { rows: number; bytes: number } {
+  const row = getDb().query<{ rows: number; bytes: number }, []>('SELECT COUNT(*) AS rows, COALESCE(SUM(size), 0) AS bytes FROM cache_entries').get();
+  return { rows: row?.rows ?? 0, bytes: row?.bytes ?? 0 };
+}
+
+/**
+ * 行数か容量が上限を超えているときだけ、消す。まず期限切れの行を全部（役に立たないので）、まだ超えていれば、書いた時刻（created_at）の古い順に、
+ * 超えている分だけ消す。期限の近い順にしない: 満杯のとき、直前に書いた短い期限の行が、その場で消え、長い期限の古い行が居座るため。
+ * 書き込みのたびに呼ぶので、超えていなければ、数えるだけ（行数と容量の合計は、索引だけで数える）。消すのは 1 つのトランザクションで行う
+ */
+function trimCacheToLimits(db: Database, lim: Pick<Limits, 'cacheDbMaxRows' | 'cacheDbMaxBytes'>): void {
+  const isOver = (stats: { rows: number; bytes: number }) => stats.rows > lim.cacheDbMaxRows || stats.bytes > lim.cacheDbMaxBytes;
+  if (!isOver(dbCacheStats())) return;
+  db.transaction(() => {
+    db.query('DELETE FROM cache_entries WHERE expires_at <= ?').run(Date.now());
+    const stats = dbCacheStats();
+    let overRows = stats.rows - lim.cacheDbMaxRows;
+    let overBytes = stats.bytes - lim.cacheDbMaxBytes;
+    const oldest = db.query<{ key: string; size: number }, []>('SELECT key, size FROM cache_entries ORDER BY created_at, rowid LIMIT 200');
+    const remove = db.query('DELETE FROM cache_entries WHERE key = ?');
+    while (overRows > 0 || overBytes > 0) {
+      const batch = oldest.all();
+      if (batch.length === 0) return;
+      for (const row of batch) {
+        if (overRows <= 0 && overBytes <= 0) return;
+        remove.run(row.key);
+        overRows--;
+        overBytes -= row.size;
+      }
+    }
+  })();
+}
+
+/**
+ * キャッシュを書く。行数と容量の上限（設計 6。穴 24）を超えたら、期限切れの行、次に書いた時刻の古い行から消す。
+ * 1 件がそれだけで容量の上限より大きいときは、入れない（入れると、ほかの行を全部消して、それも消える）。同じキーの古い行は消す（メモリと食い違わない）。
+ * lim を省くと、SORA_ISOLATION の水準の値
+ */
+export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number, lim: Pick<Limits, 'cacheDbMaxRows' | 'cacheDbMaxBytes'> = limits()): void {
   try {
     const db = getDb();
     const now = Date.now();
     const expiresAt = now + ttlSeconds * 1000;
     const jsonStr = JSON.stringify(value);
+    const size = Buffer.byteLength(jsonStr);
+    if (size > lim.cacheDbMaxBytes) {
+      db.query('DELETE FROM cache_entries WHERE key = ?').run(key);
+      return;
+    }
 
     db.query(`
-      INSERT INTO cache_entries (key, value, expires_at, created_at)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO cache_entries (key, value, expires_at, created_at, size)
+      VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(key) DO UPDATE SET
         value = excluded.value,
         expires_at = excluded.expires_at,
-        created_at = excluded.created_at
-    `).run(key, jsonStr, expiresAt, now);
+        created_at = excluded.created_at,
+        size = excluded.size
+    `).run(key, jsonStr, expiresAt, now, size);
+    trimCacheToLimits(db, lim);
   } catch (err) {
     console.warn('[Sora/DB] Failed to set cache entry:', err);
   }
