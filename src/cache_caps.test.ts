@@ -209,15 +209,23 @@ describe('マイグレーション 103（既存の DB に size の列と索引�
     getDb().query('INSERT INTO cache_entries (key, value, expires_at, created_at) VALUES (?, ?, ?, ?)').run('old:2', '{"t":"abc"}', Date.now() + 700_000, Date.now());
   }
 
-  test('古い DB を開くと、列と新しい索引が足され、古い索引は無くなる。古い行は大きさが分からないので、キャッシュを空にする（書き直さない）', () => {
+  test('古い DB を開くと、列と新しい索引が足され、古い索引は無くなる。既存の行は消さず、大きさは 0 のまま（書き直さない）', () => {
     makeOldDb();
     closeDb();
     getDb(); // 開き直す → マイグレーション
     expect(indexNames()).toEqual(['idx_cache_created', 'idx_cache_expires_size']);
-    expect(dbCacheStats()).toEqual({ rows: 0, bytes: 0 });
-    // 列がある: 書いて読める。上限が効く
-    dbSetCache('new:1', payload(5_000), 800, caps({ cacheDbMaxBytes: 5_010 }));
-    dbSetCache('new:2', payload(5_000), 900, caps({ cacheDbMaxBytes: 5_010 }));
+    expect(rowKeys()).toEqual(['old:1', 'old:2']);
+    expect(dbGetCache('old:1')).toMatchObject({ value: { t: 'あいう' }, size: 0 });
+    expect(dbCacheStats()).toEqual({ rows: 2, bytes: 0 });
+  });
+
+  test('古い行（大きさ 0）は、書いた時刻が古いので、上限を超えるとき最初に外れる。新しい行は、大きさが数えられ、上限が効く', () => {
+    makeOldDb();
+    closeDb();
+    getDb();
+    dbSetCache('new:1', payload(5_000), 800, caps({ cacheDbMaxRows: 2 })); // 3 行 → 古い old:1 が外れる
+    expect(rowKeys().sort()).toEqual(['new:1', 'old:2']);
+    dbSetCache('new:2', payload(5_000), 900, caps({ cacheDbMaxBytes: 5_010 })); // 容量を超える → 大きさ 0 の old:2、次に new:1
     expect(rowKeys()).toEqual(['new:2']);
     expect(dbGetCache('new:2')?.size).toBe(5_000);
   });
