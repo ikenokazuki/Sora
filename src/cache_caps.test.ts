@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clearCache, clearTenantCache, getCacheMetrics, getFromCache, setToCache, sweepExpiredEntries } from './cache.js';
+import * as dbModule from './db.js';
 import { closeDb, dbCacheStats, dbGetCache, dbSetCache, getDb } from './db.js';
 import * as limitsModule from './security/limits.js';
 import { STANDARD_LIMITS, STRICT_LIMITS } from './security/limits.js';
@@ -10,7 +11,7 @@ import { tenantCacheKey } from './security/tenant_state.js';
 import { withEnv } from './test_fixtures/env.js';
 
 /**
- * キャッシュの上限（設計 6。穴 24）。DB（L2）は行数と容量、メモリ（L1）は容量に上限を置く。超えたら、期限の近い順に消す（期限切れが先）。
+ * キャッシュの上限（設計 6。穴 24）。DB（L2）は行数と容量、メモリ（L1）は容量に上限を置く。超えたら、期限切れの行、次に書いた時刻の古い行から消す。
  * これまで、L2 は上限が無く、L1 は件数（3000）だけだった（1 件が最大 2MB なので、容量には上限が無かった）。
  * 共有の in-memory DB を使うほかのテストの行を巻き込まないよう、ここでは、毎回、新しい DB を使う。
  */
@@ -41,7 +42,7 @@ const rowKeys = () => (getDb().query('SELECT key FROM cache_entries ORDER BY exp
 const payload = (n: number, tag = '') => ({ body: `${tag}`.padEnd(n - 11, 'x') }); // {"body":"…"} は、本文以外で 11 バイト
 
 describe('DB（L2）の行数の上限', () => {
-  test('上限を超える書き込みでは、期限の近い（古い）行から消し、行数は上限のまま。新しい行は残る', () => {
+  test('上限を超える書き込みでは、書いた時刻の古い行から消し、行数は上限のまま。新しい行は残る', () => {
     const lim = caps({ cacheDbMaxRows: 10 });
     for (let i = 0; i < 25; i++) dbSetCache(`rows:${String(i).padStart(2, '0')}`, { n: i }, 600 + i, lim);
     expect(dbCacheStats().rows).toBe(10);
@@ -60,6 +61,37 @@ describe('DB（L2）の行数の上限', () => {
     expect(rowKeys().sort()).toEqual(['live-a', 'live-b', 'live-c']);
   });
 
+  test('満杯のとき、直前に書いた短い期限の行がその場で消えず、長い期限の古い行が居座らない（期限の近い順にしない）', () => {
+    const lim = caps({ cacheDbMaxRows: 5 });
+    for (let i = 0; i < 5; i++) dbSetCache(`long:${i}`, { n: i }, 86_400, lim); // 24 時間の行で満杯
+    for (let i = 0; i < 3; i++) dbSetCache(`short:${i}`, { n: i }, 1_800, lim); // 30 分の行を 3 件書く
+    expect(dbCacheStats().rows).toBe(5);
+    expect(rowKeys().sort()).toEqual(['long:3', 'long:4', 'short:0', 'short:1', 'short:2']); // 書いた 3 件が残り、古い 24 時間の行が 3 件外れる
+    for (let i = 0; i < 2; i++) dbSetCache(`next:${i}`, { n: i }, 1_800, lim);
+    expect(dbGetCache('next:1')).toBeDefined();
+  });
+
+  test('書き直した行は新しい行として数える（書いた時刻が替わる）。古いまま満杯で消されない', () => {
+    const lim = caps({ cacheDbMaxRows: 3 });
+    for (const key of ['a', 'b', 'c']) {
+      dbSetCache(key, { v: key }, 600, lim);
+      Bun.sleepSync(3); // 書いた時刻（ミリ秒）が、行ごとに違うようにする
+    }
+    dbSetCache('a', { v: 'a2' }, 600, lim); // 一番古かった a を書き直す → a が新しい
+    Bun.sleepSync(3);
+    dbSetCache('d', { v: 'd' }, 600, lim); // 満杯 → 一番古い b が外れる
+    expect(rowKeys().sort()).toEqual(['a', 'c', 'd']);
+  });
+
+  test('期限切れの行は、まだ超えていなくても、超えたときにまとめて消える（有効な行は、必要な分だけ）', () => {
+    const lim = caps({ cacheDbMaxRows: 10 });
+    for (let i = 0; i < 5; i++) dbSetCache(`dead:${i}`, { n: i }, 0, lim); // 書いた時点で期限切れ
+    for (let i = 0; i < 5; i++) dbSetCache(`live:${i}`, { n: i }, 600, lim);
+    expect(dbCacheStats().rows).toBe(10); // ちょうど上限。まだ消さない
+    dbSetCache('live:5', { n: 5 }, 600, lim); // 11 件目 → 期限切れ 5 件が消える。有効な行は 1 件も消さない
+    expect(rowKeys().sort()).toEqual(['live:0', 'live:1', 'live:2', 'live:3', 'live:4', 'live:5']);
+  });
+
   test('同じキーの書き直しは、行を増やさず、ほかの行を消さない', () => {
     const lim = caps({ cacheDbMaxRows: 3 });
     dbSetCache('other-1', { v: 1 }, 600, lim);
@@ -72,7 +104,7 @@ describe('DB（L2）の行数の上限', () => {
 });
 
 describe('DB（L2）の容量の上限', () => {
-  test('容量（JSON の UTF-8 のバイト数の合計）が上限を超えたら、期限の近い行から消す', () => {
+  test('容量（JSON の UTF-8 のバイト数の合計）が上限を超えたら、書いた時刻の古い行から消す', () => {
     const lim = caps({ cacheDbMaxBytes: 100_000 });
     for (let i = 0; i < 8; i++) dbSetCache(`bytes:${i}`, payload(30_000, `${i}`), 600 + i, lim); // 1 件およそ 30,000 バイト
     const stats = dbCacheStats();
@@ -117,14 +149,25 @@ describe('DB（L2）の容量の上限', () => {
     dbSetCache('huge', payload(60_000), 700, lim);
     expect(rowKeys()).toEqual(['small']);
   });
+
+  test('同じキーを上限より大きい値で書き直すと、古い値の行も消える（メモリの古い値が消えるのと食い違わない）', () => {
+    const lim = caps({ cacheDbMaxBytes: 50_000 });
+    dbSetCache('grow', { v: 'OLD' }, 600, lim);
+    dbSetCache('keep', { v: 'KEEP' }, 600, lim);
+    dbSetCache('grow', payload(60_000), 600, lim);
+    expect(rowKeys()).toEqual(['keep']);
+  });
 });
 
 describe('書き込みのたびの数え方', () => {
-  test('行数と容量の合計は、索引だけで数える（大きな中身を読まない。索引を外す変更に気づく）', () => {
+  test('行数と容量の合計は、索引だけで数える。書いた時刻の古い順の取り出しは、並べ替えない（索引を外す変更に気づく）', () => {
     const plan = getDb().query('EXPLAIN QUERY PLAN SELECT COUNT(*) AS rows, COALESCE(SUM(size), 0) AS bytes FROM cache_entries').all() as Array<{ detail: string }>;
     expect(plan.map((p) => p.detail).join(' ')).toContain('COVERING INDEX idx_cache_expires_size');
-    const order = getDb().query('EXPLAIN QUERY PLAN SELECT key, size FROM cache_entries ORDER BY expires_at LIMIT 200').all() as Array<{ detail: string }>;
-    expect(order.map((p) => p.detail).join(' ')).not.toContain('TEMP B-TREE'); // 期限順に引くとき、並べ替えをしない
+    const order = getDb().query('EXPLAIN QUERY PLAN SELECT key, size FROM cache_entries ORDER BY created_at, rowid LIMIT 200').all() as Array<{ detail: string }>;
+    expect(order.map((p) => p.detail).join(' ')).toContain('idx_cache_created');
+    expect(order.map((p) => p.detail).join(' ')).not.toContain('TEMP B-TREE');
+    const expired = getDb().query('EXPLAIN QUERY PLAN DELETE FROM cache_entries WHERE expires_at <= 1').all() as Array<{ detail: string }>;
+    expect(expired.map((p) => p.detail).join(' ')).toContain('INDEX'); // 期限切れの削除は、表の全体を走査しない
   });
 });
 
@@ -152,22 +195,46 @@ describe('水準ごとの既定', () => {
   });
 });
 
-describe('マイグレーション（既存の DB に size の列を足し、古い行の大きさを埋める）', () => {
-  test('size の列が無い古い DB を開くと、列が足され、既存の行の大きさが埋まり、上限の数え方に使われる', () => {
-    getDb(); // 新しい DB（size の列あり）
+describe('マイグレーション 103（既存の DB に size の列と索引を足す）', () => {
+  const indexNames = () => (getDb().query("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'cache_entries' AND name LIKE 'idx_%' ORDER BY name").all() as Array<{ name: string }>).map((r) => r.name);
+  /** 103 より前の形の DB にする: size の列・新しい索引を外し、古い索引を作り、行を入れ、移行の記録を消す */
+  function makeOldDb() {
+    getDb();
     getDb().run('DROP INDEX IF EXISTS idx_cache_expires_size');
+    getDb().run('DROP INDEX IF EXISTS idx_cache_created');
     getDb().run('ALTER TABLE cache_entries DROP COLUMN size');
+    getDb().run('CREATE INDEX idx_cache_expires ON cache_entries(expires_at)');
     getDb().run("DELETE FROM schema_migrations WHERE name = 'cache entry size'");
     getDb().query('INSERT INTO cache_entries (key, value, expires_at, created_at) VALUES (?, ?, ?, ?)').run('old:1', '{"t":"あいう"}', Date.now() + 600_000, Date.now());
     getDb().query('INSERT INTO cache_entries (key, value, expires_at, created_at) VALUES (?, ?, ?, ?)').run('old:2', '{"t":"abc"}', Date.now() + 700_000, Date.now());
+  }
+
+  test('古い DB を開くと、列と新しい索引が足され、古い索引は無くなる。古い行は大きさが分からないので、キャッシュを空にする（書き直さない）', () => {
+    makeOldDb();
     closeDb();
     getDb(); // 開き直す → マイグレーション
-    expect(dbGetCache('old:1')?.size).toBe(Buffer.byteLength('{"t":"あいう"}'));
-    expect(dbGetCache('old:2')?.size).toBe(Buffer.byteLength('{"t":"abc"}'));
-    expect(dbCacheStats()).toEqual({ rows: 2, bytes: Buffer.byteLength('{"t":"あいう"}') + Buffer.byteLength('{"t":"abc"}') });
-    // 大きさが数えられているので、容量の上限が効く
+    expect(indexNames()).toEqual(['idx_cache_created', 'idx_cache_expires_size']);
+    expect(dbCacheStats()).toEqual({ rows: 0, bytes: 0 });
+    // 列がある: 書いて読める。上限が効く
     dbSetCache('new:1', payload(5_000), 800, caps({ cacheDbMaxBytes: 5_010 }));
-    expect(rowKeys()).toEqual(['new:1']);
+    dbSetCache('new:2', payload(5_000), 900, caps({ cacheDbMaxBytes: 5_010 }));
+    expect(rowKeys()).toEqual(['new:2']);
+    expect(dbGetCache('new:2')?.size).toBe(5_000);
+  });
+
+  test('列がすでにあるときに、もう一度流しても失敗しない（同じ DB を開く別のプロセスの起動が、衝突しない）。行は消さない', () => {
+    getDb();
+    dbSetCache('keep:1', { v: 1 }, 600, caps());
+    getDb().run("DELETE FROM schema_migrations WHERE name = 'cache entry size'"); // 別のプロセスが先に列を足した状態
+    closeDb();
+    expect(() => getDb()).not.toThrow();
+    expect(rowKeys()).toEqual(['keep:1']);
+    expect(dbGetCache('keep:1')?.size).toBe(Buffer.byteLength('{"v":1}'));
+  });
+
+  test('新しい DB でも、同じ索引になる（古い索引は作らない）', () => {
+    getDb();
+    expect(indexNames()).toEqual(['idx_cache_created', 'idx_cache_expires_size']);
   });
 });
 
@@ -294,6 +361,17 @@ describe('メモリ（L1）の容量の上限', () => {
     expect(getFromCache('big:huge')).toBeNull();
   });
 
+  test('setToCache に上限を渡さないときは、水準の値（limits()）が、メモリにも DB にも使われる', () => {
+    const spy = spyOn(limitsModule, 'limits').mockReturnValue(caps({ cacheMemoryMaxBytes: 50_000, cacheDbMaxRows: 2 }));
+    try {
+      for (let i = 0; i < 4; i++) setToCache(`default:${i}`, payload(20_000, `${i}`), 600_000 + i);
+      expect(getCacheMetrics()).toMatchObject({ size: 2, bytes: 40_000 }); // メモリは 50,000 に収まる 2 件
+      expect(dbCacheStats().rows).toBe(2); // DB は 2 行
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('limits を渡さないとき、水準の値が上限になる（getCacheMetrics の maxBytes）', async () => {
     await withEnv({ SORA_ISOLATION: 'strict' }, () => {
       expect(getCacheMetrics().maxBytes).toBe(STRICT_LIMITS.cacheMemoryMaxBytes);
@@ -305,15 +383,36 @@ describe('メモリ（L1）の容量の上限', () => {
 });
 
 describe('/metrics に、上限の近さが出る', () => {
-  test('JSON: cache にメモリの容量・上限と、DB の行数・容量。Prometheus: 同じ値の 3 つの gauge', async () => {
+  test('JSON: cache にメモリの容量・上限と、DB の行数・容量。Prometheus: 同じ値の 3 つの gauge（メモリと DB で値が違うとき、取り違えない）', async () => {
     const { app } = await import('./index.js');
-    setToCache('metrics:a', payload(1_000, 'a'), 600_000);
-    setToCache('metrics:b', payload(2_000, 'b'), 600_000);
+    setToCache('metrics:a', payload(1_000, 'a'), 600_000); // メモリにも DB にも入る
+    dbSetCache('metrics:db-only', payload(5_000, 'b'), 600, caps()); // DB にだけ入る
     const data = (await (await app.request('/metrics')).json()) as { cache: Record<string, number> };
-    expect(data.cache).toMatchObject({ size: 2, bytes: 3_000, maxBytes: STANDARD_LIMITS.cacheMemoryMaxBytes, dbEntries: 2, dbBytes: 3_000 });
+    expect(data.cache).toMatchObject({ size: 1, bytes: 1_000, maxBytes: STANDARD_LIMITS.cacheMemoryMaxBytes, dbEntries: 2, dbBytes: 6_000 });
     const text = await (await app.request('/metrics?format=prometheus')).text();
-    expect(text).toContain('\nsora_cache_memory_bytes 3000\n');
+    expect(text).toContain('\nsora_cache_memory_bytes 1000\n');
     expect(text).toContain('\nsora_cache_db_entries 2\n');
-    expect(text).toContain('\nsora_cache_db_bytes 3000\n');
+    expect(text).toContain('\nsora_cache_db_bytes 6000\n');
+  });
+
+  test('DB が読めないときも 200 で返し、DB の欄は 0 にせず出さない（空のキャッシュと見分けられるように）', async () => {
+    const { app } = await import('./index.js');
+    const spy = spyOn(dbModule, 'dbCacheStats').mockImplementation(() => {
+      throw new Error('database disk image is malformed');
+    });
+    try {
+      const res = await app.request('/metrics');
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { cache: Record<string, unknown> };
+      expect(data.cache.size).toBeDefined();
+      expect(data.cache).not.toHaveProperty('dbEntries');
+      expect(data.cache).not.toHaveProperty('dbBytes');
+      const text = await (await app.request('/metrics?format=prometheus')).text();
+      expect(text).toContain('sora_cache_memory_bytes');
+      expect(text).not.toContain('sora_cache_db_entries');
+      expect(text).not.toContain('sora_cache_db_bytes');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

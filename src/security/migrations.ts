@@ -49,11 +49,19 @@ export const SECURITY_MIGRATIONS: readonly DbMigration[] = [
     version: 103,
     name: 'cache entry size',
     up(database) {
-      // キャッシュの容量の上限（穴 24）のため、行ごとの大きさ（JSON の UTF-8 のバイト数）を持つ。古い行は、いまの中身から埋める。
-      // 索引は (expires_at, size): 期限の近い順に消すときの並びと、行数・容量の合計（表の本体を読まない）に使う。古い索引 idx_cache_expires は、これに含まれる
-      database.run('ALTER TABLE cache_entries ADD COLUMN size INTEGER NOT NULL DEFAULT 0');
-      database.run('UPDATE cache_entries SET size = LENGTH(CAST(value AS BLOB))');
+      // キャッシュの容量の上限（穴 24）のため、行ごとの大きさ（JSON の UTF-8 のバイト数）を持つ。
+      // 古い行の大きさは埋めずに、キャッシュを一度空にする（キャッシュなので、取り直せば戻る）: 全行を書き直すと、起動が DB の大きさに
+      // 比例して遅くなり（540MB で 4 秒、2.7GB で 80 秒）、その間、同じ DB を開く別のプロセスの起動が衝突するため。空にするのは、ページを解放するだけで軽い。
+      // 列の有無を先に見る（ALTER は冪等でない。並行する起動が、同じ移行を 2 回流しても失敗しない）
+      const columns = database.query<{ name: string }, []>('PRAGMA table_info(cache_entries)').all();
+      if (!columns.some((c) => c.name === 'size')) {
+        database.run('DELETE FROM cache_entries');
+        database.run('ALTER TABLE cache_entries ADD COLUMN size INTEGER NOT NULL DEFAULT 0');
+      }
+      // 索引: (expires_at, size) は、行数・容量の合計と、期限切れの削除（表の本体を読まない）。created_at は、満杯のときに、書いた時刻の古い順に消すため。
+      // 古い索引 idx_cache_expires は、(expires_at, size) に含まれる
       database.run('CREATE INDEX IF NOT EXISTS idx_cache_expires_size ON cache_entries(expires_at, size)');
+      database.run('CREATE INDEX IF NOT EXISTS idx_cache_created ON cache_entries(created_at)');
       database.run('DROP INDEX IF EXISTS idx_cache_expires');
     },
   },

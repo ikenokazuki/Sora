@@ -207,31 +207,37 @@ export function dbCacheStats(): { rows: number; bytes: number } {
 }
 
 /**
- * 行数か容量が上限を超えている分だけ、期限の近い順（期限切れが先）に消す。書き込みのたびに呼ぶので、超えていなければ、数えるだけ
- * （消す行の数が分かるまで、200 行ずつ引く）
+ * 行数か容量が上限を超えているときだけ、消す。まず期限切れの行を全部（役に立たないので）、まだ超えていれば、書いた時刻（created_at）の古い順に、
+ * 超えている分だけ消す。期限の近い順にしない: 満杯のとき、直前に書いた短い期限の行が、その場で消え、長い期限の古い行が居座るため。
+ * 書き込みのたびに呼ぶので、超えていなければ、数えるだけ（行数と容量の合計は、索引だけで数える）。消すのは 1 つのトランザクションで行う
  */
 function trimCacheToLimits(db: Database, lim: Pick<Limits, 'cacheDbMaxRows' | 'cacheDbMaxBytes'>): void {
-  const stats = dbCacheStats();
-  let overRows = stats.rows - lim.cacheDbMaxRows;
-  let overBytes = stats.bytes - lim.cacheDbMaxBytes;
-  if (overRows <= 0 && overBytes <= 0) return;
-  const oldest = db.query<{ key: string; size: number }, []>('SELECT key, size FROM cache_entries ORDER BY expires_at LIMIT 200');
-  const remove = db.query('DELETE FROM cache_entries WHERE key = ?');
-  while (overRows > 0 || overBytes > 0) {
-    const batch = oldest.all();
-    if (batch.length === 0) return;
-    for (const row of batch) {
-      if (overRows <= 0 && overBytes <= 0) return;
-      remove.run(row.key);
-      overRows--;
-      overBytes -= row.size;
+  const isOver = (stats: { rows: number; bytes: number }) => stats.rows > lim.cacheDbMaxRows || stats.bytes > lim.cacheDbMaxBytes;
+  if (!isOver(dbCacheStats())) return;
+  db.transaction(() => {
+    db.query('DELETE FROM cache_entries WHERE expires_at <= ?').run(Date.now());
+    const stats = dbCacheStats();
+    let overRows = stats.rows - lim.cacheDbMaxRows;
+    let overBytes = stats.bytes - lim.cacheDbMaxBytes;
+    const oldest = db.query<{ key: string; size: number }, []>('SELECT key, size FROM cache_entries ORDER BY created_at, rowid LIMIT 200');
+    const remove = db.query('DELETE FROM cache_entries WHERE key = ?');
+    while (overRows > 0 || overBytes > 0) {
+      const batch = oldest.all();
+      if (batch.length === 0) return;
+      for (const row of batch) {
+        if (overRows <= 0 && overBytes <= 0) return;
+        remove.run(row.key);
+        overRows--;
+        overBytes -= row.size;
+      }
     }
-  }
+  })();
 }
 
 /**
- * キャッシュを書く。行数と容量の上限（設計 6。穴 24）を超えたら、期限の近い順に消す。1 件がそれだけで容量の上限より大きいときは、入れない
- * （入れると、ほかの行を全部消して、それも消える）。lim を省くと、SORA_ISOLATION の水準の値
+ * キャッシュを書く。行数と容量の上限（設計 6。穴 24）を超えたら、期限切れの行、次に書いた時刻の古い行から消す。
+ * 1 件がそれだけで容量の上限より大きいときは、入れない（入れると、ほかの行を全部消して、それも消える）。同じキーの古い行は消す（メモリと食い違わない）。
+ * lim を省くと、SORA_ISOLATION の水準の値
  */
 export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number, lim: Pick<Limits, 'cacheDbMaxRows' | 'cacheDbMaxBytes'> = limits()): void {
   try {
@@ -240,7 +246,10 @@ export function dbSetCache<T = any>(key: string, value: T, ttlSeconds: number, l
     const expiresAt = now + ttlSeconds * 1000;
     const jsonStr = JSON.stringify(value);
     const size = Buffer.byteLength(jsonStr);
-    if (size > lim.cacheDbMaxBytes) return;
+    if (size > lim.cacheDbMaxBytes) {
+      db.query('DELETE FROM cache_entries WHERE key = ?').run(key);
+      return;
+    }
 
     db.query(`
       INSERT INTO cache_entries (key, value, expires_at, created_at, size)
