@@ -18,7 +18,7 @@ import {
   WatchRegisterRequestSchema,
   WatchCheckRequestSchema,
 } from '../types.js';
-import { formatError } from './utils.js';
+import { formatError, watchLimitResponse } from './utils.js';
 import { errorCode, errorMessage } from '../errors.js';
 
 export function createWatchRoutes(deps: WatchRouteDeps = {}) {
@@ -51,6 +51,8 @@ watchRoutes.post('/watch/register', async (c) => {
     const result = await registerWatchTarget({ ...parsed.data, tenantId: tenantOf(c) });
     return c.json(result);
   } catch (err) {
+    const overLimit = watchLimitResponse(c, err);
+    if (overLimit) return overLimit;
     return formatError(c, errorMessage(err) || 'Watch target registration failed', 'WATCH_ERROR', 500);
   }
 });
@@ -75,6 +77,8 @@ watchRoutes.post('/watch/check', async (c) => {
     }
     return c.json({ results: await checkAllWatchTargets(tenantOf(c)) });
   } catch (err) {
+    const overLimit = watchLimitResponse(c, err);
+    if (overLimit) return overLimit;
     if (errorCode(err) === 'WATCH_SELECTOR_NOT_FOUND') {
       return formatError(c, errorMessage(err) || 'Watch selector not found', 'WATCH_SELECTOR_NOT_FOUND', 502, false);
     }

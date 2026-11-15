@@ -105,13 +105,23 @@ describe('limits', () => {
     expect(STANDARD_LIMITS.browserSessionMaxMs).toBe(86_400_000);
   });
 
-  test('すべての値は正の整数。standard は strict より緩い（同じか大きい）', () => {
+  test('ウォッチ: 1 人の登録数は strict が 50 件、standard が 1000 件。同じウォッチの確認の最小の間隔は strict が 15 分、standard は無し（0）', () => {
+    expect(STRICT_LIMITS).toMatchObject({ watchTargetsPerTenant: 50, watchMinIntervalMs: 900_000 });
+    expect(STANDARD_LIMITS).toMatchObject({ watchTargetsPerTenant: 1000, watchMinIntervalMs: 0 });
+  });
+
+  // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
+  const LOWER_BOUNDS = ['watchMinIntervalMs'];
+
+  test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());
     for (const key of keys) {
+      const lowerBound = LOWER_BOUNDS.includes(key);
       expect(Number.isInteger(STRICT_LIMITS[key]) && STRICT_LIMITS[key] > 0, `strict.${key}`).toBe(true);
-      expect(Number.isInteger(STANDARD_LIMITS[key]) && STANDARD_LIMITS[key] > 0, `standard.${key}`).toBe(true);
-      expect(STANDARD_LIMITS[key], key).toBeGreaterThanOrEqual(STRICT_LIMITS[key]);
+      expect(Number.isInteger(STANDARD_LIMITS[key]) && STANDARD_LIMITS[key] >= (lowerBound ? 0 : 1), `standard.${key}`).toBe(true);
+      if (lowerBound) expect(STANDARD_LIMITS[key], key).toBeLessThanOrEqual(STRICT_LIMITS[key]);
+      else expect(STANDARD_LIMITS[key], key).toBeGreaterThanOrEqual(STRICT_LIMITS[key]);
     }
   });
 

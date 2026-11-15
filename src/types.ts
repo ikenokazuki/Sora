@@ -2060,6 +2060,8 @@ export const WatchCheckResultSchema = z.object({
   checkedAt: z.string().describe('チェック実行日時 (ISO 8601)'),
   webhookSent: z.boolean().optional().describe('Webhook が 2xx で受け取られたら true、送れなかったら false。Webhook の無い監視と差分の無い確認では省略'),
   errorCode: z.string().optional().describe('失敗コード (WATCH_SELECTOR_NOT_FOUND 等)'),
+  skipped: z.boolean().optional().describe('同じウォッチの確認の最小の間隔の中なので、取得せずに見送った（id を省いた一括の確認だけ）'),
+  retryAfterSec: z.number().optional().describe('見送ったとき、もう一度確認できるまでの秒'),
 });
 
 export const WatchCheckResponseSchema = z.object({

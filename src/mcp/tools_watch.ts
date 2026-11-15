@@ -19,7 +19,7 @@ export function registerWatchTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'watch',
     'watch',
-    '【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent? }（id を省くとその配列）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }',
+    '【Webページ差分監視】Web ページ（CSS セレクタで一部に限定も可）の変化を監視します。チケット当落・再販・お知らせの検知に利用します。action で選ぶ。register: url を監視対象に登録し、初回のハッシュを記録。check: 取得し直して前回との差分を確認し、差分があれば登録した Webhook に通知（id を省くと全件）。list: 登録済みの対象と、最終確認の時刻・ハッシュの一覧。delete: id の対象を削除し、以後の監視を止める（id は list で確認）。返却: register は { target: { id, url, title, selector }, initialResult?, initialError? }、check は { targetId, url, changed, diffSummary?, snapshotSnippet?, checkedAt, webhookSent?, skipped?, retryAfterSec? }（id を省くとその配列。確認の最小の間隔の中のウォッチは、取得せず skipped: true と retryAfterSec で返す）、list は [{ id, url, title?, selector?, last_checked_at?, last_hash? }]、delete は { success, id }',
     {
       action: z.enum(['register', 'check', 'list', 'delete']).describe('操作: "register" (登録), "check" (差分の確認), "list" (一覧), "delete" (削除)'),
       url: z.string().trim().optional().describe('監視対象の Web ページ URL (例: "https://example.com/status")。register のときだけ (必須)'),

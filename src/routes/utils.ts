@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { QuotaExceededError, ResourceBusyError } from '../errors.js';
+import { QuotaExceededError, ResourceBusyError, WatchLimitError } from '../errors.js';
 
 /**
  * JSON の本文の最上位で null の項目を、指定なしとして取り除く（None・nil を「未指定」として送るクライアント向け）。
@@ -78,4 +78,16 @@ export function quotaResponse(c: Context, err: unknown): Response | undefined {
   if (!(err instanceof QuotaExceededError)) return undefined;
   c.header('Retry-After', String(err.retryAfterSec));
   return c.json(quotaBody(err), 429);
+}
+
+/**
+ * ウォッチの上限を超える呼び出しを断ったとき（WatchLimitError。設計 6。穴 18・24）の応答: 429。
+ * 登録数の上限（WATCH_LIMIT_EXCEEDED）は、待っても空かない（delete が要る）ので retryable false で Retry-After なし。
+ * 確認の最小の間隔（WATCH_TOO_FREQUENT）は retryable true で、Retry-After（あと何秒か）。ほかの失敗は undefined
+ */
+export function watchLimitResponse(c: Context, err: unknown): Response | undefined {
+  if (!(err instanceof WatchLimitError)) return undefined;
+  const tooFrequent = err.code === 'WATCH_TOO_FREQUENT';
+  if (tooFrequent) c.header('Retry-After', String(err.retryAfterSec));
+  return formatError(c, err.message, err.code, 429, tooFrequent, tooFrequent ? { limit: err.limit, retryAfterSec: err.retryAfterSec } : { limit: err.limit, current: err.current });
 }
