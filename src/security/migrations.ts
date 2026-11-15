@@ -65,4 +65,18 @@ export const SECURITY_MIGRATIONS: readonly DbMigration[] = [
       database.run('DROP INDEX IF EXISTS idx_cache_expires');
     },
   },
+  {
+    version: 104,
+    name: 'saved state indexes',
+    up(database) {
+      // 保存した Cookie・localStorage の上限（穴 24）のための索引だけを足す。既存の行は消さない（移行は既存のデータを消さない規則）。
+      // (tenant_id, updated_at): 1 人あたりの行数を数え、保存した時刻の古い行から消す。updated_at の列は、大きな JSON の列より後ろにあるので、
+      //   索引が無いと、時刻を読むために JSON の続きのページまで読む。
+      // (updated_at): 期限を過ぎた行の掃除（全員ぶん）。無いと、表の全行を読む
+      for (const [table, name] of [['domain_cookies_v2', 'domain_cookies'], ['domain_storage_v2', 'domain_storage']]) {
+        database.run(`CREATE INDEX IF NOT EXISTS idx_${name}_tenant_updated ON ${table}(tenant_id, updated_at)`);
+        database.run(`CREATE INDEX IF NOT EXISTS idx_${name}_updated ON ${table}(updated_at)`);
+      }
+    },
+  },
 ];

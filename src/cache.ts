@@ -8,6 +8,7 @@ import {
   dbClearCacheByPrefix,
   dbPurgeOldApiUsage,
   dbPurgeOldWatchHistory,
+  dbPurgeStaleSavedState,
 } from './db.js';
 import { type Limits, limits } from './security/limits.js';
 import { tenantCacheKey } from './security/tenant_state.js';
@@ -149,6 +150,7 @@ export function sweepExpiredEntries(): number {
   dbClearExpiredCache();
   dbPurgeOldApiUsage();
   dbPurgeOldWatchHistory();
+  dbPurgeStaleSavedState();
   return deletedCount;
 }
 
