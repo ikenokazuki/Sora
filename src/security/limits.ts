@@ -106,8 +106,8 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   cacheDbMaxRows: 20_000,
   cacheDbMaxBytes: 512 * MB,
   cacheMemoryMaxBytes: 256 * MB,
-  savedStateMaxBytes: 512 * 1024,
-  savedStateRowsPerTenant: 1000,
+  savedStateMaxBytes: 256 * 1024,
+  savedStateRowsPerTenant: 5000,
   savedStateMaxAgeMs: 90 * 86_400_000,
 });
 

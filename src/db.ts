@@ -612,34 +612,37 @@ const SAVED_STATE_COLUMN: Record<SavedStateTable, 'cookies_json' | 'storage_json
  * 保存した状態（Cookie・localStorage）を 1 行書く。public の tenant（利用者を持たない取得）は、読まず、書かない。
  * 上限（設計 6。穴 24）: JSON の UTF-8 のバイト数が 1 行の上限を超える保存はせず、同じ場所の前の保存も消す（古い状態を、新しい状態の代わりに戻さない）。
  * 書いたあと、その tenant の行数（この表の、場所 scope が違う行も別に数える）が上限を超えていれば、保存した時刻の古い行から消す。
- * いま書いた行は消さない（時計が戻って、いまの時刻が一番古くなっても）。書き込みと掃除は 1 つのトランザクション。
+ * いま書いた行は消さない（時計が戻って、いまの時刻が一番古くなっても）。
+ * 書き込みと掃除は、別々の文（トランザクションで囲まない）: 保存が掃除の失敗に巻き込まれて落ちない（掃除は、次の保存でやり直す）。
+ * 同じ接続に実行中の文が残っていると、トランザクションの COMMIT が「SQL statements in progress」で失敗し、保存が黙って落ちる
+ * （全件テストで、別のテストの残した文により起きた。これまでの 1 文の書き込みは、影響を受けない）。複数のプロセスが同じ DB を使っても、
+ * 行数は、数え方の差の 1 行ぶんずれるだけで、次の保存で戻る。
  */
-function saveSavedState(table: SavedStateTable, tenantId: string, domain: string, scope: string, json: string, lim: Limits): void {
+function saveSavedState(table: SavedStateTable, tenantId: string, domain: string, scope: string, value: unknown, lim: Limits): void {
   if (tenantId === PUBLIC_TENANT_ID) return;
   try {
     const db = getDb();
     const column = SAVED_STATE_COLUMN[table];
+    const json = JSON.stringify(value);
     if (Buffer.byteLength(json) > lim.savedStateMaxBytes) {
       db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
       return;
     }
-    db.transaction(() => {
+    db.query(`
+      INSERT INTO ${table} (tenant_id, domain, scope, ${column}, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
+        ${column} = excluded.${column},
+        updated_at = excluded.updated_at
+    `).run(tenantId, domain, scope, json, Date.now());
+    const rows = db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ?`).get(tenantId)?.n ?? 0;
+    if (rows > lim.savedStateRowsPerTenant) {
       db.query(`
-        INSERT INTO ${table} (tenant_id, domain, scope, ${column}, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(tenant_id, domain, scope) DO UPDATE SET
-          ${column} = excluded.${column},
-          updated_at = excluded.updated_at
-      `).run(tenantId, domain, scope, json, Date.now());
-      const rows = db.query<{ n: number }, [string]>(`SELECT COUNT(*) AS n FROM ${table} WHERE tenant_id = ?`).get(tenantId)?.n ?? 0;
-      if (rows > lim.savedStateRowsPerTenant) {
-        db.query(`
-          DELETE FROM ${table} WHERE rowid IN (
-            SELECT rowid FROM ${table} WHERE tenant_id = ? AND NOT (domain = ? AND scope = ?) ORDER BY updated_at, rowid LIMIT ?
-          )
-        `).run(tenantId, domain, scope, rows - lim.savedStateRowsPerTenant);
-      }
-    })();
+        DELETE FROM ${table} WHERE rowid IN (
+          SELECT rowid FROM ${table} WHERE tenant_id = ? AND NOT (domain = ? AND scope = ?) ORDER BY updated_at, rowid LIMIT ?
+        )
+      `).run(tenantId, domain, scope, rows - lim.savedStateRowsPerTenant);
+    }
   } catch {}
 }
 
@@ -669,7 +672,7 @@ export function dbPurgeStaleSavedState(lim: Limits = limits(), now = Date.now())
 }
 
 export function dbSaveTenantCookies(tenantId: string, domain: string, cookies: PersistedCookie[], scope = 'default', lim: Limits = limits()): void {
-  saveSavedState('domain_cookies_v2', tenantId, domain, scope, JSON.stringify(cookies), lim);
+  saveSavedState('domain_cookies_v2', tenantId, domain, scope, cookies, lim);
 }
 
 export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]): void {
@@ -703,7 +706,7 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
 }
 
 export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default', lim: Limits = limits()): void {
-  saveSavedState('domain_storage_v2', tenantId, domain, scope, JSON.stringify(storage), lim);
+  saveSavedState('domain_storage_v2', tenantId, domain, scope, storage, lim);
 }
 
 export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {

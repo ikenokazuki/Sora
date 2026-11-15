@@ -108,6 +108,13 @@ describe.each(KINDS)('$name: 1 行の大きさの上限', (k) => {
     expect(k.text(k.get('name:t', 'b.example'))).toBe('other');
   });
 
+  test('JSON にできない値（循環）でも、投げない。何も保存しない', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    expect(() => k.save('name:t', 'loop.example', circular, 'default', caps())).not.toThrow();
+    expect(domains(k, 'name:t')).toEqual([]);
+  });
+
   test('場所（scope）が違えば、前の保存は消さない', () => {
     k.save('name:t', 'a.example', k.make('first'), 'default', caps());
     k.save('name:t', 'a.example', k.make('y'.repeat(500)), 'other', caps({ savedStateMaxBytes: 100 }));
@@ -211,6 +218,14 @@ describe.each(KINDS)('$name: 1 人あたりの行数の上限', (k) => {
     fill('name:t', 3, caps());
     k.save('name:t', 'now.example', k.make('now'), 'default', lim);
     expect(domains(k, 'name:t')).toEqual(['now.example']);
+  });
+
+  test('古い行を消すのに失敗しても、いまの保存は残る（保存は、掃除の失敗に巻き込まれない）', () => {
+    const lim = caps({ savedStateRowsPerTenant: 2.5 }); // 消す件数が整数にならず、削除の文が失敗する
+    fill('name:t', 4, caps());
+    k.save('name:t', 'now.example', k.make('now'), 'default', lim);
+    expect(k.text(k.get('name:t', 'now.example'))).toBe('now');
+    expect(domains(k, 'name:t')).toContain('now.example');
   });
 
   test('公開の tenant の保存は、これまでどおり何もしない（行数の上限の前の規則は変わらない）', () => {

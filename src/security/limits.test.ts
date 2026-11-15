@@ -110,6 +110,16 @@ describe('limits', () => {
     expect(STANDARD_LIMITS).toMatchObject({ watchTargetsPerTenant: 1000, watchMinIntervalMs: 0 });
   });
 
+  test('キャッシュ（5e-1）: SQLite は strict が 5,000 行・128 MiB、standard が 20,000 行・512 MiB。メモリは strict が 64 MiB、standard が 256 MiB', () => {
+    expect(STRICT_LIMITS).toMatchObject({ cacheDbMaxRows: 5_000, cacheDbMaxBytes: 128 * 1024 * 1024, cacheMemoryMaxBytes: 64 * 1024 * 1024 });
+    expect(STANDARD_LIMITS).toMatchObject({ cacheDbMaxRows: 20_000, cacheDbMaxBytes: 512 * 1024 * 1024, cacheMemoryMaxBytes: 256 * 1024 * 1024 });
+  });
+
+  test('保存した Cookie・localStorage（5e-2）: 1 行の大きさは strict が 128 KiB、standard が 256 KiB。1 人あたりの行数は strict が 100、standard が 5,000。期間は strict が 14 日、standard が 90 日', () => {
+    expect(STRICT_LIMITS).toMatchObject({ savedStateMaxBytes: 128 * 1024, savedStateRowsPerTenant: 100, savedStateMaxAgeMs: 14 * 86_400_000 });
+    expect(STANDARD_LIMITS).toMatchObject({ savedStateMaxBytes: 256 * 1024, savedStateRowsPerTenant: 5000, savedStateMaxAgeMs: 90 * 86_400_000 });
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
 
