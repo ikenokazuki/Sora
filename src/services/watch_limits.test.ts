@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeDb, dbClaimWatchCheck, dbCountWatchTargets, dbGetWatchTarget, dbListWatchTargets, getDb } from '../db.js';
+import { closeDb, dbClaimWatchCheck, dbCountWatchTargets, dbGetWatchTarget, dbReleaseWatchCheck, getDb } from '../db.js';
 import * as enrichment from '../enrichment.js';
-import { WatchLimitError } from '../errors.js';
+import { ResourceBusyError, WatchLimitError } from '../errors.js';
 import { STANDARD_LIMITS, STRICT_LIMITS } from '../security/limits.js';
 import { checkAllWatchTargets, checkWatchTarget, deleteWatchTarget, registerWatchTarget } from './watch.js';
 
@@ -63,6 +63,14 @@ describe('登録数の上限（1 人あたり）', () => {
     expect(error).toMatchObject({ code: 'WATCH_LIMIT_EXCEEDED', limit: 3, current: 3 });
     expect(dbCountWatchTargets(ALICE)).toBe(3);
     expect((error as Error).message).toContain('3 件');
+  });
+
+  test('同時に 10 件の登録を送っても、上限（3 件）を超えない（数えてから保存するまでに、待ちが入らない）', async () => {
+    const limits = lim({ watchTargetsPerTenant: 3 });
+    const results = await Promise.allSettled(Array.from({ length: 10 }, (_, i) => register(ALICE, i, limits)));
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(3);
+    expect(results.filter((r) => r.status === 'rejected' && r.reason instanceof WatchLimitError)).toHaveLength(7);
+    expect(dbCountWatchTargets(ALICE)).toBe(3);
   });
 
   test('数えるのは利用者ごと。別の利用者の登録は、数に入らない', async () => {
@@ -161,6 +169,82 @@ describe('同じウォッチの確認の最小の間隔', () => {
     expect(calls.n).toBe(1);
   });
 
+  test('間隔は、前の確認の「始め」から数える（取得に時間がかかっても、間隔が延びない）', async () => {
+    const slow = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { content: 'ページの本文', extracted: { content: 'ページの本文' } };
+    }) as never;
+    const target = (await register(ALICE, 0, strictInterval, slow)).target;
+    const before = Date.now();
+    await checkWatchTarget(target.id, ALICE, slow, strictInterval);
+    const recorded = dbGetWatchTarget(target.id, ALICE)?.last_checked_at ?? 0;
+    expect(recorded).toBeLessThan(before + 100); // 取得の終わり（before + 150 以降）ではなく、確認の始め
+    expect(recorded).toBeGreaterThanOrEqual(before);
+  });
+
+  test('始めから数えるのは、内容が変わった確認も、変わらない確認も同じ（保存する時刻は、権利を取った時刻）', async () => {
+    const pages = { body: 'はじめの本文' };
+    const slow = (async () => {
+      const body = pages.body;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      return { content: body, extracted: { content: body } };
+    }) as never;
+    const target = (await register(ALICE, 0, strictInterval, slow)).target;
+    await checkWatchTarget(target.id, ALICE, slow, strictInterval); // 基準を作る（初回）
+    for (const [label, body] of [
+      ['内容が変わった', 'かわった本文'],
+      ['内容が変わらない', 'かわった本文'],
+    ] as const) {
+      pages.body = body;
+      checkedAgo(target.id, 20 * 60_000); // 間隔が過ぎた状態
+      const before = Date.now();
+      const result = await checkWatchTarget(target.id, ALICE, slow, strictInterval);
+      expect(result.changed, label).toBe(label === '内容が変わった');
+      const recorded = dbGetWatchTarget(target.id, ALICE)?.last_checked_at ?? 0;
+      expect(recorded, label).toBeGreaterThanOrEqual(before);
+      expect(recorded, label).toBeLessThan(before + 100); // 取得の終わり（before + 150 以降）ではなく、確認の始め
+    }
+  });
+
+  test('ブラウザの枠が混み合って断られた確認（上流に届く前の失敗）は、間隔に数えない。前の記録に戻し、すぐ確認し直せる', async () => {
+    const { calls, scrape } = counter();
+    const target = (await register(ALICE, 0, strictInterval, scrape)).target;
+    await checkWatchTarget(target.id, ALICE, scrape, strictInterval); // 記録あり
+    checkedAgo(target.id, 20 * 60_000); // 間隔が過ぎた状態
+    const previous = dbGetWatchTarget(target.id, ALICE)?.last_checked_at;
+    const busy = (async () => {
+      throw new ResourceBusyError('枠が混み合っています', 'queue_full', 5);
+    }) as never;
+    await expect(checkWatchTarget(target.id, ALICE, busy, strictInterval)).rejects.toBeInstanceOf(ResourceBusyError);
+    expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at).toBe(previous); // 権利を戻した
+    await checkWatchTarget(target.id, ALICE, scrape, strictInterval); // 5 秒後の再試行が、15 分待ちにならない
+    expect(calls.n).toBe(2);
+  });
+
+  test('DB に書けないとき、strict の間隔は止まらずに断る（取得せず、失敗にする）。standard は、確認の記録に頼らないので、取得する', async () => {
+    const { calls, scrape } = counter();
+    const target = (await register(ALICE, 0, strictInterval, scrape)).target;
+    getDb().run('PRAGMA query_only = ON');
+    try {
+      await expect(checkWatchTarget(target.id, ALICE, scrape, strictInterval)).rejects.toThrow();
+      expect(calls.n).toBe(0);
+      await checkWatchTarget(target.id, ALICE, scrape, lim()); // standard（間隔 0）
+      expect(calls.n).toBe(1);
+    } finally {
+      getDb().run('PRAGMA query_only = OFF');
+    }
+  });
+
+  test('間隔 0（standard）では、確認の権利を取らない。失敗した確認は、確認の時刻に触れない（これまでどおり）', async () => {
+    const target = (await register(ALICE, 0)).target;
+    expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at ?? null).toBeNull();
+    const failing = (async () => {
+      throw new Error('接続できません');
+    }) as never;
+    await expect(checkWatchTarget(target.id, ALICE, failing, lim())).rejects.toThrow('接続できません');
+    expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at ?? null).toBeNull();
+  });
+
   test('最小の間隔が 0（standard の既定）なら、何度でも続けて確認できる', async () => {
     const { calls, scrape } = counter();
     const target = (await register(ALICE, 0, lim(), scrape)).target;
@@ -206,7 +290,7 @@ describe('確認の権利（dbClaimWatchCheck）', () => {
     const target = (await register(ALICE, 0)).target;
     const now = 10_000_000;
     getDb().query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ?').run(now - 900_000, target.id);
-    expect(dbClaimWatchCheck(target.id, ALICE, 900_000, now)).toEqual({ claimed: true });
+    expect(dbClaimWatchCheck(target.id, ALICE, 900_000, now)).toEqual({ claimed: true, at: now, previous: now - 900_000 }); // 取った時刻と、前の時刻
     expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at).toBe(now); // 権利を取ったら、確認の時刻が now になる
     getDb().query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ?').run(now - 899_999, target.id);
     expect(dbClaimWatchCheck(target.id, ALICE, 900_000, now)).toEqual({ claimed: false, waitMs: 1 });
@@ -215,8 +299,21 @@ describe('確認の権利（dbClaimWatchCheck）', () => {
 
   test('一度も確認していない（last_checked_at なし）なら取れる。あと何ミリ秒かは、前の確認 + 間隔 − 今', async () => {
     const target = (await register(ALICE, 0)).target;
-    expect(dbClaimWatchCheck(target.id, ALICE, 900_000, 5_000_000)).toEqual({ claimed: true });
+    expect(dbClaimWatchCheck(target.id, ALICE, 900_000, 5_000_000)).toEqual({ claimed: true, at: 5_000_000, previous: null });
     expect(dbClaimWatchCheck(target.id, ALICE, 900_000, 5_300_000)).toEqual({ claimed: false, waitMs: 600_000 });
+  });
+
+  test('権利を戻すと、前の時刻に戻る。ほかが取り直したあと（時刻が違う）なら、触らない', async () => {
+    const target = (await register(ALICE, 0)).target;
+    const first = dbClaimWatchCheck(target.id, ALICE, 1000, 5_000_000);
+    expect(first).toMatchObject({ claimed: true, previous: null });
+    dbReleaseWatchCheck(target.id, ALICE, 5_000_000, null);
+    expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at ?? null).toBeNull();
+    // 取り直した人（時刻 6,000,000）がいるとき、先の人の戻しは効かない
+    dbClaimWatchCheck(target.id, ALICE, 1000, 5_000_000);
+    dbClaimWatchCheck(target.id, ALICE, 1000, 6_000_000);
+    dbReleaseWatchCheck(target.id, ALICE, 5_000_000, null);
+    expect(dbGetWatchTarget(target.id, ALICE)?.last_checked_at).toBe(6_000_000);
   });
 
   test('別の利用者の id と、存在しない id は、権利を取れず、残りも無い（waitMs 0）。確認の記録も変えない', async () => {
@@ -254,19 +351,41 @@ describe('一括の確認（id なし）', () => {
     expect(again.every((r) => r.skipped === true)).toBe(true);
   });
 
-  test('見送ったウォッチには、Webhook も送らない', async () => {
+  test('見送ったウォッチには、取得も Webhook もしない（本文が変わっていても、間隔の中では見に行かない）', async () => {
     const deliver = spyOn(enrichment, 'deliverWebhook').mockResolvedValue(true);
     try {
-      const { scrape } = counter();
-      await registerWatchTarget({ tenantId: ALICE, url: 'https://example.com/w', webhookUrl: 'https://hooks.example.com/x', initialFetch: false, limits: strictInterval }, scrape);
+      let body = '最初の本文';
+      let fetched = 0;
+      const scrape = (async () => {
+        fetched++;
+        return { content: body, extracted: { content: body } };
+      }) as never;
+      const target = (await registerWatchTarget({ tenantId: ALICE, url: 'https://example.com/w', webhookUrl: 'https://hooks.example.com/x', initialFetch: false, limits: strictInterval }, scrape)).target;
       await checkAllWatchTargets(ALICE, scrape, strictInterval); // 初回（ベースライン）
-      const list = dbListWatchTargets(ALICE);
-      expect(list).toHaveLength(1);
+      expect(fetched).toBe(1);
+      body = '変わった本文'; // 取りに行けば、差分と Webhook になる
       deliver.mockClear();
-      await checkAllWatchTargets(ALICE, scrape, strictInterval); // 間隔の中 → 見送り
+      const results = await checkAllWatchTargets(ALICE, scrape, strictInterval); // 間隔の中 → 見送り
+      expect(results.map((r) => r.skipped)).toEqual([true]);
+      expect(fetched).toBe(1);
       expect(deliver).not.toHaveBeenCalled();
+      // 間隔が過ぎれば、差分を見つけて、Webhook を送る（見送りが、差分を失わせない）
+      checkedAgo(target.id, 20 * 60_000);
+      const later = await checkAllWatchTargets(ALICE, scrape, strictInterval);
+      expect(later[0]).toMatchObject({ changed: true });
+      expect(deliver).toHaveBeenCalledTimes(1);
     } finally {
       deliver.mockRestore();
     }
+  });
+
+  test('見送った結果の checkedAt は、実際に確認した時刻（いまではない）', async () => {
+    const { scrape } = counter();
+    const target = (await register(ALICE, 0, strictInterval, scrape)).target;
+    const at = Date.now() - 5 * 60_000;
+    checkedAgo(target.id, 5 * 60_000);
+    const [skipped] = await checkAllWatchTargets(ALICE, scrape, strictInterval);
+    expect(skipped.skipped).toBe(true);
+    expect(Math.abs(new Date(skipped.checkedAt).getTime() - at)).toBeLessThan(1000);
   });
 });

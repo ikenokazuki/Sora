@@ -4,6 +4,7 @@ import { deliverWebhook } from '../enrichment.js';
 import {
   dbClaimWatchCheck,
   dbCountWatchTargets,
+  dbReleaseWatchCheck,
   dbSaveWatchTarget,
   dbGetWatchTarget,
   dbListWatchTargets,
@@ -12,7 +13,7 @@ import {
   dbInsertWatchHistory,
   type WatchTargetRecord,
 } from '../db.js';
-import { errorCode, errorKind, errorMessage, WatchLimitError } from '../errors.js';
+import { errorCode, errorKind, errorMessage, ResourceBusyError, WatchLimitError } from '../errors.js';
 import { limits as currentLimits, type Limits } from '../security/limits.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 
@@ -118,10 +119,12 @@ async function checkAndStore(
     throw new Error(`Watch target not found: ${targetId}`);
   }
 
-  // 同じウォッチの確認の最小の間隔（設計 6。穴 18・24）。取得の前に、確認の権利を同期で取る（同時の確認でも 1 つだけが通る）。
-  // 取得に失敗しても、上流には届いているので、間隔に数える
-  const claim = dbClaimWatchCheck(target.id, tenantId, lim.watchMinIntervalMs);
-  if (!claim.claimed) {
+  // 同じウォッチの確認の最小の間隔（設計 6。穴 18・24）。間隔があるとき（0 でない）だけ、取得の前に、確認の権利を同期で取る
+  // （同時の確認でも 1 つだけが通る。間隔が 0 のときは何も書かず、これまでと同じ）。取得に失敗しても、上流には届いているので、間隔に数える
+  // （届く前の失敗は、下で戻す）。間隔は、確認の「始め」から数える（確認の結果を保存するときも、この時刻を使う）
+  const claim = lim.watchMinIntervalMs > 0 ? dbClaimWatchCheck(target.id, tenantId, lim.watchMinIntervalMs) : undefined;
+  const claimedAt = claim?.claimed ? claim.at : undefined;
+  if (claim && !claim.claimed) {
     incrementSecurityCounter('sora_watch_too_frequent_total');
     const retryAfterSec = Math.ceil(claim.waitMs / 1000); // waitMs は 1 以上なので、1 以上
     throw new WatchLimitError(
@@ -134,13 +137,20 @@ async function checkAndStore(
   }
 
   // スクレイピング実行。持ち主の tenant で取得する（保存済みのセッションも、持ち主のものを使う）
-  const scraped = await scrapeImpl({
-    url: target.url,
-    selectors: target.selector ? { content: target.selector } : undefined,
-    onlyMainContent: true,
-    noCache: true,
-    tenantId,
-  });
+  let scraped: Awaited<ReturnType<typeof scrapeUrl>>;
+  try {
+    scraped = await scrapeImpl({
+      url: target.url,
+      selectors: target.selector ? { content: target.selector } : undefined,
+      onlyMainContent: true,
+      noCache: true,
+      tenantId,
+    });
+  } catch (err) {
+    // ブラウザの枠が混み合って断られた失敗は、上流に届く前なので、間隔に数えない（5 秒後の再試行が、15 分待ちにならないように）
+    if (claim?.claimed && err instanceof ResourceBusyError) dbReleaseWatchCheck(target.id, tenantId, claim.at, claim.previous);
+    throw err;
+  }
 
   if (target.selector && typeof scraped.extracted?.content !== 'string') {
     throw new WatchSelectorNotFoundError(target.selector, target.url);
@@ -161,7 +171,7 @@ async function checkAndStore(
 
   if (isFirstCheck) {
     diffSummary = `Initial baseline established (${cleanText.length} characters)`;
-    dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000));
+    dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000), claimedAt);
   } else if (isChanged) {
     const prevLen = (target.last_content || '').length;
     diffSummary = `Content updated: length changed from ${prevLen} to ${cleanText.length} chars (hash: ${target.last_hash?.slice(0, 8)} -> ${currentHash.slice(0, 8)})`;
@@ -174,7 +184,7 @@ async function checkAndStore(
     });
 
     // ターゲットの最新状態更新
-    dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000));
+    dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000), claimedAt);
 
     // Webhook 通知 (SSRF 保護済み)。呼んだ側が送り、2xx で受け取られたときだけ true
     if (target.webhook_url) {
@@ -192,7 +202,7 @@ async function checkAndStore(
     }
   } else {
     // 差分なし: チェック時刻のみ更新
-    dbUpdateWatchTargetCheck(target.id, currentHash, target.last_content);
+    dbUpdateWatchTargetCheck(target.id, currentHash, target.last_content, claimedAt);
   }
 
   return {
@@ -255,7 +265,7 @@ export async function checkAllWatchTargets(tenantId: string, scrapeImpl: typeof 
           changed: false,
           currentHash: t.last_hash || '',
           diffSummary: `確認の間隔の中なので、見送りました（あと ${err.retryAfterSec} 秒）`,
-          checkedAt: new Date().toISOString(),
+          checkedAt: new Date(t.last_checked_at ?? Date.now()).toISOString(), // 実際に確認した時刻（いまではない）
           skipped: true,
           retryAfterSec: err.retryAfterSec,
         });

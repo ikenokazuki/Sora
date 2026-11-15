@@ -91,4 +91,3 @@ export function watchLimitResponse(c: Context, err: unknown): Response | undefin
   if (tooFrequent) c.header('Retry-After', String(err.retryAfterSec));
   return formatError(c, err.message, err.code, 429, tooFrequent, tooFrequent ? { limit: err.limit, retryAfterSec: err.retryAfterSec } : { limit: err.limit, current: err.current });
 }
-

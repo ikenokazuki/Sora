@@ -402,32 +402,41 @@ export function dbCountWatchTargets(tenantId: string): number {
 
 /**
  * 監視対象の確認の権利を取る（最小の間隔）。前の確認から minIntervalMs 以上たっている（または一度も確認していない）ときだけ、
- * 確認の時刻を now にして true を返す。間隔の中なら何もせず、あと何ミリ秒かを返す。1 つの文で行うので、同時の確認でも 1 つだけが取れる。
- * tenant が違う id・存在しない id は、権利を取れず、残りも無い（waitMs 0）
+ * 確認の時刻を now にして、取った時刻 at と前の時刻 previous を返す。間隔の中なら何もせず、あと何ミリ秒かを返す。
+ * 権利を取るのは 1 つの UPDATE で行うので、同時の確認でも 1 つだけが取れる。tenant が違う id・存在しない id は、取れず、残りも無い（waitMs 0）。
+ * DB に書けないときは投げる（確認を通さない。間隔の制限が、DB の失敗で外れない）。間隔の制限が無いとき（0）は、呼ばない
  */
-export function dbClaimWatchCheck(id: string, tenantId: string, minIntervalMs: number, now = Date.now()): { claimed: true } | { claimed: false; waitMs: number } {
+export function dbClaimWatchCheck(id: string, tenantId: string, minIntervalMs: number, now = Date.now()): { claimed: true; at: number; previous: number | null } | { claimed: false; waitMs: number } {
+  const db = getDb();
+  const row = db.query<{ last_checked_at: number | null }, [string, string]>('SELECT last_checked_at FROM watch_targets WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+  if (!row) return { claimed: false, waitMs: 0 }; // その id は、この tenant には無い（呼ぶ側が、先に読んで確かめる）
+  const res = db
+    .query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ? AND tenant_id = ? AND (last_checked_at IS NULL OR last_checked_at <= ?)')
+    .run(now, id, tenantId, now - minIntervalMs);
+  if (res.changes > 0) return { claimed: true, at: now, previous: row.last_checked_at };
+  // 取れなかったのは、間隔の中だから（読んだあとに、ほかが先に取った場合も）。残りは 1 以上
+  const latest = db.query<{ last_checked_at: number | null }, [string, string]>('SELECT last_checked_at FROM watch_targets WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+  return { claimed: false, waitMs: (latest?.last_checked_at ?? 0) + minIntervalMs - now };
+}
+
+/** 取った確認の権利を戻す（上流に届く前に失敗したとき）。まだ自分が取った時刻のままのときだけ、前の時刻に戻す */
+export function dbReleaseWatchCheck(id: string, tenantId: string, at: number, previous: number | null): void {
   try {
-    const db = getDb();
-    const res = db
-      .query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ? AND tenant_id = ? AND (last_checked_at IS NULL OR last_checked_at <= ?)')
-      .run(now, id, tenantId, now - minIntervalMs);
-    if (res.changes > 0) return { claimed: true };
-    const row = db.query<{ last_checked_at: number | null }, [string, string]>('SELECT last_checked_at FROM watch_targets WHERE id = ? AND tenant_id = ?').get(id, tenantId);
-    if (!row) return { claimed: false, waitMs: 0 }; // その id は、この tenant には無い（呼ぶ側が、先に読んで確かめる）
-    return { claimed: false, waitMs: (row.last_checked_at ?? 0) + minIntervalMs - now }; // 取れなかったのは、間隔の中だから。1 以上
-  } catch {
-    return { claimed: true }; // DB が使えないときは断らない（日次クォータと同じ。DB の失敗の扱いは別に決める）
+    getDb().query('UPDATE watch_targets SET last_checked_at = ? WHERE id = ? AND tenant_id = ? AND last_checked_at = ?').run(previous, id, tenantId, at);
+  } catch (err) {
+    console.warn('[Sora/DB] Failed to release watch check claim:', err);
   }
 }
 
-export function dbUpdateWatchTargetCheck(id: string, hash: string, content?: string): void {
+/** 確認の結果を保存する。確認の時刻は at（確認の権利を取った時刻。省くと、いま） */
+export function dbUpdateWatchTargetCheck(id: string, hash: string, content?: string, at?: number): void {
   try {
     const db = getDb();
     db.query(`
       UPDATE watch_targets
       SET last_hash = ?, last_content = ?, last_checked_at = ?
       WHERE id = ?
-    `).run(hash, content || null, Date.now(), id);
+    `).run(hash, content || null, at ?? Date.now(), id);
   } catch (err) {
     console.warn('[Sora/DB] Failed to update watch target check:', err);
   }

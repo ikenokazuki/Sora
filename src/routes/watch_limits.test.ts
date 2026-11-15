@@ -81,19 +81,21 @@ describe('本物のサービスで: strict の上限が、REST と MCP に届く
     else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previousAllowLocal;
   });
 
-  const post = (path: string, body: unknown) => fullApp.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  /** 利用者ごとに新しい鍵を使う（鍵が決める tenant は、ほかのテストの登録と混ざらない） */
+  let apiKey = '';
+  const post = (path: string, body: unknown) => fullApp.request(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey }, body: JSON.stringify(body) });
+  const get = (path: string) => fullApp.request(path, { headers: { 'X-API-Key': apiKey } });
 
   test('REST: 51 件目の登録は 429。登録の直後の確認は 429（最小の間隔）、間隔が過ぎれば通る。一括は見送りが載る。standard は何も変わらない', async () => {
-    await withEnv({ SORA_ISOLATION: 'strict', SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
-      // legacy の tenant（鍵なし）。ほかのテストの登録が残っていても、数えた数との差で上限に届かせる
+    apiKey = `watch-limits-${crypto.randomUUID()}`;
+    await withEnv({ SORA_ISOLATION: 'strict', SORA_API_KEY: apiKey, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
       const ids: string[] = [];
-      for (;;) {
-        const count = ((await (await fullApp.request('/watch/list')).json()) as { count: number }).count;
-        if (count >= 50) break;
-        const res = await post('/watch/register', { url: `${siteUrl}w${count}` });
+      for (let i = 0; i < 50; i++) {
+        const res = await post('/watch/register', { url: `${siteUrl}w${i}` });
         expect(res.status).toBe(200);
         ids.push(((await res.json()) as { target: { id: string } }).target.id);
       }
+      expect(((await (await get('/watch/list')).json()) as { count: number }).count).toBe(50);
       const over = await post('/watch/register', { url: `${siteUrl}over` });
       expect(over.status).toBe(429);
       expect(await over.json()).toMatchObject({ code: 'WATCH_LIMIT_EXCEEDED', details: { limit: 50, current: 50 } });
@@ -110,7 +112,7 @@ describe('本物のサービスで: strict の上限が、REST と MCP に届く
       expect(results.find((r) => r.targetId === ids[0])?.skipped).toBeUndefined();
     });
     // standard（未設定）: 同じ登録・続けての確認が、これまでどおり通る
-    await withEnv({ SORA_ISOLATION: undefined, SORA_API_KEY: undefined, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
+    await withEnv({ SORA_ISOLATION: undefined, SORA_API_KEY: apiKey, SORA_ALLOW_ANONYMOUS: undefined }, async () => {
       const reg = await post('/watch/register', { url: `${siteUrl}standard` });
       expect(reg.status).toBe(200);
       const id = ((await reg.json()) as { target: { id: string } }).target.id;
