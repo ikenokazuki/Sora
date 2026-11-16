@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from 'bun:test';
 import * as cache from '../cache.js';
+import { runAsCaller } from '../security/caller.js';
 import { getLyrics, pickLrclibRecord } from './lyrics.js';
 
 // 歌詞の本文は使わない。曲名・歌手名・歌詞はすべてテスト用の作り物。
@@ -242,6 +243,19 @@ describe('getLyrics: cache', () => {
     expect(again.lyrics).toBe('ああ');
     await getLyrics({ title, artist, noCache: true }, deps);
     expect(l.calls).toHaveLength(2);
+  });
+  test('同じ曲を別の利用者が同時に頼むと、取得は利用者ごと（先頭の利用者の予算・順番の断りが、別の利用者に返らない）。同じ利用者どうしは、1 回にまとまる', async () => {
+    const artist = uniq('歌手'); const title = uniq('曲');
+    const slow = fakeLrclib([rec(1, title, artist, 'ああ')]);
+    const fetchFn = (async (url: string, init?: RequestInit) => { await new Promise<void>((r) => setTimeout(r, 15)); return slow.fetchFn(url, init); }) as typeof fetch;
+    const deps = { fetchFn, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone };
+    await Promise.all(['name:A', 'name:A', 'name:A'].map((tenant) => runAsCaller(tenant, () => getLyrics({ title, artist, noCache: true }, deps))));
+    expect(slow.calls).toHaveLength(1);
+    const other = uniq('曲');
+    const two = fakeLrclib([rec(2, other, artist, 'いい')]);
+    const fetchTwo = (async (url: string, init?: RequestInit) => { await new Promise<void>((r) => setTimeout(r, 15)); return two.fetchFn(url, init); }) as typeof fetch;
+    await Promise.all(['name:A', 'name:B'].map((tenant) => runAsCaller(tenant, () => getLyrics({ title: other, artist, noCache: true }, { fetchFn: fetchTwo, sleep: noSleep, awa: awaNone, linkcore: linkcoreNone }))));
+    expect(two.calls).toHaveLength(2);
   });
   test('an unavailable answer is not cached', async () => {
     const artist = uniq('歌手'); const title = uniq('曲');

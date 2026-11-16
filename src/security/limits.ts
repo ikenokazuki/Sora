@@ -84,6 +84,14 @@ export interface Limits {
   geocodeQueueWaitMs: number;
   /** 地名の検索で、1 人の利用者が 1 分に Nominatim へ出せる回数。キャッシュ・ローカルで解決した分は数えない。超えたら断る（429）。0 は制限なし */
   geocodeBudgetPerMinute: number;
+  /** Yahoo（同梱バイナリ・動画の直取得。yahoo.ts）の順番を待つ要求の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
+  yahooQueuePerTenant: number;
+  /** Yahoo の順番を待つ要求の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
+  yahooQueueTotal: number;
+  /** Yahoo の順番を待つ時間の上限（ミリ秒）。超えたら断る（429） */
+  yahooQueueWaitMs: number;
+  /** 1 人の利用者が 1 分に Yahoo へ出せる問い合わせの回数（同梱バイナリ・Web 検索の直取得・動画の直取得。キャッシュは数えない）。超えたら断る（429）。0 は制限なし */
+  yahooBudgetPerMinute: number;
 }
 
 const MB = 1024 * 1024;
@@ -127,6 +135,10 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   geocodeQueueTotal: 300,
   geocodeQueueWaitMs: 120_000,
   geocodeBudgetPerMinute: 0,
+  yahooQueuePerTenant: 100,
+  yahooQueueTotal: 300,
+  yahooQueueWaitMs: 120_000,
+  yahooBudgetPerMinute: 0,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -168,6 +180,10 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   geocodeQueueTotal: 30,
   geocodeQueueWaitMs: 20_000,
   geocodeBudgetPerMinute: 20,
+  yahooQueuePerTenant: 5,
+  yahooQueueTotal: 30,
+  yahooQueueWaitMs: 20_000,
+  yahooBudgetPerMinute: 60,
 });
 
 /**

@@ -130,10 +130,15 @@ describe('limits', () => {
     expect(STANDARD_LIMITS).toMatchObject({ geocodeQueuePerTenant: 100, geocodeQueueTotal: 300, geocodeQueueWaitMs: 120_000, geocodeBudgetPerMinute: 0 });
   });
 
+  test('Yahoo（5f-2）: 順番を待てる数は 1 人が strict 5・standard 100、全体が strict 30・standard 300。待ち時間は strict 20 秒・standard 120 秒。1 人の予算は strict が 1 分に 60 回、standard は無し（0）', () => {
+    expect(STRICT_LIMITS).toMatchObject({ yahooQueuePerTenant: 5, yahooQueueTotal: 30, yahooQueueWaitMs: 20_000, yahooBudgetPerMinute: 60 });
+    expect(STANDARD_LIMITS).toMatchObject({ yahooQueuePerTenant: 100, yahooQueueTotal: 300, yahooQueueWaitMs: 120_000, yahooBudgetPerMinute: 0 });
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
-  const ZERO_IS_NONE = ['geocodeBudgetPerMinute'];
+  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute'];
 
   test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;

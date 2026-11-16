@@ -309,11 +309,11 @@ export const SETTINGS = {
   },
   SORA_YAHOO_MIN_INTERVAL_MS: {
     area: 'yahoo', kind: 'int', min: 0, default: 500,
-    doc: 'Yahoo プロバイダ呼び出しの最小間隔（ms）。共有ゲートでバーストを抑制します',
+    doc: 'Yahoo への問い合わせ（同梱バイナリ・動画の直取得）の最小間隔（ms）。全体で 1 つずつ、この間隔を空けて出します。順番は利用者ごとに公平に回し、待つ数・待ち時間に上限があります（README の 4.6 の表）。0 は、順番を使いません',
   },
   SORA_YAHOO_BREAKER_COOLDOWN_MS: {
     area: 'yahoo', kind: 'int', min: 0, default: 120_000,
-    doc: '429 検出後のブレーカー冷却期間（ms）。期間中は即時失敗して `throttled` を返します',
+    doc: '429 検出後のブレーカー冷却期間（ms）。期間中は、順番にも予算にも入らず、即時失敗して `throttled` を返します。全員に効きます（`strict` では、1 人の連打が 429 に当たってこれが開く前に、利用者ごとの予算が止めます。`standard` は予算なし。README の 4.6 の表）',
   },
 
   // --- X ---

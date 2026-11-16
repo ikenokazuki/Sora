@@ -9,8 +9,12 @@ import {
   cleanRealtimeItem,
 } from './x_detail.js';
 import { egressChildProxyEnv } from '../net/egress.js';
+import { currentCaller } from '../security/caller.js';
 import { childEnv } from '../security/child_env.js';
+import { type QueuePolicy, SimpleSemaphore } from '../security/fair_queue.js';
+import { limits } from '../security/limits.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
+import { TenantBudget } from '../security/tenant_budget.js';
 import { ProviderPressureController, getYahooQueryBudget, defaultYahooPressureOptions } from '../retrieval/provider_pressure.js';
 import { setYahooSearchCache, getYahooFreshCache, getYahooStaleCache } from '../retrieval/yahoo_cache.js';
 import { getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
@@ -30,7 +34,7 @@ import {
   type RealtimeFocus,
 } from '../retrieval/realtime_anchor.js';
 import { envInt, envPath } from '../config.js';
-import { errorMessage } from '../errors.js';
+import { errorMessage, ResourceBusyError } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
 
 // Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む。そのファイルが無ければ、未設定と同じく既定の場所を探す）
@@ -51,29 +55,95 @@ export function yahooMinIntervalMs(): number {
   return envInt('SORA_YAHOO_MIN_INTERVAL_MS');
 }
 
-let yahooCallGate: Promise<void> = Promise.resolve();
-
-export function resetYahooCallGate(): void {
-  yahooCallGate = Promise.resolve();
+/**
+ * Yahoo の順番を待つ方針。水準（SORA_ISOLATION）の値を、呼ぶたびに読む（設計 6。穴 25）。
+ * 順番は 1 つ（間隔を空けて出す）なので、割合は 100
+ */
+export function yahooQueuePolicy(): QueuePolicy {
+  const lim = limits();
+  return { perTenant: lim.yahooQueuePerTenant, total: lim.yahooQueueTotal, waitMs: lim.yahooQueueWaitMs, sharePercent: 100 };
 }
 
-async function gateYahooCall(): Promise<void> {
-  const minInterval = yahooMinIntervalMs();
-  if (!(minInterval > 0)) return;
-  let release!: () => void;
-  const prev = yahooCallGate;
-  yahooCallGate = new Promise<void>((r) => { release = r; });
-  try {
-    await prev;
-    const last = (gateYahooCall as any)._lastStart || 0;
-    const elapsed = Date.now() - last;
-    if (elapsed < minInterval) {
-      await new Promise((r) => setTimeout(r, minInterval - elapsed));
-    }
-    (gateYahooCall as any)._lastStart = Date.now();
-  } finally {
-    release();
-  }
+export interface YahooGateOptions {
+  /** 順番を待つ方針。呼ぶたびに読む。既定は水準の値 */
+  queuePolicy?: () => QueuePolicy;
+  /** 利用者ごとの予算（Yahoo へ出す回数）。既定は水準の値（strict は 1 分に 60 回、standard は制限なし） */
+  budget?: TenantBudget;
+  /** 問い合わせの最小の間隔（ミリ秒）。0 以下は、順番を使わない。既定は SORA_YAHOO_MIN_INTERVAL_MS */
+  minIntervalMs?: () => number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+/**
+ * Yahoo への問い合わせの入口（設計 6。穴 25）。
+ *  - 予算: 1 人が 1 分に出せる回数。使い切った利用者だけを、待たせず断る（提供元の 429 に当たって、ブレーカーが全員を止める前に）
+ *  - 順番: 同梱バイナリ・動画の直取得は、間隔（既定 500ms）を空けて、全体で 1 つずつ。利用者を順番に回して公平に渡し、待つ数・待ち時間に上限を置く
+ * 待てる数の上限は、予算を使う前に確かめる。順番で断られた回・待ちきれなかった回は、予算を返す（提供元へ出していない）
+ */
+export function createYahooGate(options: YahooGateOptions = {}) {
+  const minIntervalMs = options.minIntervalMs ?? yahooMinIntervalMs;
+  const now = options.now ?? Date.now;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const newQueue = () => new SimpleSemaphore(1, { resource: 'yahoo', policy: options.queuePolicy ?? yahooQueuePolicy });
+  const budget = options.budget ?? new TenantBudget({ resource: 'yahoo', policy: () => ({ perWindow: limits().yahooBudgetPerMinute, windowMs: 60_000 }) });
+  let queue = newQueue();
+  let lastStart = 0;
+
+  return {
+    budget,
+    /**
+     * 同梱バイナリ・動画の直取得の前に呼ぶ。予算 → 順番 → 間隔。使った予算の 1 回を返す関数を返す（呼び出し側が、提供元へ出さなかったときに呼ぶ）。
+     * 予算を使い切っていれば、待たせず ResourceBusyError（tenant_budget）。順番を待てなければ ResourceBusyError（tenant_queue_full・queue_full・queue_timeout）。
+     * guard は、順番が来た直後（間隔を待つ前）に呼ぶ。投げたら、予算を返し、順番を手放して、そのまま投げる
+     * （ブレーカーが開いたとき、順番に並んでいた要求が、1 件ずつ間隔を空けて断られず、順番が来たところで、すぐ断られるように）
+     */
+    async admit(guard?: () => void): Promise<() => void> {
+      const tenantId = currentCaller();
+      const gated = minIntervalMs() > 0;
+      if (gated) queue.assertCanWait(tenantId);
+      const refund = budget.spend(tenantId);
+      if (!gated) return refund;
+      let release: () => void;
+      try {
+        release = await queue.acquire(tenantId);
+      } catch (error) {
+        refund(); // 待ちきれなかった回は、提供元へ出していない
+        throw error;
+      }
+      try {
+        guard?.();
+        const interval = minIntervalMs();
+        // 時計が戻ると、lastStart が未来になり、順番を握ったまま長く眠って、全員が待ちきれなくなる。待つのは、間隔まで
+        const remaining = Math.min(interval, lastStart + interval - now());
+        if (remaining > 0) await sleep(remaining);
+        lastStart = now();
+      } catch (error) {
+        refund();
+        throw error;
+      } finally {
+        release();
+      }
+      return refund;
+    },
+    /** 順番を使わない提供元への問い合わせ（Web 検索の直取得）の前に呼ぶ。予算だけを使い、その 1 回を返す関数を返す */
+    spend(): () => void {
+      return budget.spend(currentCaller());
+    },
+    /** 間隔・待ち・予算を、最初の状態に戻す（テスト用） */
+    reset(): void {
+      queue = newQueue();
+      lastStart = 0;
+      budget.clear();
+    },
+  };
+}
+
+/** このプロセスの Yahoo の入口（同梱バイナリ・動画の直取得・Web 検索の直取得が、これを通る） */
+export const yahooGate = createYahooGate();
+
+export function resetYahooCallGate(): void {
+  yahooGate.reset();
 }
 
 export function isYahooRateLimitText(text: string): boolean {
@@ -108,6 +178,15 @@ export function tripYahooBreaker(): void {
 
 export function resetYahooBreaker(): void {
   yahooBreakerTrippedAt = null;
+}
+
+/** ブレーカーが開いているときは、提供元へ出さずに、YAHOO_RATE_LIMITED で断る */
+function throwIfYahooBreakerOpen(): void {
+  if (!isYahooBreakerOpen()) return;
+  const err: any = new Error('Yahoo provider throttled by breaker');
+  err.code = 'YAHOO_RATE_LIMITED';
+  try { incrementSecurityCounter('sora_throttled_total'); } catch {}
+  throw err;
 }
 
 export function isYahooRateLimitedError(err: any): boolean {
@@ -156,6 +235,8 @@ async function paceForYahooPressure(): Promise<void> {
  * Returns true when the outcome was a rate limit.
  */
 export function recordYahooWebResult(err: unknown): boolean {
+  // 順番・予算で断った（Sora の側の制限。提供元へ出していない）のは、提供元の失敗ではない。圧力にも、カウンターにも数えない
+  if (err instanceof ResourceBusyError) return false;
   try { incrementSecurityCounter('yahoo_request_total'); } catch {}
   const limited =
     (err instanceof YahooProviderError && err.status === 429) ||
@@ -179,12 +260,14 @@ export function recordYahooWebSuccess(): void {
 
 /** Yahoo-Japan-Search-MCP 実行 (ステートレス 5ms 起動 & タイムアウト保護) */
 export async function callYahooMcp(toolName: string, args: Record<string, any>, timeoutMs = 15000): Promise<any> {
-  await gateYahooCall();
-  if (isYahooBreakerOpen()) {
-    const err: any = new Error('Yahoo provider throttled by breaker');
-    err.code = 'YAHOO_RATE_LIMITED';
-    try { incrementSecurityCounter('sora_throttled_total'); } catch {}
-    throw err;
+  // ブレーカーが開いている間は、順番にも予算にも入らず、すぐ断る（以前は、順番を待ってから、1 件ずつ断っていた）
+  throwIfYahooBreakerOpen();
+  const refund = await yahooGate.admit(throwIfYahooBreakerOpen); // 順番が来た直後にも確かめる（待つ間に開いたら、間隔を空けずに断る）
+  try {
+    throwIfYahooBreakerOpen(); // 間隔を待つ間に開いたら、提供元へ出さない
+  } catch (error) {
+    refund();
+    throw error;
   }
   // Sora の秘密は渡さない。yahoo-search-mcp が読むのは標準のプロキシ（HTTPS_PROXY・NO_PROXY など）と SSL_CERT_FILE・SSL_CERT_DIR だけで、それは残る。
   // 出口のゲートウェイを使うときは、その通信も、ゲートウェイに通す（HTTP(S)_PROXY がゲートウェイを指し、NO_PROXY・ALL_PROXY は渡らない）
@@ -473,8 +556,9 @@ export async function searchYahooWeb(options: YahooWebSearchOptions, deps?: Yaho
     try { incrementSecurityCounter('yahoo_cache_hit_total'); } catch {}
     return { ...fresh, cached: true };
   }
+  // 取得をまとめるのは、利用者ごと（まとめると、取得が先頭の利用者の予算・順番で動き、その断りが同じ語を頼んだ別の利用者に返る）。結果のキャッシュ（flightKey）は共有
   const res = await runWithSingleFlight(
-    flightKey,
+    `${flightKey}:${currentCaller()}`,
     () => searchYahooWebUncached(options, deps, flightKey),
     () => { try { incrementSecurityCounter('yahoo_singleflight_join_total'); } catch {} },
   );
@@ -544,6 +628,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
         const directItems = await fetchDirect(effectiveWebQuery, 10, undefined, { updated: options.updated, ...(webSiteArg ? { includeDomains: [webSiteArg] } : {}) });
         if (directItems.length > 0) json = { items: directItems.map(normDirectItem) };
       } catch (err) {
+        if (err instanceof ResourceBusyError) throw err; // Sora の側の制限（予算）。提供元の失敗でも、throttled の結果でもない。429 にする
         providerErrors.push({ query: q, message: `direct: ${((err as Error)?.message ?? String(err)).slice(0, 280)}` });
         recordYahooWebResult(err);
       }
@@ -644,6 +729,8 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
                 }
               }
             } catch (rescueErr) {
+              // 順番・予算で断られたときは、初回の弱い結果を返さず、断る（弱い結果が共有キャッシュに入って、予算に余裕のある別の利用者に返らないように）
+              if (rescueErr instanceof ResourceBusyError) throw rescueErr;
               // 追加検索失敗時は初回結果をそのまま返す
               recordYahooWebResult(rescueErr);
             }
@@ -666,6 +753,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
         lastParsedData = json;
       }
     } catch (seqErr) {
+      if (seqErr instanceof ResourceBusyError) throw seqErr; // 順番・予算で断られたのは、利用者が待って再試行できる 429
       const message = ((seqErr as Error)?.message ?? String(seqErr)).slice(0, 300);
       providerErrors.push({ query: q, message });
       const seqLimited = recordYahooWebResult(seqErr);
@@ -797,6 +885,7 @@ const YAHOO_WEB_DIRECT_HEADERS: Record<string, string> = {
   Referer: 'https://search.yahoo.co.jp/',
 };
 export async function fetchYahooWebDirect(query: string, maxItems = 10, signal?: AbortSignal, opts: YahooWebDirectOptions = {}): Promise<YahooWebDirectItem[]> {
+  yahooGate.spend(); // 順番は通らない（Web 検索の主経路）。1 人の予算だけを使う。使い切っていれば、提供元へ出さずに断る
   const url = buildYahooWebDirectUrl(query, opts);
   const pending = fetchWithSafeRedirects(url, 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
   const { response: res } = signal
@@ -1577,6 +1666,17 @@ interface ResolvedRealtimeAnchor {
  * 固有名詞の解決。呼び出し側の指定がクエリの語に対応すればそれを使う。
  * 推定の判定材料（Web タイトル・総ヒット数）は候補が2語以上の時だけ、別名は壊れている時だけ取りに行く。
  */
+/**
+ * アンカーの判定の失敗は握って、判定なしで続ける。ただし、Web 検索の順番・予算の断り（ResourceBusyError）は握らず、断る
+ * （握ると、ノイズの混ざった劣化した結果が共有キャッシュに入り、予算に余裕のある別の利用者に返る）
+ */
+function rethrowBusy<T>(fallback: T): (error: unknown) => T {
+  return (error) => {
+    if (error instanceof ResourceBusyError) throw error;
+    return fallback;
+  };
+}
+
 async function resolveRealtimeAnchor(
   terms: string[],
   wave1Items: any[],
@@ -1587,14 +1687,14 @@ async function resolveRealtimeAnchor(
   const detect = async () => {
     const candidates = anchorCandidates(terms);
     const [titles, totals] = candidates.length > 1
-      ? await Promise.all([hints.webTitles().catch(() => []), termTotals(candidates).catch(() => ({}))])
+      ? await Promise.all([hints.webTitles().catch(rethrowBusy([])), termTotals(candidates).catch(() => ({}))])
       : [[], {}];
     return detectRealtimeAnchor(terms, titles, totals);
   };
   const term = matchPreferredAnchor(terms, preferred) ?? await detect();
   if (!term) return undefined;
   const broken = isAnchorBroken(term, wave1Items);
-  const alias = broken ? detectAliasFromOfficialPosts(await hints.officialPosts(term).catch(() => []), terms) : undefined;
+  const alias = broken ? detectAliasFromOfficialPosts(await hints.officialPosts(term).catch(rethrowBusy([])), terms) : undefined;
   return { term, ...(alias ? { alias } : {}), broken };
 }
 
@@ -1834,7 +1934,7 @@ export async function searchYahooRealtime(options: YahooRealtimeOptions): Promis
       anchorHints,
       termTotals,
       (options as YahooRealtimeOptions).anchor,
-    ).catch(() => undefined);
+    ).catch(rethrowBusy(undefined));
   }
   // 全語に一致した投稿が少ないだけで、固有名詞は壊れていなければ、従来どおり網羅できたものとして終える
   if (weakCoverage && !anchor?.broken) {
@@ -2139,10 +2239,13 @@ export function parseYahooVideoHtml(html: string): any[] {
  * 同梱の MCP と同じく、Yahoo への間隔を守り、ブレーカーが開いている間は送らず、429 でブレーカーを開く。
  */
 async function fetchYahooVideoDirect(options: YahooVideoSearchOptions): Promise<any> {
-  await gateYahooCall();
-  if (isYahooBreakerOpen()) {
-    try { incrementSecurityCounter('sora_throttled_total'); } catch {}
-    throw Object.assign(new Error('Yahoo provider throttled by breaker'), { code: 'YAHOO_RATE_LIMITED' });
+  throwIfYahooBreakerOpen();
+  const refund = await yahooGate.admit(throwIfYahooBreakerOpen);
+  try {
+    throwIfYahooBreakerOpen();
+  } catch (error) {
+    refund();
+    throw error;
   }
   const { response } = await fetchWithSafeRedirects(buildYahooVideoSearchUrl(options), 15000, 5, { ...YAHOO_WEB_DIRECT_HEADERS });
   if (!response.ok) {
@@ -2311,7 +2414,7 @@ export function createWebAnchorHints(query: string): RealtimeAnchorHints {
     disableFallback: true,
   })
     .then((r: any) => (Array.isArray(r?.items) ? r.items : []))
-    .catch(() => []));
+    .catch(rethrowBusy([])));
   return {
     webTitles: async () => (await items()).map((i: any) => String(i?.title || '')),
     officialPosts: async (anchor) => {
