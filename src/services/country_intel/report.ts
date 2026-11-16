@@ -15,6 +15,7 @@ import type { IntelligenceSignal } from '../intelligence/types.js';
 import { LIMITS, cappedProviderIds, inapplicableProviderIds, planCountryResearchPass1, planCountryResearchPass2 } from './query_planner.js';
 import { runProviderPass, type AcquiredItem, type CountryIntelProvider, type EnrichBudget, type ProviderCache } from './provider_registry.js';
 import type { ProviderRun } from './types.js';
+import { countWriteFailure } from '../../db.js';
 import { getCountryContext, getVerifiedCountrySources, latestHotSnapshots, pruneHotObservations, queryBaselineObservations, saveCountryContext, saveEvidenceDetails, saveHotObservations, saveMetricObservations } from './db.js';
 import { HOT_CONTEXT_PROVIDERS, buildRecentContext } from './recent_context.js';
 import { toHotObservationInputs } from './hot_collector.js';
@@ -722,7 +723,10 @@ export async function researchCountryContext(
       saveHotObservations(inputs);
     }
     pruneHotObservations(nowDate.getTime());
-  } catch { /* スナップショット保存の失敗は応答を壊さない */ }
+  } catch {
+    // スナップショット保存の失敗は応答を壊さない。握りつぶすので、DB の書き込みの失敗として数える（sora_db_write_failures_total）
+    countWriteFailure();
+  }
   const report = CountryContextReportSchema.parse({
     contextId,
     region,

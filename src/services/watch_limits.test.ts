@@ -389,3 +389,18 @@ describe('一括の確認（id なし）', () => {
     expect(Math.abs(new Date(skipped.checkedAt).getTime() - at)).toBeLessThan(1000);
   });
 });
+
+describe('履歴の件数の上限（1 つのウォッチ）は、渡した上限に従う', () => {
+  test('内容が変わるたびに履歴を足し、watchHistoryPerTarget を超えた分は、古い方から消える', async () => {
+    const limits = lim({ watchMinIntervalMs: 0, watchHistoryPerTarget: 2 });
+    let version = 0;
+    const scrape = (async () => ({ content: `本文 ${version}`, extracted: { content: `本文 ${version}` } })) as never;
+    const target = (await register(ALICE, 0, limits, scrape)).target;
+    for (let i = 0; i < 5; i++) {
+      version++;
+      await checkWatchTarget(target.id, ALICE, scrape, limits); // 1 回目は基準。2 回目から、変化として履歴を足す
+    }
+    const rows = getDb().query('SELECT diff_summary FROM watch_history WHERE watch_target_id = ?').all(target.id) as Array<{ diff_summary: string }>;
+    expect(rows).toHaveLength(2); // 変化は 4 回。上限 2 件だけ残る
+  });
+});

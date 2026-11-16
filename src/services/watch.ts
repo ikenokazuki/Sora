@@ -181,7 +181,7 @@ async function checkAndStore(
       watch_target_id: target.id,
       diff_summary: diffSummary,
       snapshot: cleanText.slice(0, 2000),
-    });
+    }, lim);
 
     // ターゲットの最新状態更新
     dbUpdateWatchTargetCheck(target.id, currentHash, cleanText.slice(0, 1000), claimedAt);
