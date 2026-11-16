@@ -24,7 +24,7 @@ import {
 } from '../types.js';
 import { buildYahooRealtimeQuery } from '../services/yahoo.js';
 import { fetchXPostDetail } from '../services/x_detail.js';
-import { dropNullFields, formatError, jsonBodyOr400 } from './utils.js';
+import { busyResponse, dropNullFields, formatError, jsonBodyOr400 } from './utils.js';
 import { SearchWebRequestSchema, searchWebForRest } from '../search_web_formats.js';
 import { formatIntegratedSearchHostResponse } from '../integrated_search_host_response.js';
 import { errorMessage } from '../errors.js';
@@ -86,7 +86,7 @@ const handleRealtimeSearch = async (c: Context) => {
     try {
       return c.json(await searchRealtimeCached({ ...options, noCache: body.noCache }));
     } catch (err) {
-      return formatError(c, errorMessage(err) || 'Realtime search failed', 'SEARCH_UPSTREAM_ERROR', 502, true);
+      return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Realtime search failed', 'SEARCH_UPSTREAM_ERROR', 502, true);
     }
   } catch (err) {
     return formatError(c, errorMessage(err) || 'Realtime search failed', 'SEARCH_ERROR', 500);
@@ -132,7 +132,7 @@ searchRoutes.post('/search/web', async (c) => {
     const parsed = SearchWebRequestSchema.safeParse(rawBody);
     if (!parsed.success) return formatError(c, 'invalid search_web request', 'INVALID_INPUT', 400, false, parsed.error.format());
     return c.json(await searchWebForRest(parsed.data, c.get('tenant')?.tenantId ?? 'legacy'));
-  } catch (err) { return formatError(c, errorMessage(err) || 'Web search failed', 'SEARCH_ERROR', 500); }
+  } catch (err) { return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Web search failed', 'SEARCH_ERROR', 500); }
 });
 
 // Firecrawl / Tavily 互換統合深層検索 (Deep Search)
@@ -172,7 +172,7 @@ const handleIntegratedSearch = async (c: Context) => {
       }),
     );
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Integrated search failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Integrated search failed', 'SEARCH_ERROR', 500);
   }
 };
 
@@ -198,7 +198,7 @@ searchRoutes.post('/search/image', async (c) => {
     if (!parsed.success) return formatError(c, inputErrorMessage(parsed.error), 'INVALID_INPUT', 400);
     return c.json(await searchImageCached(parsed.data));
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Image search failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Image search failed', 'SEARCH_ERROR', 500);
   }
 });
 
@@ -213,7 +213,7 @@ searchRoutes.post('/search/video', async (c) => {
     const transcripts = isModuleActive('youtube') ? parsed.data.transcripts ?? 0 : 0;
     return c.json(await searchVideoCached({ ...parsed.data, transcripts }));
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Video search failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Video search failed', 'SEARCH_ERROR', 500);
   }
 });
 
@@ -226,7 +226,7 @@ searchRoutes.post('/search/news', async (c) => {
     if (!parsed.success) return formatError(c, inputErrorMessage(parsed.error), 'INVALID_INPUT', 400);
     return c.json(await searchNewsCached(parsed.data));
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'News search failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'News search failed', 'SEARCH_ERROR', 500);
   }
 });
 
@@ -239,7 +239,7 @@ searchRoutes.post('/search/chiebukuro', async (c) => {
     if (!parsed.success) return formatError(c, inputErrorMessage(parsed.error), 'INVALID_INPUT', 400);
     return c.json(await searchChiebukuroCached(parsed.data));
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Chiebukuro search failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Chiebukuro search failed', 'SEARCH_ERROR', 500);
   }
 });
 
@@ -252,7 +252,7 @@ searchRoutes.post('/search/suggest', async (c) => {
     if (!parsed.success) return formatError(c, inputErrorMessage(parsed.error), 'INVALID_INPUT', 400);
     return c.json(await suggestKeywordsCached(parsed.data));
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Suggest keywords failed', 'SEARCH_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Suggest keywords failed', 'SEARCH_ERROR', 500);
   }
 });
 

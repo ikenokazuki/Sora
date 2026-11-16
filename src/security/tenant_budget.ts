@@ -67,6 +67,21 @@ export class TenantBudget {
   }
 
   /**
+   * いま窓の中で使った回数（読むだけ。覚えを増やさず、触った順も動かさない）。制限なしのときは 0。
+   * tenantId を渡さなければ、いま呼んでいる利用者（runAsCaller）。テスト・確認用
+   */
+  usedBy(tenantId: string = currentCaller()): number {
+    const { perWindow, windowMs } = this.options.policy();
+    if (!(perWindow > 0) || !(windowMs > 0)) return 0;
+    const stamps = this.spent.get(tenantId);
+    if (!stamps) return 0;
+    const now = this.now();
+    let used = 0;
+    for (const at of stamps) if (!(now - at >= windowMs || now < at)) used++;
+    return used;
+  }
+
+  /**
    * 提供元へ出す前に呼ぶ。予算の中なら 1 回使って、その 1 回を返す関数を返し、使い切っていれば ResourceBusyError（tenant_budget。待たせずに断る）。
    * 返す関数は、順番を待って断られた（提供元へ出さなかった）ときに呼ぶ。2 回呼んでも、1 回分だけ。覚えから外れたあとに呼んでも、何も起きない。
    * tenantId を渡さなければ、いま呼んでいる利用者（runAsCaller）

@@ -259,6 +259,58 @@ describe('返す（順番で断られた回は、予算を使わなかったこ�
   });
 });
 
+describe('使った回数を読む（usedBy）', () => {
+  test('窓の中で使った回数を、利用者ごとに返す。使っていない利用者は 0', () => {
+    const b = budget(5);
+    expect(b.usedBy('A')).toBe(0);
+    b.spend('A');
+    b.spend('A');
+    b.spend('B');
+    expect(b.usedBy('A')).toBe(2);
+    expect(b.usedBy('B')).toBe(1);
+    expect(b.usedBy('C')).toBe(0);
+  });
+
+  test('返すと減る。窓がすぎた回は数えない。読んでも、覚えは増えない・動かない', () => {
+    const b = budget(5, { windowMs: 60_000 });
+    const refund = b.spend('A');
+    clock += 10_000;
+    b.spend('A');
+    refund();
+    expect(b.usedBy('A')).toBe(1);
+    clock += 50_000; // 2 回目は窓の中（50 秒前）、最初の回は戻したので無い
+    expect(b.usedBy('A')).toBe(1);
+    clock += 10_000; // 2 回目も窓から出る
+    expect(b.usedBy('A')).toBe(0);
+    expect(b.usedBy('nobody')).toBe(0);
+    expect(b.size).toBe(1); // 読んだだけの利用者は、覚えない
+  });
+
+  test('制限なし（0）では、何も覚えないので 0。覚えたあとで制限なしにしても 0', () => {
+    const b = budget(0);
+    b.spend('A');
+    expect(b.usedBy('A')).toBe(0);
+    let perWindow = 2;
+    const c = new TenantBudget({ resource: 'geocoding', policy: () => ({ perWindow, windowMs: 60_000 }), now });
+    c.spend('A');
+    expect(c.usedBy('A')).toBe(1);
+    perWindow = 0;
+    expect(c.usedBy('A')).toBe(0);
+  });
+
+  test('時計が戻って、未来になった記録は数えない。tenant を渡さなければ、いま呼んでいる利用者', () => {
+    const b = budget(5);
+    b.spend('A');
+    clock -= 3_600_000;
+    expect(b.usedBy('A')).toBe(0);
+    clock += 3_600_000;
+    runAsCaller('name:alice', () => b.spend());
+    expect(runAsCaller('name:alice', () => b.usedBy())).toBe(1);
+    expect(runAsCaller('name:bob', () => b.usedBy())).toBe(0);
+    expect(b.usedBy()).toBe(0); // 範囲の外 = legacy
+  });
+});
+
 describe('数える', () => {
   test('断るたびに、資源ごとのカウンター sora_<resource>_busy_tenant_budget_total が増える。通った回は数えない', () => {
     const geo = budget(1);

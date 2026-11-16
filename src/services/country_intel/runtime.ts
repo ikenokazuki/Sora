@@ -1,3 +1,4 @@
+import { ResourceBusyError } from '../../errors.js';
 import { envBool, envList } from '../../config.js';
 import { PUBLIC_TENANT_ID } from '../../security/tenant_context.js';
 import { researchCountryContext, type ResearchDependencies } from './report.js';
@@ -82,7 +83,10 @@ export function createYahooWebSearchAdapter(): (query: string, maxItems: number,
     let result: { items?: Array<Record<string, unknown>> } | undefined;
     try {
       result = await searchYahooWeb({ query, disableFallback: true });
-    } catch {}
+    } catch (error) {
+      // 順番・予算の断りは、握って空の結果にしない（空の「成功」が、tenant を含まないキーで 1 時間キャッシュされ、別の利用者にも 0 件が返る）。提供元の失敗として、投げる
+      if (error instanceof ResourceBusyError) throw error;
+    }
     if (signal.aborted) return [];
     const items = Array.isArray(result?.items) ? result.items : [];
     const mapped = items.slice(0, Math.max(0, maxItems)).flatMap((item: Record<string, unknown>) => {
@@ -99,7 +103,8 @@ export function createYahooWebSearchAdapter(): (query: string, maxItems: number,
     try {
       const direct = await fetchYahooWebDirect(query, maxItems, signal);
       return direct.map((item) => ({ url: item.url, ...(item.title ? { title: item.title } : {}), ...(item.snippet ? { snippet: item.snippet } : {}), ...(item.domain ? { domain: item.domain } : {}) }));
-    } catch {
+    } catch (error) {
+      if (error instanceof ResourceBusyError) throw error;
       return [];
     }
   };

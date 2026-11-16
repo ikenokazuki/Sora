@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { currentCaller } from '../security/caller.js';
 import { cacheKeyDigest, getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
 import { SORA_VERSION, type LyricsResultSchema } from '../types.js';
 import { findAwaLyrics, type AwaDeps, type AwaOutcome } from './lyrics_awa.js';
@@ -178,7 +179,8 @@ export async function getLyrics(options: LyricsOptions, deps: LyricsDeps = {}): 
     const cached = getFromCache<LyricsResult>(key);
     if (cached) return cached;
   }
-  const result = await runWithSingleFlight(key, () => lookup(title, artist, deps));
+  // 取得をまとめるのは、利用者ごと（まとめると、取得が先頭の利用者の Yahoo の予算・順番で動き、その断りが、同じ曲を同時に頼んだ別の利用者に返る）。キャッシュ（key）は共有
+  const result = await runWithSingleFlight(`${key}:${currentCaller()}`, () => lookup(title, artist, deps));
   // 取得元が使えなかった結果は、次の呼び出しで取り直せるようにキャッシュしない
   if (!options.noCache && result.reason !== 'search-unavailable') setToCache(key, result);
   return result;
