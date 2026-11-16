@@ -56,7 +56,7 @@
 ## 決められないとき
 
 - 候補が複数あるときは、先頭を返して `needsVerification: true` にします。呼び出し側は、`matchedTitle`（標高。MCP の `get_place_info` では `location.matchedTitle`）か `centerResolved.address`（周辺施設）を見て、意図した場所かを確かめます。違うときは、地域名を足して、もう一度呼びます。
-- 座標が決まらないときは、エラーです。標高は、REST（`/geo/elevation`）で 500（`GEO_ERROR`）、MCP の `get_place_info` でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。広域の検索には切り替えません。
+- 座標が決まらないときは、エラーです。標高は、REST（`/geo/elevation`）で 500（`GEO_ERROR`）、MCP の `get_place_info` でエラーの応答です。`search_poi` は、`POI center geocoding failed` で始まるエラーです。Nominatim への問い合わせの順番・予算で断られたとき（下の「限界」）は、エラーでなく、混み合いの断りです。REST は 429（`RESOURCE_BUSY`・`Retry-After`）、MCP はエラーの応答（`search_poi` は `POI search error:`、`get_place_info` は `Elevation error:` に、断った理由が続きます）で、待ってから再試行できます。広域の検索には切り替えません。
 - 地名・駅名・施設名で Nominatim が HTTP エラーを返したときは、国土地理院に切り替えず、エラーにします。国土地理院は部分一致で別の地名（例: 「渋谷駅」に福島県の「渋谷」）を返すので、国土地理院に回るのは、Nominatim が「該当なし」と答えたときだけです。番地まである住所で国土地理院が使えないときは、Nominatim で探します。
 - 標高が取れなかったときは、`elevationMeters` が `null` で、`formatted` が「測定不能」になります（MCP の `get_place_info` では `elevation` の節）。
 - `withAddress` で、住所データが待ち時間に間に合わなかった施設には、`addressIncomplete: true` が付きます。住所を解釈できない施設には、`addressInfo` が付かず、この印も付きません。時間切れと解釈できないことは、この印で区別します。
@@ -70,6 +70,7 @@
 - 地名・駅名・施設名は、自前のデータでは決められません。外部のサービスが使えないときは、決められません。
 - 外部の経路には、入力した地名や住所が送られます。
 - 1.1 秒の間隔は、Nominatim への問い合わせにかける、1 つの Sora のプロセスの中の制限です。複数のプロセスの間では調整しません。
+- Nominatim への問い合わせの順番は、利用者（tenant）ごとに公平に回します。待つ数（1 人・全体）と待ち時間に上限があり（`standard` は 1 人 100 件・全体 300 件・120 秒、`strict`〔`SORA_ISOLATION=strict`〕は 5 件・30 件・20 秒）、超えると、待たせずに、または待ちきれずに 429 です。`strict` は、1 人が 1 分に Nominatim へ出せる回数にも上限があります（20 回。`standard` は制限なし）。キャッシュ・自前のデータ・国土地理院だけで決まる地名は、順番にも予算にも関わりません。値の表は README の 4.6 です。
 - 標高が 0 で、精度が「海水面・データ外」のときは、実際の標高が 0m とは限りません。国土地理院のデータが無い場所も、0 として返します。
 
 ## 実装とテスト

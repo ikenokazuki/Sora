@@ -125,17 +125,26 @@ describe('limits', () => {
     expect(STANDARD_LIMITS).toMatchObject({ hostMapMaxEntries: 10_000, watchHistoryPerTarget: 1000 });
   });
 
+  test('地名の検索（5f-1）: 待てる数は 1 人が strict 5・standard 100、全体が strict 30・standard 300。待ち時間は strict 20 秒・standard 120 秒。1 人の予算は strict が 1 分に 20 回、standard は無し（0）', () => {
+    expect(STRICT_LIMITS).toMatchObject({ geocodeQueuePerTenant: 5, geocodeQueueTotal: 30, geocodeQueueWaitMs: 20_000, geocodeBudgetPerMinute: 20 });
+    expect(STANDARD_LIMITS).toMatchObject({ geocodeQueuePerTenant: 100, geocodeQueueTotal: 300, geocodeQueueWaitMs: 120_000, geocodeBudgetPerMinute: 0 });
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
+  // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
+  const ZERO_IS_NONE = ['geocodeBudgetPerMinute'];
 
   test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
     expect(keys.toSorted()).toEqual((Object.keys(STANDARD_LIMITS) as Array<keyof typeof STANDARD_LIMITS>).toSorted());
     for (const key of keys) {
       const lowerBound = LOWER_BOUNDS.includes(key);
+      const zeroIsNone = ZERO_IS_NONE.includes(key);
       expect(Number.isInteger(STRICT_LIMITS[key]) && STRICT_LIMITS[key] > 0, `strict.${key}`).toBe(true);
-      expect(Number.isInteger(STANDARD_LIMITS[key]) && STANDARD_LIMITS[key] >= (lowerBound ? 0 : 1), `standard.${key}`).toBe(true);
+      expect(Number.isInteger(STANDARD_LIMITS[key]) && STANDARD_LIMITS[key] >= (lowerBound || zeroIsNone ? 0 : 1), `standard.${key}`).toBe(true);
       if (lowerBound) expect(STANDARD_LIMITS[key], key).toBeLessThanOrEqual(STRICT_LIMITS[key]);
+      else if (zeroIsNone) expect(STANDARD_LIMITS[key] === 0 || STANDARD_LIMITS[key] >= STRICT_LIMITS[key], key).toBe(true);
       else expect(STANDARD_LIMITS[key], key).toBeGreaterThanOrEqual(STRICT_LIMITS[key]);
     }
   });

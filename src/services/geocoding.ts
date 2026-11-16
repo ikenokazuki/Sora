@@ -1,5 +1,9 @@
 import { ADDRESS_ATTRIBUTION } from './address_attribution.js';
 import { getFromCache, runWithSingleFlight, setToCache } from '../cache.js';
+import { currentCaller } from '../security/caller.js';
+import { type QueuePolicy, SimpleSemaphore } from '../security/fair_queue.js';
+import { limits } from '../security/limits.js';
+import { TenantBudget } from '../security/tenant_budget.js';
 
 export const CACHE_TTL_GEOCODING = 24 * 60 * 60 * 1000;
 // Nominatim 利用規約: 最大1リクエスト/秒。余裕を持たせる。
@@ -33,6 +37,16 @@ interface GeocoderOptions {
   sleep?: (ms: number) => Promise<void>;
   /** 住所・郵便番号をローカルデータで解決する。解決しなければ null。既定は住所モジュール。 */
   local?: (query: string) => Promise<GeocodingResult | null>;
+  /** Nominatim の順番を待つ方針（待てる数・待ち時間）。呼ぶたびに読む。既定は水準（SORA_ISOLATION）の値 */
+  queuePolicy?: () => QueuePolicy;
+  /** 利用者ごとの予算（Nominatim へ出す回数）。既定は水準の値（strict は 1 分に 20 回、standard は制限なし） */
+  budget?: TenantBudget;
+}
+
+/** Nominatim の順番を待つ方針。水準（SORA_ISOLATION）の値を、呼ぶたびに読む（設計 6。穴 25） */
+export function nominatimQueuePolicy(): QueuePolicy {
+  const lim = limits();
+  return { perTenant: lim.geocodeQueuePerTenant, total: lim.geocodeQueueTotal, waitMs: lim.geocodeQueueWaitMs, sharePercent: 100 };
 }
 
 // 住所モジュールは最初に使われるまで読み込まない。待たず、失敗は「解決しない」として扱う。
@@ -114,15 +128,23 @@ export function createGeocoder(options: GeocoderOptions = {}) {
   const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const local = options.local ?? defaultLocal;
-  let gate: Promise<void> = Promise.resolve();
+  // 外へ出す順番は 1 つ（Nominatim は 1 秒に 1 回）。利用者ごとに公平に回し、待つ数・待ち時間に上限を置く。1 人の予算（回数）は、順番を待つ前に見る
+  const queue = new SimpleSemaphore(1, { resource: 'geocoding', policy: options.queuePolicy ?? nominatimQueuePolicy });
+  const budget = options.budget ?? new TenantBudget({ resource: 'geocoding', policy: () => ({ perWindow: limits().geocodeBudgetPerMinute, windowMs: 60_000 }) });
   let lastStart = Number.NEGATIVE_INFINITY;
 
   // 1 秒に 1 回の決まりがあるのは Nominatim だけなので、順番待ちと間隔はその問い合わせにだけかける。該当なしは null。
   async function viaNominatim(query: string): Promise<GeocodingResult | null> {
-    const previous = gate;
-    let release!: () => void;
-    gate = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
+    const tenantId = currentCaller();
+    queue.assertCanWait(tenantId); // 待てる数の上限なら、予算を使う前に、すぐ断る（429）
+    const refund = budget.spend(tenantId); // 予算を使い切った利用者は、順番に並べず、すぐ断る（429）
+    let release: () => void;
+    try {
+      release = await queue.acquire(tenantId); // 待ち時間の上限を超えたら、断る（429）
+    } catch (error) {
+      refund(); // 待ちきれなかった回は、提供元へ出していない。予算を使わなかったことにする（再試行で、自分を締め出さない）
+      throw error;
+    }
     try {
       let remaining = lastStart + MIN_INTERVAL_MS - now();
       while (remaining > 0) {
@@ -175,7 +197,9 @@ export function createGeocoder(options: GeocoderOptions = {}) {
       const cached = getFromCache<GeocodingResult>(key);
       if (cached) return cached;
     }
-    return runWithSingleFlight(key, async () => {
+    // 取得をまとめるのは、利用者ごと（同じ語でも、別の利用者の取得とは、まとめない）。まとめると、先頭の利用者の予算・順番で動くので、
+    // 先頭の利用者の断りが別の利用者に返り、別の利用者が先頭の利用者の列の末尾に並ぶ。結果のキャッシュ（key）は、利用者をまたいで共有する
+    return runWithSingleFlight(`${key}:${currentCaller()}`, async () => {
       if (!request.noCache) {
         const cached = getFromCache<GeocodingResult>(key);
         if (cached) return cached;

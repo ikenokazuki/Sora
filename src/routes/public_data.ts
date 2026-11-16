@@ -29,7 +29,7 @@ import {
   NormalizeAddressRequestSchema,
   ReverseGeocodeRequestSchema,
 } from '../types.js';
-import { dropNullFields, formatError } from './utils.js';
+import { busyResponse, dropNullFields, formatError } from './utils.js';
 import { errorMessage } from '../errors.js';
 
 export const publicDataRoutes = new Hono();
@@ -281,7 +281,7 @@ publicDataRoutes.post('/geo/elevation', async (c) => {
     const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -300,7 +300,7 @@ publicDataRoutes.get('/geo/elevation', async (c) => {
     const result = await fetchElevationAndCoordinates(parsed.data);
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'Elevation fetch failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -322,7 +322,7 @@ publicDataRoutes.post('/geo/poi', async (c) => {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 
@@ -346,7 +346,7 @@ publicDataRoutes.get('/geo/poi', async (c) => {
     const result = await searchOpenPoi(parsed.data);
     return c.json(result);
   } catch (err) {
-    return formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
+    return busyResponse(c, err) ?? formatError(c, errorMessage(err) || 'POI search failed', 'GEO_ERROR', 500);
   }
 });
 

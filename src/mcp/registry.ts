@@ -1,6 +1,8 @@
 import type { McpServer, RegisteredTool, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { envList } from '../config.js';
+import { runAsCaller } from '../security/caller.js';
+import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
 import { EXPLICIT_ONLY_MODULES, type SoraModule } from '../modules.js';
 import type { XPostDetailProvider } from '../services/x_detail.js';
 
@@ -38,6 +40,19 @@ export interface McpSessionState {
   tenantId?: string;
 }
 
+/** サーバー（= MCP のセッション）ごとの tenant。ツールの呼び出しの間、「いま呼んでいる利用者」にする */
+const SERVER_TENANTS = new WeakMap<McpServer, string>();
+
+/** createMcpServer が、セッションの tenant（認証が決めたもの）を結び付ける。ツールの引数からは、別の利用者を名乗れない */
+export function bindServerTenant(server: McpServer, tenantId: string): void {
+  SERVER_TENANTS.set(server, tenantId);
+}
+
+/** ハンドラを、セッションの tenant の範囲（security/caller.ts）の中で動かす形にする。共有の外部資源の順番・予算が、利用者を区別できる（設計 6。穴 25） */
+function inCallerScope<F extends (...args: never[]) => unknown>(server: McpServer, handler: F): F {
+  return ((...args: Parameters<F>) => runAsCaller(SERVER_TENANTS.get(server) ?? LEGACY_TENANT_ID, () => handler(...args))) as F;
+}
+
 /** MCP の応答 JSON。字下げはトークンを約1割増やすので、verbose 指定時だけ付ける（search_deep・search_realtime と同じ）。 */
 export function toolJson(value: unknown, verbose?: boolean): string {
   return verbose === true ? JSON.stringify(value, null, 2) : JSON.stringify(value);
@@ -63,7 +78,8 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   handler: ToolCallback<Args>,
   opts: { defaultEnabled: boolean; keywords?: string[] },
 ): RegisteredTool {
-  const handle = mcpServer.tool(name, description, schema, handler);
+  const scoped = inCallerScope(mcpServer, handler);
+  const handle = mcpServer.tool(name, description, schema, scoped);
   const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {
     handle.disable();
@@ -72,7 +88,7 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   // Some MCP clients look up the model-emitted `default.` name verbatim before dispatch.
   // Publish that alias only alongside an activated deferred tool, keeping startup lean.
   const compatibilityHandle = !opts.defaultEnabled
-    ? mcpServer.tool(`default.${name}`, description, schema, handler)
+    ? mcpServer.tool(`default.${name}`, description, schema, scoped)
     : undefined;
   if (!isEnabled) compatibilityHandle?.disable();
 
@@ -89,12 +105,13 @@ export function registerTool<Args extends ZodRawShapeCompat>(
 
 export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, sessionActivated: Set<string> = SHARED_ACTIVATED_TOOLS, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
   const config = { description, inputSchema: schema, outputSchema, annotations: { readOnlyHint: true } };
-  const handle = mcpServer.registerTool(name, config, handler as never);
+  const scoped = inCallerScope(mcpServer, handler as never) as never;
+  const handle = mcpServer.registerTool(name, config, scoped);
   const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {
     handle.disable();
   }
-  const compatibilityHandle = !opts.defaultEnabled ? mcpServer.registerTool('default.' + name, config, handler as never) : undefined;
+  const compatibilityHandle = !opts.defaultEnabled ? mcpServer.registerTool('default.' + name, config, scoped) : undefined;
   if (!isEnabled) compatibilityHandle?.disable();
   toolCatalog.set(name, { name, category, description, keywords: opts.keywords ?? [], handle, compatibilityHandle });
   return handle;

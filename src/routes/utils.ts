@@ -42,13 +42,16 @@ export function formatError(
   );
 }
 
+/** 混み合って断られたときの code: ブラウザの枠・セッションは BROWSER_BUSY（これまでどおり）、共有の外部資源（地名の検索など）は RESOURCE_BUSY */
+export type BusyCode = 'BROWSER_BUSY' | 'RESOURCE_BUSY';
+
 /**
- * ブラウザの枠が混み合って断られたとき（ResourceBusyError。設計 6。穴 25）の、エラーの情報（code・status・retryable・Retry-After の秒数）。
+ * 資源（ブラウザの枠・共有の外部資源の順番・予算）が混み合って断られたとき（ResourceBusyError。設計 6。穴 25）の、エラーの情報（code・status・retryable・Retry-After の秒数）。
  * ほかの失敗は undefined（呼び出し側が、これまでどおり分類する）。ストリームは、200 で開いたあとなので、error イベントにこれを入れる
  */
-export function busyEventFields(err: unknown): { code: 'BROWSER_BUSY'; status: 429; retryable: true; retryAfterSec: number } | undefined {
+export function busyEventFields(err: unknown): { code: BusyCode; status: 429; retryable: true; retryAfterSec: number } | undefined {
   if (!(err instanceof ResourceBusyError)) return undefined;
-  return { code: 'BROWSER_BUSY', status: 429, retryable: true, retryAfterSec: err.retryAfterSec };
+  return { code: err.resource === 'browser' ? 'BROWSER_BUSY' : 'RESOURCE_BUSY', status: 429, retryable: true, retryAfterSec: err.retryAfterSec };
 }
 
 /** 混み合って断られたとき（ResourceBusyError）の応答: 429 と Retry-After（秒）。ほかの失敗は undefined */

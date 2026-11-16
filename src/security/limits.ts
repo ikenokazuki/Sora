@@ -76,6 +76,14 @@ export interface Limits {
   hostMapMaxEntries: number;
   /** ウォッチの履歴（watch_history）の件数の上限。対象ごと。超えたら、書いた時刻の古い行から消す（いま足した行は消さない） */
   watchHistoryPerTarget: number;
+  /** 地名の検索（Nominatim。geocoding.ts）の順番を待つ要求の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
+  geocodeQueuePerTenant: number;
+  /** 地名の検索の順番を待つ要求の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
+  geocodeQueueTotal: number;
+  /** 地名の検索の順番を待つ時間の上限（ミリ秒）。超えたら断る（429） */
+  geocodeQueueWaitMs: number;
+  /** 地名の検索で、1 人の利用者が 1 分に Nominatim へ出せる回数。キャッシュ・ローカルで解決した分は数えない。超えたら断る（429）。0 は制限なし */
+  geocodeBudgetPerMinute: number;
 }
 
 const MB = 1024 * 1024;
@@ -115,6 +123,10 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   savedStateMaxAgeMs: 90 * 86_400_000,
   hostMapMaxEntries: 10_000,
   watchHistoryPerTarget: 1000,
+  geocodeQueuePerTenant: 100,
+  geocodeQueueTotal: 300,
+  geocodeQueueWaitMs: 120_000,
+  geocodeBudgetPerMinute: 0,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -152,6 +164,10 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   savedStateMaxAgeMs: 14 * 86_400_000,
   hostMapMaxEntries: 2000,
   watchHistoryPerTarget: 100,
+  geocodeQueuePerTenant: 5,
+  geocodeQueueTotal: 30,
+  geocodeQueueWaitMs: 20_000,
+  geocodeBudgetPerMinute: 20,
 });
 
 /**
