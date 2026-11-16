@@ -5,7 +5,7 @@ import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { envBool, envInt } from './config.js';
-import { isModuleActive, type McpServerOptions, type McpSessionState, type ToolCatalogEntry, type ToolRegistrationContext } from './mcp/registry.js';
+import { bindServerTenant, isModuleActive, type McpServerOptions, type McpSessionState, type ToolCatalogEntry, type ToolRegistrationContext } from './mcp/registry.js';
 import { buildSoraMcpInstructions } from './mcp/instructions.js';
 import { registerSkillResources } from './mcp/resources.js';
 import { registerToolSearch } from './mcp/tools_search.js';
@@ -62,6 +62,7 @@ export function createMcpServer(options?: McpServerOptions): McpServer {
     options.sessionState.activatedTools = sessionActivated;
   }
   const serverTenantId = options?.sessionState?.tenantId ?? 'legacy';
+  bindServerTenant(mcpServer, serverTenantId);
   const isDeferEnabled = options?.deferTools ?? envBool('SORA_MCP_DEFER_TOOLS');
   const deferredDefault = !isDeferEnabled;
 

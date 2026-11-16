@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import { envUrl } from '../config.js';
+import { ResourceBusyError } from '../errors.js';
 import { PoiSearchRequestSchema } from '../types.js';
 import { addressAttribution } from './address_attribution.js';
 import type { UnavailableItem } from './address_gaps.js';
@@ -124,6 +125,8 @@ export async function searchOpenPoi(
     try {
       coords = await geocode(input.center, { noCache: input.noCache });
     } catch (e) {
+      // 順番・予算で断られたのは、利用者が待って再試行できる 429。包んで、ただの失敗にしない
+      if (e instanceof ResourceBusyError) throw e;
       throw new Error('POI center geocoding failed: ' + String((e as Error)?.message ?? e).slice(0, 160));
     }
     if (typeof coords.lat !== 'number' || typeof coords.lon !== 'number' ||

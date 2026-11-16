@@ -5,8 +5,9 @@ import { dbIncrementApiUsage } from './db.js';
 import { secondsUntilNextUtcDay } from './errors.js';
 import { getApiKeyStore, type ApiKeyStore } from './security/api_keys.js';
 import { incrementSecurityCounter } from './security/metrics.js';
+import { runAsCaller } from './security/caller.js';
 import { isPublicPath } from './security/public_paths.js';
-import { resolveTenantContext, type TenantContext } from './security/tenant_context.js';
+import { LEGACY_TENANT_ID, resolveTenantContext, type TenantContext } from './security/tenant_context.js';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -200,3 +201,9 @@ export function createAuthMiddleware(expectedApiKey?: string, keyStore?: ApiKeyS
     return next();
   };
 }
+
+/**
+ * 認証のあとに置く。以降の処理の間（ルート・MCP の取り込みを含む）、「いま呼んでいる利用者」を、認証が決めた tenant にする（設計 6。穴 25）。
+ * 共有の外部資源の順番と予算が、利用者を区別するために読む（security/caller.ts）。tenant が決まっていない経路（公開のパス）は legacy
+ */
+export const callerScope: MiddlewareHandler = (c, next) => runAsCaller(c.get('tenant')?.tenantId ?? LEGACY_TENANT_ID, () => next());

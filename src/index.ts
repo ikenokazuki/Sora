@@ -10,7 +10,7 @@ import {
 import {
   closeAllBrowserSessions,
 } from './browser_session.js';
-import { createAuthMiddleware } from './auth.js';
+import { callerScope, createAuthMiddleware } from './auth.js';
 import { restModuleGuard } from './routes/module_guard.js';
 import { envEnum, envList } from './config.js';
 import { installEgressFetch } from './net/egress_fetch.js';
@@ -128,6 +128,8 @@ app.use('*', async (c, next) => {
 });
 
 app.use('*', createAuthMiddleware());
+// 認証のあと、呼んでいる利用者を、共有の外部資源の順番・予算が読めるようにする（設計 6。穴 25）
+app.use('*', callerScope);
 // SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求には、設定を教えない）
 app.use('*', restModuleGuard);
 
