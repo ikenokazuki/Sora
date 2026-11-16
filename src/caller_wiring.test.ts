@@ -110,9 +110,9 @@ describe('REST: 本物のアプリ（index.ts）', () => {
     });
     try {
       await withEnv({ ...clean, SORA_AUTH_KEYS_FILE: path }, async () => {
-        const res = await app.request('/geo/elevation?address=x', { headers: { 'X-API-Key': 'alice-key-0123456789abcdef' } });
+        const res = await app.request('/geo/elevation?noCache=true&address=x', { headers: { 'X-API-Key': 'alice-key-0123456789abcdef' } });
         expect(res.status).toBe(429);
-        await app.request('/geo/elevation?address=y', { headers: { 'X-API-Key': 'bob-key-0123456789abcdefgh' } });
+        await app.request('/geo/elevation?noCache=true&address=y', { headers: { 'X-API-Key': 'bob-key-0123456789abcdefgh' } });
       });
     } finally {
       spy.mockRestore();

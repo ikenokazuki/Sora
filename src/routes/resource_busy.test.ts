@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { Hono } from 'hono';
+import { clearCache, setToCache } from '../cache.js';
 import { ResourceBusyError } from '../errors.js';
 import * as disaster from '../services/disaster.js';
 import * as geocoding from '../services/geocoding.js';
@@ -13,10 +14,14 @@ import { busyEventFields } from './utils.js';
  */
 
 const spies: Array<{ mockRestore: () => void }> = [];
+// 標高の結果のキャッシュに、同じ地名の結果が入っていても（別のテストが入れた場合と同じ状態を、毎回作る）、noCache で地名の検索まで進む
+beforeEach(() => setToCache('geo:elevation:v2:原宿::', { elevationMeters: 40, cached: false }, 60_000));
 afterEach(() => {
   for (const spy of spies.splice(0)) spy.mockRestore();
+  clearCache();
 });
 
+// 標高の結果は、同じプロセスの別のテストが入れたキャッシュに当たりうる（実行順で変わる）ので、noCache で、必ず地名の検索まで進める
 const geoBusy = () => new ResourceBusyError('地名の検索の、この利用者の予算（1 分に 20 回）を使い切りました。42 秒たってから、もう一度試してください', 'tenant_budget', 42, 'geocoding');
 const app = () => new Hono().route('/', publicDataRoutes);
 const post = (body: unknown) => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -40,7 +45,7 @@ describe('地名の検索が断られたら、429 と Retry-After', () => {
     spies.push(spyOn(geocoding, 'geocodeAddress').mockRejectedValue(geoBusy()));
     const a = app();
     const responses = [
-      await a.request('/geo/elevation?address=' + encodeURIComponent('原宿')),
+      await a.request('/geo/elevation?noCache=true&address=' + encodeURIComponent('原宿')),
       await a.request('/geo/elevation', post({ address: '原宿', noCache: true })),
     ];
     for (const res of responses) {
@@ -54,7 +59,7 @@ describe('地名の検索が断られたら、429 と Retry-After', () => {
     spies.push(spyOn(geocoding, 'geocodeAddress').mockRejectedValue(geoBusy()));
     const a = app();
     const responses = [
-      await a.request('/geo/poi?center=' + encodeURIComponent('原宿') + '&query=cafe'),
+      await a.request('/geo/poi?noCache=true&center=' + encodeURIComponent('原宿') + '&query=cafe'),
       await a.request('/geo/poi', post({ center: '原宿', query: 'cafe' })),
     ];
     for (const res of responses) {
@@ -66,7 +71,7 @@ describe('地名の検索が断られたら、429 と Retry-After', () => {
 
   test('混み合い以外の失敗は、これまでどおり 500（GEO_ERROR）', async () => {
     spies.push(spyOn(geocoding, 'geocodeAddress').mockRejectedValue(new Error('nominatim HTTP 503')));
-    const res = await app().request('/geo/elevation?address=' + encodeURIComponent('原宿'));
+    const res = await app().request('/geo/elevation?noCache=true&address=' + encodeURIComponent('原宿'));
     expect(res.status).toBe(500);
     expect(await res.json()).toMatchObject({ code: 'GEO_ERROR' });
   });
