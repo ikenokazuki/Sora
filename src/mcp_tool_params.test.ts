@@ -40,7 +40,7 @@ const expected: Record<string, string[]> = {
   search_laws: ['keyword', 'lawId', 'limit'],
   search_music: ['query', 'country', 'entity', 'attribute', 'limit'],
   watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
-  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'],
+  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery', 'htsPrefix'],
   check_regulations: ['htsCode', 'agencies', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact'],
   get_country_context: ['contextId', 'part', 'evidenceIds', 'cursor', 'limit'],
   get_youtube: ['url', 'lang', 'fromSec', 'maxChars', 'limit', 'noCache'],
@@ -1360,7 +1360,7 @@ describe('lookup_hts: htsCode があれば照合、省けば商品の説明か�
   };
   const call = (args: Record<string, unknown>) => withClient((client) => client.callTool({ name: 'lookup_hts', arguments: args })) as Promise<any>;
   const body = (res: any) => JSON.parse(textOf(res));
-  const PREDICT_ARGS = { productName: 'Ceramic Coffee Mug', description: 'Stoneware mug for coffee', material: 'ceramic', productCategory: 'Tableware', targetAge: 'adult', foodContact: true, hasBattery: false } as const;
+  const PREDICT_ARGS = { productName: 'Ceramic Coffee Mug', description: 'Stoneware mug for coffee', material: 'ceramic', productCategory: 'Tableware', targetAge: 'adult', foodContact: true, hasBattery: false, htsPrefix: '6912' } as const;
 
   test('htsCode と description: verifyHtsCode に htsCode と productDescription（description）だけを渡し、応答は旧 verify_hts_code と同じに mode: verify', async () => {
     const { verify, predict } = mockAll();
@@ -1417,6 +1417,7 @@ describe('lookup_hts: htsCode があれば照合、省けば商品の説明か�
     ['htsCode と productName', { htsCode: HTS, description: 'toy', productName: 'Toy Car' }, [`productName は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
     ['htsCode と material・targetAge・foodContact: false・hasBattery: false', { htsCode: HTS, description: 'toy', material: 'plastic', targetAge: 'child', foodContact: false, hasBattery: false }, [`material, targetAge, foodContact, hasBattery は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
     ['htsCode と productCategory', { htsCode: HTS, description: 'toy', productCategory: 'Toys' }, [`productCategory は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
+    ['htsCode と htsPrefix', { htsCode: HTS, description: 'toy', htsPrefix: '9503' }, [`htsPrefix は ${PREDICT}だけ指定できます（いま: ${VERIFY}）`]],
   ];
   for (const [label, args, mentions] of wrong) {
     test(`${label}: 照合も推測もせず、正しい使い方のエラー`, async () => {
@@ -1429,7 +1430,7 @@ describe('lookup_hts: htsCode があれば照合、省けば商品の説明か�
       expect(text).not.toContain('モード');
       // 正しい使い方（htsCode の有無と、それぞれの引数）を添える
       expect(text).toContain('使い方');
-      for (const key of ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery']) expect(text).toContain(key);
+      for (const key of ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery', 'htsPrefix']) expect(text).toContain(key);
       for (const spy of Object.values(spies)) expect(spy).not.toHaveBeenCalled();
     });
   }
@@ -1438,7 +1439,7 @@ describe('lookup_hts: htsCode があれば照合、省けば商品の説明か�
   test('推測だけの引数には、スキーマの既定値が無い（照合で断る値に、既定値の例外は要らない）', async () => {
     await withClient(async (client) => {
       const schema = (await client.listTools()).tools.find((t) => t.name === 'lookup_hts')!.inputSchema as any;
-      for (const key of ['productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery']) expect(schema.properties[key].default, key).toBeUndefined();
+      for (const key of ['productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery', 'htsPrefix']) expect(schema.properties[key].default, key).toBeUndefined();
       // htsCode・description・productName の要否は入力の形で決まるので、スキーマでは必須にしない
       expect(schema.required ?? []).toEqual([]);
     });

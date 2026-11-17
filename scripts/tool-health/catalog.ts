@@ -1003,10 +1003,11 @@ export const TOOL_CASES: HealthCase[] = [
     const { text: rawJsonText } = await mcpJson(ctx, 'lookup_hts', { productName: 'Green Tea' }, 80000);
     const raw = toolPayload(rawJsonText, 'lookup_hts (predict)');
     expectMode(raw, 'predict', 'lookup_hts');
-    // 緑茶は 0902（茶）か 2101（茶の抽出物）。USITC の全件データと CBP 判例の構造（evidence）まで確かめる
-    const parsed = parseFirstJson(textOf(raw), 'lookup_hts (predict)') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string } };
+    // 緑茶は 0902（茶）か 2101（茶の抽出物）。関税分類モデルの取得と読み込み（初回）、USITC の全件データ、CBP 判例の構造（evidence）まで確かめる
+    const parsed = parseFirstJson(textOf(raw), 'lookup_hts (predict)') as { bestMatch?: { htsCode?: string }; evidence?: { crossStatus?: string; dataFetchedAt?: string; model?: { name?: string } } };
     if (!/^(0902|2101)/.test(parsed.bestMatch?.htsCode ?? '')) throw new LiveFail('lookup_hts (predict) classified Green Tea as ' + (parsed.bestMatch?.htsCode ?? 'nothing'));
     if (!parsed.evidence?.dataFetchedAt) throw new LiveFail('lookup_hts (predict) returned no evidence.dataFetchedAt');
+    if (!parsed.evidence.model?.name) throw new LiveFail('lookup_hts (predict) returned no evidence.model');
     // 判例の照会が失敗（unavailable）でも推測は返る。判例の応答の形が変わったときは no_rulings が続くので、ここでは状態を記録する
     return { sources: [
       { source: 'usitc-export', count: 1, format: 'json', upstreamStatus: 'unknown' },
