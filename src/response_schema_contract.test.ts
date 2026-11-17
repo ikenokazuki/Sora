@@ -6,6 +6,8 @@ import { app } from './index.js';
 import { generateOpenApiDocument } from './types.js';
 import { resolveChromiumPath } from './browser_engine.js';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
+import { fakeHtsModel, modelAnswer } from './test_fixtures/hts_model.js';
+import { setHtsModelForTest } from './services/hts_model.js';
 import { missingExampleKeys } from '../scripts/schema-notation/readme_examples.js';
 
 const doc: any = generateOpenApiDocument();
@@ -42,6 +44,12 @@ let prevAllowLocal: string | undefined;
 
 beforeAll(() => {
   restoreFetch = installExternalApiFixtures();
+  // HTS の推測のモデルは読まず、質問つき・判例つきの応答（項目がいちばん多い形）を返す差し替えにする
+  const mugOptions = [{ prefix: '6912004400', label: 'Mugs and other steins', code: '6912004400' }, { prefix: '6912004500', label: 'Cups valued over $5.25 per dozen', code: '6912004500' }];
+  setHtsModelForTest(fakeHtsModel([
+    [/mug/i, modelAnswer(['6912004400', '6912004500', '9503000073'], { six: 0.8, ask: { digits: 10, options: mugOptions } })],
+    [/block|toy/i, modelAnswer(['9503000073', '9503000071'])],
+  ]));
   const html = '<!doctype html><html><head><title>Contract Page</title><meta name="description" content="Contract test page"></head>'
     + '<body><h1>Contract Page</h1><p>本文のテスト用ページです。リンクと本文を含みます。</p>'
     + '<p><a href="/next">次のページ</a></p></body></html>';
@@ -53,6 +61,7 @@ beforeAll(() => {
 
 afterAll(() => {
   restoreFetch?.();
+  setHtsModelForTest(undefined);
   page?.stop(true);
   if (prevAllowLocal === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = prevAllowLocal;

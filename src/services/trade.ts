@@ -1,17 +1,16 @@
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
 import { errorMessage } from '../errors.js';
 import { PUBLIC_TENANT_ID } from '../security/tenant_context.js';
-import { type CrossRuling, type CrossStatus, crossSource, lookupCrossRulings } from './cbp_cross.js';
+import { type CrossLookup, type CrossRuling, type CrossStatus, crossSource, lookupCrossRulings } from './cbp_cross.js';
 import { CROSS_INDEX_ATTRIBUTION } from './cross_index.js';
+import { classifyHts, HTS_MODEL_HOMEPAGE, HTS_MODEL_NAME, HTS_MODEL_VERSION } from './hts_model.js';
 import {
   type HtsLine,
-  type HtsSearchHit,
   getHtsLine,
   hasEnglishWords,
   htsDataInfo,
   htsLinesUnder,
   queryTerms,
-  searchHtsLines,
 } from './hts_data.js';
 
 export interface CpscApplicableRegulation {
@@ -1131,7 +1130,7 @@ export async function verifyHtsCode(options: {
 //   (2) CBP の分類判例（CROSS）。普段の言葉と法令の用語をつなぐ
 // 判例が使えないとき（通信失敗・該当なし）は (1) だけで答える。
 
-/** 入力の誤り（英語の語が無い、該当する品目が見つからない、または仮置き・不確定データの混入）。REST では 400 にする。 */
+/** 入力の誤り（品名が無い、頭の桁の形が違う、または仮置き・不確定データの混入）。REST では 400 にする。 */
 export class TradeInputError extends Error {
   readonly code: string;
   constructor(message: string, code = 'INVALID_INPUT') {
@@ -1149,9 +1148,12 @@ export interface PredictHtsOptions {
   targetAge?: 'adult' | 'child' | 'unknown';
   foodContact?: boolean;
   hasBattery?: boolean;
+  /** もう分かっている頭の桁（2・4・6・8・10 桁。decisionPoints の選択肢の htsPrefix）。その下の行だけから選び直す。 */
+  htsPrefix?: string;
 }
 
-export type PredictHtsSource = 'hts-text' | 'cbp-ruling';
+/** 候補の出どころ。model は関税分類モデル、cbp-ruling は、照会した判例にも同じ6桁を挙げたものがあること。 */
+export type PredictHtsSource = 'model' | 'cbp-ruling';
 
 export interface PredictHtsCandidate {
   htsCode: string;
@@ -1166,23 +1168,37 @@ export interface HtsDecisionOption {
   text: string;
   htsCode?: string;
   generalRate?: string;
+  /** この選択肢を選んだときに、再実行で htsPrefix に渡す値。 */
+  htsPrefix?: string;
 }
 
-/** 候補が公式の階層のどこで分かれるか。選択肢は公式の説明文。答えを description に加えて再実行すると絞れる。 */
+/** 候補が公式の階層のどこで分かれるか。選択肢は公式の説明文。選んだ選択肢の htsPrefix を付けて再実行すると、その下から選び直す。 */
 export interface HtsDecisionPoint {
   question: string;
   options: HtsDecisionOption[];
 }
 
+export interface PredictHtsRuling {
+  rulingNumber: string;
+  date: string;
+  subject: string;
+  tariffs: string[];
+  url: string;
+}
+
 export interface PredictHtsEvidence {
   dataFetchedAt: string;
+  /** 推測に使った関税分類モデル。htsRelease はモデルが持つ関税率表の版、reader は、日本語用の層で読んだとき 'ja'。 */
+  model: { name: string; version: string; htsRelease: string; reader?: 'ja'; url: string };
   crossStatus: CrossStatus;
   crossQuery?: string;
   crossNote?: string;
   /** 手元の判例の索引を使ったときの出典の表示。 */
   attribution?: string;
-  /** 最有力の6桁を支持した判例（上位3件）。 */
-  rulings: { rulingNumber: string; date: string; subject: string; tariffs: string[]; url: string }[];
+  /** 照会した判例のうち、最有力の6桁を挙げているもの（上位3件）。判例は推測には使わず、根拠として見せるだけ。 */
+  rulings: PredictHtsRuling[];
+  /** 照会した判例のうち、別の6桁を挙げているもの（上位3件）。商品がその判例の品と同じなら、判例の側を確かめる。 */
+  otherRulings?: PredictHtsRuling[];
 }
 
 export interface PredictHtsResult {
@@ -1212,19 +1228,11 @@ export interface PredictHtsResult {
   impactExplanation?: string;
 }
 
-// 6桁の候補の統合: 判例の票の割合（CROSS_WEIGHT）と、候補の6桁の中で測り直した全文検索の点数（残り）の和。
-// 評価セット eval/hts_predict_cases.json の dev で決めた（0.6〜0.7、候補数 4〜8 で結果は同じ）。
-const CROSS_WEIGHT = 0.7;
-const CANDIDATES_PER_SOURCE = 6;
-// 本体ではなく部品・付属品の行を選ぶ誤りを減らす。見出しが "Parts" で始まる6桁は、商品の語に部品・付属品を示す語が無いとき減点する。
-const PARTS_HEADING_PENALTY = 0.5;
-const PARTS_HEADING = /^(other )?parts\b/i;
-const ACCESSORY_WORDS = /\b(parts?|accessor\w*|components?|replacement|spare|case|cases|cover|covers|strap|straps|band|bands|holder|sleeve|adapter|charger|cable|stand|mount)\b/i;
-// 信頼度の閾値（dev＋test 103件で適合率を測って決めた: high 90%、low 42%）
-const HIGH_CROSS_SHARE = 0.4;
-const LOW_MARGIN = 0.1;
+// 信頼度の境目: モデルの「6桁までが正しい確率」（調整用の行で合わせ込んだ値）が 0.9 以上なら high、0.5 以上なら medium、それ未満は low。
+const HIGH_SIX_CONFIDENCE = 0.9;
+const MEDIUM_SIX_CONFIDENCE = 0.5;
 const MATERIAL_QUESTION =
-  '素材は何ですか？ material に英語で指定して再実行すると、素材つき（例: "plastic coaster"）で判例を引き直します（plastic, textile, leather, wood, ceramic, glass, metal, paper など）。PU・ビニールなどの合成皮革は、織物の基布が主体なら textile、そうでなければ plastic で、leather は本革だけです。';
+  '素材は何ですか？ material に指定して再実行すると、素材を踏まえて推測し直します（例: plastic, textile, leather, wood, ceramic, glass, metal, paper など）。PU・ビニールなどの合成皮革は、織物の基布が主体なら textile、そうでなければ plastic で、leather は本革だけです。';
 const MAX_DECISION_OPTIONS = 6;
 const DECISION_TEXT_LIMIT = 160;
 
@@ -1234,172 +1242,6 @@ const DECISION_TEXT_LIMIT = 160;
  */
 export function stripNegations(text: string): string {
   return text.replace(/\b(?:not|no|without|excluding|except|isn't|doesn't)\b(?:\s+[a-z][a-z-]*){1,3}/gi, ' ').replace(/\bnon-[a-z]+/gi, ' ');
-}
-
-/**
- * 公式の行の説明文に現れる、年齢・性別の区分の語。検索語ではなく、候補の行の説明文の側を調べる。
- * under/over の年齢は (kind:'childAge', max: 3) のように正規化し、入力の年齢表現と突き合わせる。
- */
-interface AgeGenderMarker {
-  kind: 'men' | 'women' | 'boys' | 'girls' | 'infants' | 'children' | 'childAge';
-  /** "Under N years" の N（含まない）。"M to N years" では使わない */
-  max?: number;
-  /** "M to N years" の M（含む）。"Under N years" では 0 */
-  min?: number;
-}
-
-const AGE_GENDER_PATTERNS: { re: RegExp; mark: AgeGenderMarker }[] = [
-  { re: /\bunder (\d+) years? of age\b/i, mark: { kind: 'childAge' } }, // max は文中の数字で埋める
-  { re: /\b(\d+) to (\d+) years? of age\b/i, mark: { kind: 'childAge' } },
-  { re: /\bmen'?s?(?: or boys'?)?\b/i, mark: { kind: 'men' } },
-  { re: /\bwomen'?s?(?: or girls'?)?\b/i, mark: { kind: 'women' } },
-  { re: /\bfor men\b/i, mark: { kind: 'men' } },
-  { re: /\bfor women\b/i, mark: { kind: 'women' } },
-  { re: /\bboys?\b/i, mark: { kind: 'boys' } },
-  { re: /\bgirls?\b/i, mark: { kind: 'girls' } },
-  { re: /\binfants?(?:'|’)?\b|\bbab(?:y|ies)\b/i, mark: { kind: 'infants' } },
-  { re: /\bchildren\b|\bchild\b|\btoddlers?\b/i, mark: { kind: 'children' } },
-];
-
-/** 行の公式の説明文（自分と祖先）から、年齢・性別の区分を取り出す。該当が無ければ空。
- *  同じ文言の行が複数あるとき（9503 の "Under 3 years of age" が .11 と .71）は、
- *  祖先の説明もマーカーに含めて区別できるように、行ごとのマーカー列を返す。
- *  祖先の区分（"Children's products" など）は、年齢の判定には使わず、同一文言の行の区別にだけ使う。
- */
-function lineMarkers(line: HtsLine): AgeGenderMarker[][] {
-  const own: AgeGenderMarker[] = [];
-  const ancestors: AgeGenderMarker[] = [];
-  const collect = (text: string, out: AgeGenderMarker[]) => {
-    for (const { re, mark } of AGE_GENDER_PATTERNS) {
-      const m = text.match(re);
-      if (!m) continue;
-      if (mark.kind === 'childAge') {
-        const nums = (m[0].match(/\d+/g) ?? []).map(Number);
-        out.push(nums.length === 1 ? { kind: 'childAge', min: 0, max: nums[0] } : { kind: 'childAge', min: nums[0], max: nums[1] + 1 });
-      } else {
-        out.push({ ...mark });
-      }
-    }
-  };
-  collect(line.description, own);
-  for (const a of line.path) collect(a, ancestors);
-  // 行自体に区分が無いときは、祖先の区分を借りる（"Other" のような行）。行自体にあるときは行を優先
-  return [own.length > 0 ? own : ancestors];
-}
-
-export interface ProductAgeGender {
-  men?: boolean;
-  women?: boolean;
-  boys?: boolean;
-  girls?: boolean;
-  infants?: boolean;
-  children?: boolean;
-  /** 説明文から読めた対象年齢（歳）。"aged 3+"、"for 3-year-olds"、"3 to 12 years" の下限など */
-  ageYears?: number;
-}
-
-/**
- * 入力の年齢・性別の情報。説明文の表現を優先し（事実だから）、無ければ targetAge を使う。
- * 性別は説明文からしか取らない（targetAge には性別の情報が無い）。
- */
-export function detectProductAgeGender(text: string, targetAge?: string): ProductAgeGender {
-  const out: ProductAgeGender = {};
-  // "men" は "women" の部分文字列なので、women を先に除いてから判定する
-  const noWomen = text.replace(/\bwomen'?s?\b/gi, ' ');
-  if (/\bmen'?s\b|\bfor men\b/i.test(noWomen)) out.men = true;
-  if (/\bwomen'?s\b|\bfor women\b/i.test(text)) out.women = true;
-  if (/\bboys?\b/i.test(text)) out.boys = true;
-  if (/\bgirls?\b/i.test(text)) out.girls = true;
-  if (/\binfants?\b|\bbab(?:y|ies)\b/i.test(text)) { out.infants = true; out.children = true; }
-  if (/\btoddlers?\b|\bchildren\b|\bchild\b/i.test(text)) out.children = true;
-  const m =
-    text.match(/\baged?\s*(\d+)\s*(?:\+|plus|and (?:up|over|older))\b/i) ??
-    text.match(/\bfor\s*(?:ages?\s*)?(\d+)\s*[-–]\s*\d+\s*(?:years?|yrs?)(?:\s*old)?\b/i) ??
-    text.match(/\b(\d+)\s*[-–]\s*\d+\s*(?:years?|yrs?)(?:\s*old)?\b/i) ??
-    text.match(/\b(\d+)\s*(?:years?|yrs?)(?:\s*old)?\s*(?:and (?:up|over|older)|\+)/i) ??
-    text.match(/\bfor\s*(\d+)\s*[-–]?\s*year[-–]?olds?\b/i) ??
-    text.match(/\bchildren\s+aged\s*(\d+)\s*[-–+]\b/i) ??
-    text.match(/\baged\s*(\d+)\s*[-–]\b/i);
-  if (m) out.ageYears = Number(m[1]);
-  else if (targetAge === 'child') out.children = true;
-  return out;
-}
-
-/**
- * 行が、入力の年齢・性別に合うか。合う・合わない・分からない（行に区分が無い）の3値を返す。
- * 性別: 行が men's なら入力に men/boys が要り、women's なら women/girls が要る。children/infants の行は性別では絞らない。
- * 年齢: "Under N years" の行は入力の年齢が N 未満のときだけ合い、"M to N years" の行は M 以上のときだけ合う。
- *   入力の年齢が不明でも、targetAge=child なら "Under 3" は除外しない（3歳未満かもしれない）が、
- *   "3 to 12" 側も選ばない（分からないので、ここでは絞らない）。
- */
-function matchAgeGender(line: HtsLine, info: ProductAgeGender): 'match' | 'mismatch' | 'unknown' {
-  const markerSets = lineMarkers(line);
-  if (markerSets.every((ms) => ms.length === 0)) return 'unknown';
-  // いずれかのマーカー列で「合う」があれば match。全ての列で合わなければ mismatch
-  let anyMatch = false;
-  for (const markers of markerSets) {
-    if (markers.length === 0) continue;
-    const r = matchMarkerSet(markers, info);
-    if (r === 'match') anyMatch = true;
-    else if (r === 'mismatch') return 'mismatch';
-  }
-  return anyMatch ? 'match' : 'unknown';
-}
-
-/** 1つのマーカー列（行自体、または祖先）の判定 */
-function matchMarkerSet(markers: AgeGenderMarker[], info: ProductAgeGender): 'match' | 'mismatch' | 'unknown' {
-  let matched = false;
-  for (const mk of markers) {
-    switch (mk.kind) {
-      case 'men':
-        if (info.men || info.boys) matched = true;
-        else if (info.women || info.girls) return 'mismatch';
-        break;
-      case 'women':
-        if (info.women || info.girls) matched = true;
-        else if (info.men || info.boys) return 'mismatch';
-        break;
-      case 'boys':
-        if (info.boys || info.men) matched = true;
-        break;
-      case 'girls':
-        if (info.girls || info.women) matched = true;
-        break;
-      case 'infants':
-        if (info.infants) matched = true;
-        else if (info.ageYears !== undefined && info.ageYears >= 3) return 'mismatch';
-        break;
-      case 'children':
-        if (info.children || info.infants) matched = true;
-        break;
-      case 'childAge': {
-        const max = mk.max ?? 99;
-        const min = mk.min ?? 0;
-        if (info.ageYears !== undefined) {
-          if (info.ageYears >= min && info.ageYears < max) matched = true;
-          else return 'mismatch';
-        } else if (info.children && min >= 3) {
-          // 年齢不明の子供向け: "3 to 12" 側は選ばず、"Under 3" 側も除外しない（分からないので絞らない）
-          return 'unknown';
-        }
-        break;
-      }
-    }
-  }
-  return matched ? 'match' : 'unknown';
-}
-
-/** reason 用に、入力の年齢・性別を短く表す（例: "3歳以上"、"men's"）。 */
-function describeAgeGender(info: ProductAgeGender): string {
-  const parts: string[] = [];
-  if (info.ageYears !== undefined) parts.push(`${info.ageYears}歳以上`);
-  else if (info.children) parts.push('子供向け');
-  if (info.men) parts.push("men's");
-  if (info.women) parts.push("women's");
-  if (info.boys) parts.push('boys');
-  if (info.girls) parts.push('girls');
-  if (info.infants) parts.push('infant');
-  return parts.join('・') || '年齢・性別';
 }
 
 const truncate = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -1425,69 +1267,28 @@ export function crossQueriesFor(productName: string, material?: string): string[
 const MAX_HEADING_FANOUT = 6;
 
 /**
- * 判例が挙げたコードを、現行の木にある6桁に直す。10桁の葉があればそれを、8桁の行（これより細かい行を持つ）があればその8桁も返す。
- * 6桁が現行に無いとき（HTS の改訂で小見出しの番号が変わった）は、現行の6桁に振り分ける。
- * 分割（9405.20 → 9405.21・9405.29）では上位5桁が保たれるので、まず上位5桁が同じ6桁へ。統合（9503.30 → 9503.00）では保たれないので、次に見出し（4桁）の下の6桁へ。
+ * 判例が挙げたコードを、現行の木にある6桁に直す。6桁が現行に無いとき（HTS の改訂で小見出しの番号が変わった）は、現行の6桁に振り分ける。
+ * 分割（9405.20 → 9405.21・9405.29）では上位5桁が保たれるので、まず上位5桁が同じ6桁へ。統合（9503.30 → 9503.00）では保たれないので、次に見出し（4桁）の下の全部へ。
  */
-async function resolveCitedCode(digits: string): Promise<{ d6s: string[]; leaf?: HtsLine; p8?: string } | undefined> {
-  let leaf: HtsLine | undefined;
-  let p8: string | undefined;
-  if (digits.length >= 8) {
-    const line = await getHtsLine(digits);
-    if (line?.leaf) leaf = line;
-    else if (!line && digits.length > 8 && (await getHtsLine(digits.slice(0, 8)))) p8 = digits.slice(0, 8);
-    else if (line && digits.length === 8) p8 = digits;
-  }
+async function currentSixDigits(digits: string): Promise<string[]> {
   const d6 = digits.slice(0, 6);
-  if (leaf || p8 || (await htsLinesUnder(d6, { limit: 1 })).length > 0) return { d6s: [d6], leaf, p8 };
+  if ((await htsLinesUnder(d6, { limit: 1 })).length > 0) return [d6];
   const heading = await htsLinesUnder(digits.slice(0, 4), { limit: 400 });
   const children = [...new Set(heading.filter((l) => l.digits.length >= 6).map((l) => l.digits.slice(0, 6)))];
   const split = children.filter((c) => c.startsWith(digits.slice(0, 5)));
   const target = split.length > 0 ? split : children;
-  return target.length > 0 && target.length <= MAX_HEADING_FANOUT ? { d6s: target } : undefined;
+  return target.length > 0 && target.length <= MAX_HEADING_FANOUT ? target : [];
 }
-
-/** その6桁が、部品・付属品の見出しの下か（"Parts" で始まる見出し／小見出し）。 */
-async function isPartsHeading(d6: string): Promise<boolean> {
-  const first = (await htsLinesUnder(d6, { limit: 1 }))[0];
-  if (!first) return false;
-  return PARTS_HEADING.test(first.path[0] ?? '') || PARTS_HEADING.test(first.path[1] ?? '') || (first.indent <= 1 && PARTS_HEADING.test(first.description));
-}
-
-/** 候補の葉の公式の位置（祖先の説明＋自分の説明）。 */
-const pathOf = (line: HtsLine) => [...line.path, line.description].map(tidyHts);
 
 /**
- * 候補の葉が公式の階層で最初に分かれる位置を求め、その位置の説明文を選択肢にした質問を作る。
- * 先頭の候補が最有力。候補が1つしか無い、または全て同じ位置なら undefined。
+ * モデルのコード（10桁）を、手元の関税率表の行に直す。統計の細分（末尾2桁）を持たない行は、表では8桁で、モデルは 00 を付けた10桁で出すので、8桁の葉も見る。
+ * 表に無ければ undefined（関税率表の改訂で行が変わった）。
  */
-function buildDecisionPoint(pool: HtsLine[]): HtsDecisionPoint | undefined {
-  if (pool.length < 2) return undefined;
-  const paths = pool.map(pathOf);
-  const shortest = Math.min(...paths.map((p) => p.length));
-  let depth = 0;
-  while (depth < shortest - 1 && paths.every((p) => p[depth] === paths[0][depth])) depth++;
-
-  const groups = new Map<string, HtsLine>();
-  for (const [i, line] of pool.entries()) {
-    const label = truncate(paths[i].slice(depth, depth + 3).join(' › '), DECISION_TEXT_LIMIT);
-    if (!groups.has(label)) groups.set(label, line);
-  }
-  if (groups.size < 2) return undefined;
-
-  const options = [...groups.entries()].slice(0, MAX_DECISION_OPTIONS).map(([text, line]) => ({
-    text,
-    htsCode: line.code,
-    generalRate: line.general || undefined,
-  }));
-  // 質問の見出し: 分かれる位置の祖先のうち、"Other" ではなく内容のある最も近いもの。見出しの段で分かれるときは、見出しの違いを尋ねる
-  const stem = paths[0].slice(0, depth).reverse().find((t) => !/^other\b/i.test(t));
-  return {
-    question: stem
-      ? `分類の確認: 公式の区分「${truncate(stem, DECISION_TEXT_LIMIT)}」のうち、商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。`
-      : '分類の確認: 候補が異なる見出しに分かれています。商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。',
-    options,
-  };
+async function modelLine(code: string): Promise<HtsLine | undefined> {
+  const line = await getHtsLine(code);
+  if (line || !code.endsWith('00')) return line;
+  const eight = await getHtsLine(code.slice(0, 8));
+  return eight?.leaf ? eight : undefined;
 }
 
 function decisionPointText(dp: HtsDecisionPoint): string {
@@ -1498,179 +1299,101 @@ function decisionPointText(dp: HtsDecisionPoint): string {
 }
 
 /**
- * 商品情報（英語の商品名・説明・素材など）から、米国の10桁HTSコード候補・関税率・規制要件を推測する。
- * USITC 公式の関税率表（全件）の階層つき全文検索と、CBP の分類判例を統合する。
+ * 商品情報（商品名・説明・素材など。英語でも日本語でもよい）から、米国の10桁HTSコード候補・関税率・規制要件を推測する。
+ * 10桁は関税分類モデル（hts_model.ts）が決める。説明文・税率は USITC 公式の関税率表（最新の版）から引き、CBP の分類判例は根拠として添える。
  */
 export async function predictHtsCode(options: PredictHtsOptions): Promise<PredictHtsResult> {
   const productName = options.productName?.trim();
   if (!productName) {
     throw new TradeInputError('productName is required for HTS code prediction');
   }
-  const combinedText = [productName, options.description, options.productCategory, options.material]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-  // 日本語が主の文（日本語の商品ページなど）では、英字はブランド名や単位（mAh・USB・cm）の断片で、照合すると無関係な品目に引かれる
-  // ponytail: 字数の比べ方は粗い。英訳した商品名に日本語の長い説明を添えた入力も止まる
-  const latinChars = combinedText.match(/[A-Za-z]/g)?.length ?? 0;
-  const japaneseChars = combinedText.match(/[\u3040-\u30ff\u3400-\u9fff]/g)?.length ?? 0;
-  if (!hasEnglishWords(combinedText) || japaneseChars > latinChars) {
-    throw new TradeInputError(
-      'HTSの照合は英語の品目説明で行います。productName と description を、商品の一般名の英語（例: "Stainless Steel Water Bottle"）にして再実行してください。',
-    );
+  const prefix = options.htsPrefix?.replace(/[.\s]/g, '') ?? '';
+  if (!/^(\d{2}){0,5}$/.test(prefix)) {
+    throw new TradeInputError('htsPrefix は 2・4・6・8・10 桁の数字で指定してください（decisionPoints の選択肢の htsPrefix の値）。');
   }
-  const factualText = stripNegations(combinedText);
-  const searchText = options.hasBattery ? `${factualText} battery` : factualText;
+  // 否定された語（"not ceramic"）は商品の特徴ではないので、モデルに渡す文から外す。外したあとに残る句読点の並び（" , , ."）は 1 つにまとめる
+  const clean = (v?: string) =>
+    v
+      ? stripNegations(v)
+          .replace(/\s+([,.;])/g, '$1')
+          .replace(/([,.;])[,.;]+/g, '$1')
+          .replace(/\s+/g, ' ')
+          .trim() || undefined
+      : undefined;
 
-  // 1. 二つの手がかりを並行して取る
-  const [ftsHits, cross] = await Promise.all([
-    searchHtsLines(searchText, { limit: 60 }),
-    lookupCrossRulings(crossQueriesFor(productName, options.material)),
+  // 1. モデルの答えと、根拠に添える判例を並行して取る（判例の索引は英語なので、英語の語が無い品名では引かない）
+  const [model, cross] = await Promise.all([
+    classifyHts({
+      name: clean(productName) ?? productName,
+      material: clean(options.material),
+      categories: clean(options.productCategory),
+      description: clean(options.description),
+      prefix: prefix || undefined,
+    }),
+    hasEnglishWords(productName)
+      ? lookupCrossRulings(crossQueriesFor(productName, options.material))
+      : Promise.resolve<CrossLookup>({ status: 'no_rulings', rulings: [] }),
   ]);
 
-  // 2. 全文検索: 6桁ごとの最良の行（順位は検索の順）
-  const textOrder: string[] = [];
-  for (const hit of ftsHits) {
-    const d6 = hit.digits.slice(0, 6);
-    if (!textOrder.includes(d6)) textOrder.push(d6);
-  }
-
-  // 3. 判例: 現行の木にあるコードへの票（上位の判例ほど重く、1件の判例が複数の6桁を挙げたら分ける）
-  const votes = new Map<string, number>();
-  const citedLeaves = new Map<string, Map<string, { line: HtsLine; votes: number }>>();
-  const cited8 = new Map<string, Map<string, number>>(); // 6桁 → (判例が挙げた8桁 → 票)
-  const supporting = new Map<string, CrossRuling[]>();
-  for (const [rank, ruling] of cross.rulings.entries()) {
-    const resolved = (await Promise.all(ruling.tariffs.map(resolveCitedCode))).filter((r): r is NonNullable<typeof r> => !!r);
-    const distinct6 = new Set(resolved.flatMap((r) => r.d6s));
-    if (distinct6.size === 0) continue;
-    const weight = 1 / (rank + 1) / distinct6.size;
-    for (const d6 of distinct6) {
-      votes.set(d6, (votes.get(d6) ?? 0) + weight);
-      supporting.set(d6, [...(supporting.get(d6) ?? []), ruling]);
-    }
-    for (const r of resolved) {
-      if (r.p8) {
-        const m8 = cited8.get(r.p8.slice(0, 6)) ?? new Map();
-        m8.set(r.p8, (m8.get(r.p8) ?? 0) + weight);
-        cited8.set(r.p8.slice(0, 6), m8);
-      }
-      if (!r.leaf) continue;
-      const d6 = r.leaf.digits.slice(0, 6);
-      const m = citedLeaves.get(d6) ?? new Map();
-      m.set(r.leaf.digits, { line: r.leaf, votes: (m.get(r.leaf.digits)?.votes ?? 0) + weight });
-      citedLeaves.set(d6, m);
-    }
-  }
-  const crossOrder = [...votes.entries()].sort((a, b) => b[1] - a[1]).map(([d6]) => d6);
-  const totalVotes = [...votes.values()].reduce((a, b) => a + b, 0);
-
-  // 4. 6桁の統合。全文検索の点数は、候補の6桁の中だけで測り直す
-  //    （商品の語が HTS に無いと、全体の検索は無関係な行に引かれるため）
-  const candidate6 = new Set([...crossOrder.slice(0, CANDIDATES_PER_SOURCE), ...textOrder.slice(0, CANDIDATES_PER_SOURCE)]);
-  if (candidate6.size === 0) {
-    throw new TradeInputError(
-      '商品名・説明に該当するHTSの品目を見つけられませんでした。商品の一般名（英語）・素材・用途を具体的にして再実行してください。',
+  // 2. モデルの候補（10桁）を、手元の関税率表（最新の版）の行に直す。表に無いコード（改訂で行が変わった）は飛ばす
+  const mass = new Map(model.alternates.map((x) => [x.code, x.probabilityMass]));
+  mass.set(model.codes[0], Math.max(0, 1 - model.alternates.reduce((sum, x) => sum + x.probabilityMass, 0)));
+  const tableLines = await Promise.all(model.codes.map((code) => modelLine(code)));
+  const ranked = model.codes.flatMap((code, i) => (tableLines[i] ? [{ code, line: tableLines[i] as HtsLine }] : []));
+  const bestLine = ranked[0]?.line;
+  if (!bestLine) {
+    throw new Error(
+      `関税分類モデルの候補が、手元の関税率表に1つもありません（モデルの版 ${model.htsRelease}。関税率表の改訂にモデルが追いついていない可能性があります）。`,
     );
   }
-  const inPrefix = new Map<string, HtsSearchHit[]>();
-  const partsOnly = new Set<string>();
-  const wantsParts = ACCESSORY_WORDS.test(combinedText);
+  const best6 = ranked[0].code.slice(0, 6);
+  // モデルの1位が表に無く、次の候補に落としたときは、モデルの確度を当てにしない
+  const fellBack = ranked[0].code !== model.codes[0];
+
+  // 3. 信頼度: モデルの「6桁までが正しい確率」から。0.9 以上は high、0.5 以上は medium
+  const sixConfidence = fellBack ? 0 : model.sixDigitConfidence;
+  const confidence: 'high' | 'medium' | 'low' = sixConfidence >= HIGH_SIX_CONFIDENCE ? 'high' : sixConfidence >= MEDIUM_SIX_CONFIDENCE ? 'medium' : 'low';
+
+  // 4. 判例: 推測には使わない。最有力の6桁を挙げているものを根拠に、別の6桁を挙げているものを「別の判例」として見せる
+  //    判例が挙げた古いコード（改訂で番号が変わったもの）は、現行の6桁に直してから比べる。判例番号の無い判例（URL が空）は出さない
+  const citedSix = new Map<CrossRuling, Set<string>>();
   await Promise.all(
-    [...candidate6].map(async (d6) => {
-      inPrefix.set(d6, await searchHtsLines(searchText, { prefix: d6, limit: 10 }));
-      if (!wantsParts && (await isPartsHeading(d6))) partsOnly.add(d6);
+    cross.rulings.map(async (r) => {
+      citedSix.set(r, new Set((await Promise.all(r.tariffs.map((t) => currentSixDigits(t)))).flat()));
     }),
   );
-  const textScore = (d6: string) => inPrefix.get(d6)?.[0]?.score ?? 0;
-  const textMax = Math.max(1e-9, ...[...candidate6].map(textScore));
-  const crossShareOf = (d6: string) => (totalVotes > 0 ? (votes.get(d6) ?? 0) / totalVotes : 0);
-  const fused = new Map<string, number>();
-  for (const d6 of candidate6) {
-    const score = CROSS_WEIGHT * crossShareOf(d6) + (1 - CROSS_WEIGHT) * (textScore(d6) / textMax);
-    fused.set(d6, partsOnly.has(d6) ? score * PARTS_HEADING_PENALTY : score);
-  }
-  const ranked = [...fused.entries()].sort((a, b) => b[1] - a[1]);
-  const best6 = ranked[0][0];
+  const agrees = (r: CrossRuling, d6: string) => citedSix.get(r)?.has(d6) ?? false;
+  const cited = cross.rulings.filter((r) => r.url);
+  const supportingRulings = cited.filter((r) => agrees(r, best6)).slice(0, 3);
+  const otherRulings = cited.filter((r) => !agrees(r, best6)).slice(0, 3);
 
-  // 5. 最有力の6桁の中の行: 年齢・性別に合う行 → 判例が挙げた現行の葉（票の多い順）→ 判例が挙げた8桁の下で全文検索 → 6桁の中で全文検索
-  //    年齢・性別は、公式の行の説明文（"Men's"、"Under 3 years of age" など）と入力の年齢・性別を突き合わせる。
-  //    玩具の年齢（3歳未満 / 3〜12歳）、アパレル・靴の男女区分など、同じ6桁の中で分かれる行の選択に使う。
-  const ageGender = detectProductAgeGender(factualText, options.targetAge);
-  const inBest6 = inPrefix.get(best6) ?? [];
-  const citedBest = [...(citedLeaves.get(best6)?.values() ?? [])].sort((a, b) => b.votes - a.votes).map((c) => c.line);
-  const siblings = await htsLinesUnder(best6, { leafOnly: true, limit: 80 });
-  const ageGenderMatch = (line?: HtsLine) => (line ? matchAgeGender(line, ageGender) : 'unknown');
-  // 不一致の行を除き、一致する行があればその中から選ぶ。一致が複数・ゼロなら今の順位のまま
-  const filterAgeGender = (lines: HtsLine[]): HtsLine[] => {
-    if (lines.every((l) => ageGenderMatch(l) === 'unknown')) return lines;
-    const kept = lines.filter((l) => ageGenderMatch(l) !== 'mismatch');
-    return kept.length > 0 ? kept : lines;
-  };
-  const ageMatchedSiblings = filterAgeGender(siblings).filter((l) => ageGenderMatch(l) === 'match');
-  const topCited8 = [...(cited8.get(best6)?.entries() ?? [])].sort((a, b) => b[1] - a[1])[0]?.[0];
-  let inCited8: HtsLine[] = [];
-  if (citedBest.length === 0 && topCited8) {
-    const hits = await searchHtsLines(searchText, { prefix: topCited8, limit: 10 });
-    // 商品の語に当たる行が無ければ、その8桁の最後の葉（通常は "Other"）
-    inCited8 = hits.length > 0 ? hits : (await htsLinesUnder(topCited8, { leafOnly: true, limit: 200 })).slice(-1);
-  }
-  const bestLine: HtsLine | undefined =
-    filterAgeGender(citedBest)[0] ?? filterAgeGender(inCited8)[0] ?? filterAgeGender(inBest6)[0] ?? ageMatchedSiblings[0] ?? siblings[siblings.length - 1];
-  if (!bestLine) {
-    throw new TradeInputError('該当するHTSの行を特定できませんでした。商品の一般名（英語）・素材・用途を具体的にして再実行してください。');
-  }
-  const ageGenderApplied = ageGenderMatch(bestLine) === 'match';
-
-  // 6. 信頼度: 判例の1位・全文検索の1位・最終候補が一致して票が集まっていれば high、
-  //    首位との差が小さい、またはどちらの1位でもなければ low。
-  //    年齢・性別で10桁を確定できたときは、6桁の一致に加えて low を避ける（兄弟の行との取り違えが解けたため）
-  const crossShare = crossShareOf(best6);
-  const margin = ranked[0][1] - (ranked[1]?.[1] ?? 0);
-  const textTop = textOrder[0];
-  const crossTop = crossOrder[0];
-  // 判例の票が無い（照会できない・該当なし）ときは全文検索だけの推測で、medium でも dev の的中は 6/12 しかないため low
-  const confidence: 'high' | 'medium' | 'low' =
-    totalVotes === 0
-      ? 'low'
-      : textTop === best6 && crossTop === best6 && crossShare >= HIGH_CROSS_SHARE
-      ? 'high'
-      : margin < LOW_MARGIN || (textTop !== best6 && crossTop !== best6)
-        ? ageGenderApplied && (textTop === best6 || crossTop === best6)
-          ? 'medium'
-          : 'low'
-        : 'medium';
-
-  // 7. 候補: 6桁ごとに代表の行を1つ（上位5つの6桁）
-  const repFor = async (d6: string): Promise<{ line: HtsLine; sources: PredictHtsSource[] } | undefined> => {
-    const cited = [...(citedLeaves.get(d6)?.values() ?? [])].sort((a, b) => b.votes - a.votes)[0]?.line;
-    const line = d6 === best6 ? bestLine : (cited ?? inPrefix.get(d6)?.[0] ?? (await htsLinesUnder(d6, { leafOnly: true, limit: 1 }))[0]);
-    if (!line) return undefined;
-    const sources: PredictHtsSource[] = [];
-    if (textOrder.includes(d6)) sources.push('hts-text');
-    if (votes.has(d6)) sources.push('cbp-ruling');
-    return { line, sources };
-  };
-  const reps = (await Promise.all(ranked.slice(0, 5).map(([d6]) => repFor(d6)))).filter((r): r is NonNullable<typeof r> => !!r);
-  const candidates: PredictHtsCandidate[] = reps.map(({ line, sources }) => ({
+  // 5. 候補: モデルの上位（10桁の行）。score は候補の中での割合
+  const candidates: PredictHtsCandidate[] = ranked.slice(0, 5).map(({ code, line }) => ({
     htsCode: line.code,
     description: describeCandidate(line),
     generalRate: line.general || 'N/A',
-    score: Math.round((fused.get(line.digits.slice(0, 6)) ?? 0) * 1000) / 10,
+    score: Math.round((mass.get(code) ?? 0) * 1000) / 10,
     path: line.path.map(tidyHts),
-    sources,
+    sources: cross.rulings.some((r) => agrees(r, code.slice(0, 6))) ? ['model', 'cbp-ruling'] : ['model'],
   }));
 
-  // 8. 分岐点: 6桁が競っているときは6桁の代表どうし、そうでなければ最有力の6桁の下の全ての葉で、分かれる位置を探す
-  //    （商品の語が当たらない行も含める。例: 自転車用ヘルメットは "Athletic, recreational and sporting headgear" で、"helmet" の語を含まない）
-  const contested = ranked.length > 1 && ranked[1][1] >= 0.6 * ranked[0][1];
-  const pool: HtsLine[] = [bestLine];
-  const addToPool = (l?: HtsLine) => {
-    if (l && !pool.some((p) => p.digits === l.digits)) pool.push(l);
-  };
-  if (contested) for (const r of reps) addToPool(r.line);
-  else for (const l of [...citedBest, ...inCited8, ...inBest6, ...siblings]) addToPool(l);
-  const decision = confidence === 'high' ? undefined : buildDecisionPoint(pool);
+  // 6. 分岐点: モデルの候補が最初に分かれる段の質問（選択肢は公式の文）。モデルの1位を前提にした質問なので、1位を飛ばしたときは出さない。
+  //    利用者に確かめるよう促す（missingInputs・clarifyingQuestions に入れる）のは、モデルが「聞いたほうがよい」と印を付けたときと、確度が low のときだけ
+  const question = fellBack ? undefined : model.questions[0];
+  let decision: HtsDecisionPoint | undefined;
+  if (question) {
+    const optionLines = await Promise.all(question.options.map((o) => modelLine(o.code)));
+    const decisionOptions = question.options
+      .flatMap((o, i) => (optionLines[i] ? [{ o, line: optionLines[i] as HtsLine }] : []))
+      .slice(0, MAX_DECISION_OPTIONS)
+      .map(({ o, line }) => ({ text: truncate(o.label, DECISION_TEXT_LIMIT), htsCode: line.code, generalRate: line.general || undefined, htsPrefix: o.prefix }));
+    if (decisionOptions.length >= 2) {
+      decision = {
+        question: `分類の確認: 候補が${question.digits}桁の段で分かれています。商品が当たる区分はどれですか？ 選んだ選択肢の htsPrefix を付けて再実行すると、その下から選び直します。`,
+        options: decisionOptions,
+      };
+    }
+  }
 
   // 9. CPSC・FDA の判定（最有力のコードで）
   const category = tidyHts(bestLine.path[0] ?? bestLine.description);
@@ -1696,13 +1419,13 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     for (const m of inputs ?? []) if (m !== 'exactHtsClassification' && !missingInputs.includes(m)) missingInputs.push(m);
     for (const q of questions ?? []) if (!clarifyingQuestions.includes(q)) clarifyingQuestions.push(q);
   };
-  if (decision) {
+  if (decision && (question?.ask || confidence === 'low')) {
     missingInputs.push('classificationDetail');
     clarifyingQuestions.push(decisionPointText(decision));
   }
   addMissing(cpscRes.missingInputs, cpscRes.clarifyingQuestions);
   addMissing(fdaRes.missingInputs, fdaRes.clarifyingQuestions);
-  // 確度が高くなく、素材が未指定のとき: 素材を指定すると判例を素材つきで引き直す（同じ品名でも素材で章が分かれる。例: plastic coaster は 3924.10、textile coaster は 6304.93）
+  // 確度が高くなく、素材が未指定のとき: 素材を指定すると、素材を踏まえて推測し直せる（同じ品名でも素材で章が分かれる。例: plastic coaster は 3924.10、textile coaster は 6304.93）
   //   CPSC が同じ素材を尋ねているときは、質問を1つにまとめる（CPSC の理由は impactExplanation に残る）
   if (confidence !== 'high' && !options.material?.trim()) {
     if (!missingInputs.includes('material')) missingInputs.push('material');
@@ -1732,19 +1455,21 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     impactExplanation = '製品情報（素材・対象年齢・用途等）が十分に提供されており、高確度なHTSコード候補および規制要件を特定しました。';
   }
 
-  // 判例番号の無い判例（URL が空）は票だけに使い、根拠には出さない
-  const supportingRulings = (supporting.get(best6) ?? []).filter((r) => r.url).slice(0, 3);
   const reasonParts = [
-    `商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて${formatSubheading(best6)}を最有力としました`,
-    ageGenderApplied
-      ? `10桁は入力の年齢・性別（${describeAgeGender(ageGender)}）に合う「${tidyHts(bestLine.description)}」の行を選びました`
+    `関税分類モデル（${HTS_MODEL_NAME} ${HTS_MODEL_VERSION}）が商品名・説明から${formatSubheading(best6)}を最有力としました（6桁の確度 ${sixConfidence.toFixed(2)}${
+      model.reader === 'ja' ? '、日本語の文として読みました' : ''
+    }）`,
+    prefix ? `指定された頭の桁（${prefix}）の下から選びました` : undefined,
+    fellBack
+      ? `モデルの1位（${model.codes[0]}）は手元の関税率表に無いため（モデルの版 ${model.htsRelease}）、表にある次の候補を示しています。確度は当てになりません`
       : undefined,
     cross.status === 'ok'
-      ? `CBP分類判例${cross.rulings.length}件のうち${supporting.get(best6)?.length ?? 0}件が同じ6桁です`
+      ? `CBP分類判例${cross.rulings.length}件のうち${cross.rulings.filter((r) => agrees(r, best6)).length}件が同じ6桁です`
       : cross.status === 'no_rulings'
         ? 'CBP分類判例には該当がありませんでした'
         : 'CBP分類判例は参照できませんでした',
   ].filter((p): p is string => !!p);
+  const toRuling = (r: CrossRuling): PredictHtsRuling => ({ rulingNumber: r.rulingNumber, date: r.date, subject: r.subject, tariffs: r.tariffs, url: r.url });
 
   return {
     detectedSubheading: formatSubheading(best6),
@@ -1756,7 +1481,7 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
       path: bestLine.path.map(tidyHts),
       generalRate: bestLine.general || 'N/A',
       rateFrom: bestLine.rateFrom,
-      score: Math.round((fused.get(best6) ?? 0) * 1000) / 10,
+      score: fellBack ? 0 : Math.round(model.confidenceScore * 1000) / 10,
       confidence,
       reason: `${reasonParts.join('。')}。`,
       cpsc: cpscRes,
@@ -1766,17 +1491,13 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
     decisionPoints: decision ? [decision] : undefined,
     evidence: {
       dataFetchedAt: (await htsDataInfo()).fetchedAt,
+      model: { name: HTS_MODEL_NAME, version: HTS_MODEL_VERSION, htsRelease: model.htsRelease, reader: model.reader, url: HTS_MODEL_HOMEPAGE },
       crossStatus: cross.status,
       crossQuery: cross.query,
       crossNote: cross.error,
       attribution: cross.status === 'ok' && crossSource() === 'local' ? CROSS_INDEX_ATTRIBUTION : undefined,
-      rulings: supportingRulings.map((r) => ({
-        rulingNumber: r.rulingNumber,
-        date: r.date,
-        subject: r.subject,
-        tariffs: r.tariffs,
-        url: r.url,
-      })),
+      rulings: supportingRulings.map(toRuling),
+      otherRulings: otherRulings.length > 0 ? otherRulings.map(toRuling) : undefined,
     },
     disclaimer: DISCLAIMER_USITC,
     inputCompleteness: missingInputs.length > 0 ? 'partial' : 'complete',
@@ -1941,7 +1662,7 @@ function buildIntegratedActionPlan(
 
 /**
  * 商品情報（URL または 商品名・説明・素材など）から、HTS実在検証・FDA規制判定・CPSC証明書/eFiling判定を一連のパイプラインとして一括実行。
- * HTSコードが未指定なら predictHtsCode で推測する。確度が低い・英語の情報が無いときは、既定のコードで進めず確認質問を返す。
+ * HTSコードが未指定なら predictHtsCode で推測する。確度が低い・推測できないときは、既定のコードで進めず確認質問を返す。
  */
 export async function checkProductCompliance(
   options: CheckProductComplianceOptions,
@@ -2029,23 +1750,9 @@ export async function checkProductCompliance(
 
   if (!htsCode) {
     if (!htsPrediction || htsPrediction.bestMatch.confidence === 'low') {
-      // 商品ページが日本語のときは、該当なしではなく英訳が必要だと伝える
-      const japanese = /[\u3040-\u30ff\u3400-\u9fff]/.test(combinedText);
       const questions = htsPrediction?.clarifyingQuestions?.length
         ? [...htsPrediction.clarifyingQuestions]
-        : !htsPrediction && japanese
-          ? [
-              '商品名・説明が日本語です。HTS と判例は英語なので、商品の一般名・素材・用途を英語にして productName と description に渡して再実行してください（宣伝文句やブランド名は除く。例: "PU Leather Coaster"）。',
-            ]
-          : [
-              predictionNote ??
-                '商品の一般名（英語）・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。',
-            ];
-      if (htsPrediction?.evidence.crossStatus === 'unavailable') {
-        questions.push(
-          'CBP の分類判例（CROSS）を参照できず、HTS の全文検索だけの推測のため確度が低くなっています。HTS コードが分かっていれば htsCode に渡すと、そのコードで判定を進めます。',
-        );
-      }
+        : [predictionNote ?? '商品の一般名・素材・用途をより具体的に教えてください。入力された情報だけでは、HTSコードを高い確度で特定できませんでした。'];
       return needsMoreInfo(questions, htsPrediction ? ['classificationDetail'] : ['productDetails'], htsPrediction);
     }
     htsCode = htsPrediction.bestMatch.htsCode;

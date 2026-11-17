@@ -37,7 +37,7 @@ const post = (path: string, body: unknown) =>
 const expectedProps: Record<string, string[]> = {
   check_regulations: ['htsCode', 'agencies', 'targetAge', 'material', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd', 'foodContact'],
   check_product_compliance: ['url', 'productName', 'description', 'htsCode', 'targetAge', 'material', 'productCategory', 'foodContact', 'hasBattery', 'batteryType', 'fabricSurface', 'fabricWeightOzPerSqYd'],
-  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'],
+  lookup_hts: ['htsCode', 'description', 'productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery', 'htsPrefix'],
   track_package: ['trackingNumber', 'carrier', 'preferredCarriers', 'noCache'],
   watch: ['action', 'url', 'title', 'selector', 'webhookUrl', 'id'],
 };

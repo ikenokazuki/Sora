@@ -8,7 +8,7 @@
 
 - MCP: `check_product_compliance`（モジュール `trade`。このモジュールの中で、最初から見える唯一のツールです。ほかの `trade` のツールは遅延ツールで、`search_tools` で有効化します）。
 - REST: `POST /trade/compliance`。
-- 入力は、商品ページの `url`、または英語の `productName`・`description`・`material`・`productCategory` です。ほかに、`htsCode`・`targetAge`・`foodContact`・`hasBattery`・`batteryType`・`fabricSurface`・`fabricWeightOzPerSqYd` を渡せます。
+- 入力は、商品ページの `url`、または `productName`・`description`・`material`・`productCategory`（英語でも日本語でもよい）です。ほかに、`htsCode`・`targetAge`・`foodContact`・`hasBattery`・`batteryType`・`fabricSurface`・`fabricWeightOzPerSqYd` を渡せます。
 - 一般適合証明書（GCC）は、このツールでは作りません。作るには `generate_gcc_certificate` を使います（[gcc-certificate.md](gcc-certificate.md)）。
 
 ## 手元のデータと外への問い合わせ
@@ -48,7 +48,7 @@
 `needs_more_info` になるのは、次の場合です。
 
 - 商品の情報が何も無いとき。「商品名または商品説明を教えてください」と返します。
-- `htsCode` を省いていて、商品名・説明が日本語のときも、`needs_more_info` です。英語の語が無い、または日本語の字が英字より多いと推測しないので、商品の一般名・素材・用途を英語にして渡すよう促します。HTS も判例も英語だからです。
+- `htsCode` を省いていて、推測できなかったとき（関税分類モデルを用意できない、など）。理由を `clarifyingQuestions` に入れて返します。商品名・説明が日本語でも推測します（モデルが日本語用の層で読みます）。
 
   ```json
   { "productName": "おもちゃ" }
@@ -62,10 +62,10 @@
 
 ## 限界
 
-- `htsCode` を省いたときの精度は、[hts-prediction.md](hts-prediction.md) の限界のとおりです。確度が `low` のとき（判例を参照できないときを含む）は先へ進まず、`needs_more_info` で聞き返します。`medium` のときは先へ進むので、`htsPrediction.bestMatch.confidence` を見て、`medium` は人が確かめてください。
+- `htsCode` を省いたときの精度は、[hts-prediction.md](hts-prediction.md) の限界のとおりです。確度が `low` のときは先へ進まず、`needs_more_info` で聞き返します。`medium` のときは先へ進むので、`htsPrediction.bestMatch.confidence` を見て、`medium` は人が確かめてください。
 - 追加関税（Section 301、アンチダンピング税、相殺関税など）は対象外です。`likely_exempt` は、何も規則が当たらないという意味ではありません。CPSC と FDA の判定がそれぞれの表の範囲で当たらない、という意味です。
 - 章の食い違いの警告は、章（先頭 2 桁）だけを比べます。同じ章の中の違いは検知しません。
-- 商品ページの題名には、宣伝文句やブランド名が入ります。推測が外れやすくなるので、英語の一般名を `productName` に渡すほうが確かです。
+- 商品ページの題名には、宣伝文句やブランド名が入ります。推測が外れやすくなるので、一般名（英語でも日本語でもよい）を `productName` に渡すほうが確かです。
 - CPSC と FDA の限界も、そのまま引き継ぎます（[cpsc-certificate.md](cpsc-certificate.md)、[fda-regulated.md](fda-regulated.md)）。
 - 参考情報で、法的助言でも通関の確定情報でもありません（応答の `disclaimer`）。
 

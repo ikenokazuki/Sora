@@ -385,6 +385,11 @@ export const SETTINGS = {
     defaultDoc: '*(リリースの索引の値)*',
     doc: '`SORA_HTS_CROSS_INDEX_URL` の索引のファイルの SHA-256（16 進 64 字）。URL と両方を指定します',
   },
+  SORA_HTS_MODEL_URL: {
+    area: 'hts', kind: 'url', schemes: ['https', 'file'], keepTrailingSlash: true,
+    defaultDoc: '*(zeiban のリリース)*',
+    doc: 'HTS の推測に使う関税分類モデル zeiban の 3 つのファイル（`zeiban.wasm`・`zeiban.json`・`zeiban.bin`、合わせて約 62MB）を置いた場所の URL（`https://` か `file://`）。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに取得し、`SORA_HTS_DIR` の `zeiban/` に保存します（初回のみ・SHA-256 を確かめる）。鏡や、外に出られない環境で手元のフォルダを指すための設定で、SHA-256 は Sora の版ごとに固定です（別の版のファイルは読みません）',
+  },
 
   // --- GCC ---
   SORA_GCC_CERTIFIER: {
@@ -490,7 +495,7 @@ export const LEGACY: Readonly<Record<string, { to?: SettingName; policy: 'error'
 ]);
 
 /** 設定でない名前（定数・OS・テストとスクリプト用）。checkEnv は未知の SORA_* として扱わない。 */
-export const NOT_SETTINGS: readonly string[] = ['SORA_VERSION', 'SORA_MCP_INSTRUCTIONS', 'PATH', 'LOCALAPPDATA', 'SORA_LIVE_TESTS', 'SORA_TOOL_HEALTH_CASES_JSON', 'SORA_URL'];
+export const NOT_SETTINGS: readonly string[] = ['SORA_VERSION', 'SORA_MCP_INSTRUCTIONS', 'PATH', 'LOCALAPPDATA', 'SORA_LIVE_TESTS', 'SORA_TEST_HTS_MODEL_DIR', 'SORA_TOOL_HEALTH_CASES_JSON', 'SORA_URL'];
 
 const BOOL = new Map([['true', true], ['1', true], ['on', true], ['yes', true], ['false', false], ['0', false], ['off', false], ['no', false]]);
 

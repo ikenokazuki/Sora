@@ -76,7 +76,7 @@ export function buildSoraMcpInstructions(activeModules?: (SoraModule | 'all')[])
   const tier1Directives: string[] = [];
   if (hasTrade) {
     tier1Directives.push(
-      "1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], lookup_hts, check_regulations, generate_gcc_certificate).\n   - CRITICAL HTS RULE: To classify a product, call 'check_product_compliance' with 'htsCode' OMITTED; Sora finds the 10-digit code from the official HTS and CBP rulings. NEVER supply a guessed 'htsCode' (only one the user gave). Pass productName/description as a plain English generic name (translate Japanese; no brand or sales copy): the HTS and rulings are English.",
+      "1. US Export Compliance & Tariffs (HTS classification, CPSC certificates & 2026 eFiling mandate, FDA PGA flags FD1-FD4): Use 'trade' tools (check_product_compliance [CORE], lookup_hts, check_regulations, generate_gcc_certificate).\n   - CRITICAL HTS RULE: To classify a product, call 'check_product_compliance' with 'htsCode' OMITTED; Sora's tariff classification model proposes the 10-digit code and Sora adds the official HTS wording, the duty rate and CBP rulings as evidence. NEVER supply a guessed 'htsCode' (only one the user gave). Pass productName/description as a plain generic name, in English or Japanese (no brand or sales copy). The top code is a proposal, not a ruling: read 'confidence' and the candidates.",
     );
   }
   if (hasGov) {

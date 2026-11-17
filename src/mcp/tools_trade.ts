@@ -103,7 +103,7 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
   );
 
   // Tool: lookup_hts (HTS/HSコードの照合と推測。htsCode の有無で選ぶ) - DEFERRED
-  const HTS_USAGE = '使い方: htsCode（ユーザーが示したコード）があれば照合し、description（商品の説明）が必須。htsCode を省くと推測し、productName（英語の一般名）が必須で、description・material・productCategory・targetAge・foodContact・hasBattery を添えられる。';
+  const HTS_USAGE = '使い方: htsCode（ユーザーが示したコード）があれば照合し、description（商品の説明）が必須。htsCode を省くと推測し、productName（商品の一般名。英語でも日本語でもよい）が必須で、description・material・productCategory・targetAge・foodContact・hasBattery・htsPrefix を添えられる。';
   // onlyForMode に渡す語句。エラーの文にそのまま出る。入力の形で言う
   const WITH_HTS = 'htsCode を指定したとき';
   const WITHOUT_HTS = 'htsCode を省いたとき';
@@ -113,24 +113,25 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'lookup_hts',
     'trade',
-    '【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く（CPSC・FDAの規制の対象かの判定は check_regulations）。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の英語の一般名・説明から、USITC公式HTS全件の階層つき全文検索とCBP分類判例を統合し、米国通関用10桁HTSコード候補、一般関税率、CPSC/FDA規制要件を推測します。日本語の商品は英訳して渡すこと（英語が主でないとエラー）。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーの答えをdescriptionに加えて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation }',
+    '【必須・公式照合・推測厳禁】米国のHTS/HSコードを引く（CPSC・FDAの規制の対象かの判定は check_regulations）。htsCodeがあれば照合: ユーザーから明示提示されたコードを米国USITC公式データ(hts.usitc.gov)と照合し実在検証・正式品目名・一般関税率を取得（HTS Revision 18等の大統領布告・通商法301条Chapter 99特別追加関税リスクも提示。6桁一致時は詳細仕様の確認質問）。htsCodeを省けば推測: 商品の一般名・説明（英語でも日本語でもよい）から、関税分類モデルが米国通関用10桁HTSコード候補を出し、USITC公式データの一般関税率、CPSC/FDA規制要件、根拠のCBP分類判例を添えます。1位の10桁はそのまま申告に使える精度ではないので、confidence と candidates を見ること。【推測値のでっち上げ厳禁】素材・年齢・食品接触・電池等が不明な場合は勝手に埋めず省略すること。候補が公式の階層で分かれるときは分岐点の質問を返すので、ユーザーが選んだ選択肢のhtsPrefixを付けて再実行してください。返却: mode（verify / predict）と、verify は { verified, matchLevel, officialDescription, generalRate, clarifyingQuestions }、predict は { detectedSubheading, bestMatch, candidates, decisionPoints, evidence, clarifyingQuestions, impactExplanation }',
     {
       htsCode: z.string().optional().describe('照合するHTSコード（例: "9503.00.0073"）。【推測入力禁止】ユーザーから明示提示されたコードだけを指定すること。コードを推測・特定したいときは省く（商品の説明から推測する）'),
-      description: z.string().optional().describe('商品の説明（英語）。htsCode があれば必須で、判定には使わず、根拠の記録として応答の productDescription に返す。省いたときは推測の詳細説明・機能・用途で、事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
-      productName: z.string().optional().describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Ceramic Coffee Mug", "Green Tea"）。日本語の商品は英訳して渡す。htsCode を省いたとき（推測）だけで、必須'),
+      description: z.string().optional().describe('商品の説明（英語）。htsCode があれば必須で、判定には使わず、根拠の記録として応答の productDescription に返す。省いたときは推測の詳細説明・機能・用途（英語でも日本語でもよい）で、事実だけを書く（"not ceramic" のような否定の語は、読む前に外される）'),
+      productName: z.string().optional().describe('商品の一般名（宣伝文句やブランド名は除く。例: "Ceramic Coffee Mug", "メンズ 半袖 Tシャツ"）。英語でも日本語でもよい。htsCode を省いたとき（推測）だけで、必須'),
       material: z.string().optional().describe('主な素材（例: wood, ceramic, cotton, stainless steel, plastic）。【推測値のでっち上げ厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
-      productCategory: z.string().optional().describe('製品カテゴリ（例: Toys, Tableware, Apparel, Cosmetics, Food, Electronics）。推測の検索語には入るが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
+      productCategory: z.string().optional().describe('製品カテゴリ（例: Toys, Tableware, Apparel, Cosmetics, Food, Electronics）。推測のモデルには渡すが、CPSCの判定は読まない。【推測値の入力厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
       targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下, adult: 大人/一般, unknown: 不明）。【推測値のでっち上げ厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
       foodContact: z.boolean().optional().describe('食品・飲料接触用途か（true/false）。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ。【推測値のでっち上げ厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
-      hasBattery: z.boolean().optional().describe('電池・バッテリーを搭載しているか（true/false）。trueのときだけ推測の検索語にbatteryを足す。falseでは何もしない。【推測値のでっち上げ厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
+      hasBattery: z.boolean().optional().describe('電池・バッテリーを搭載しているか（true/false）。HTSの推測には使わない（電池で動く品は、品名か説明に書く）。【推測値のでっち上げ厳禁】不明な場合は省略すること。htsCode を省いたときだけ'),
+      htsPrefix: z.string().optional().describe('もう分かっている頭の桁（2・4・6・8・10 桁の数字）。前の応答の decisionPoints の選択肢の htsPrefix を渡すと、その区分の下の行だけから選び直す。htsCode を省いたときだけ'),
     },
     async (args) => {
       const { htsCode, description, productName } = args;
       // 空の htsCode は、指定しなかったのと同じ（推測）
       const mode = htsCode?.trim() ? WITH_HTS : WITHOUT_HTS;
-      const invalid = onlyForMode(mode, [WITHOUT_HTS], args, ['productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery'], HTS_USAGE)
+      const invalid = onlyForMode(mode, [WITHOUT_HTS], args, ['productName', 'material', 'productCategory', 'targetAge', 'foodContact', 'hasBattery', 'htsPrefix'], HTS_USAGE)
         ?? (mode === WITH_HTS && !description?.trim() ? `${mode}は description が必要です（商品の説明。根拠の記録として応答に返す）。${HTS_USAGE}` : undefined)
-        ?? (mode === WITHOUT_HTS && !productName?.trim() ? `${mode}は productName が必要です（商品の英語の一般名）。${HTS_USAGE}` : undefined);
+        ?? (mode === WITHOUT_HTS && !productName?.trim() ? `${mode}は productName が必要です（商品の一般名）。${HTS_USAGE}` : undefined);
       if (invalid) return usageError(invalid);
       // 応答とエラーの文は、統合前の 2 ツールのまま（REST の 2 ルートと同じサービス）。mode を足す
       if (mode === WITH_HTS) {
@@ -159,11 +160,11 @@ export function registerTradeTools(context: ToolRegistrationContext): void {
     sessionActivated,
     'check_product_compliance',
     'trade',
-    '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書・2026年7月eFiling義務を一括で判定し、通関前アクションプラン付きの総合診断を返す。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraが公式データと判例から特定）。品名・説明は英語の一般名で。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
+    '【必須・即時推測厳禁】商品ページURLや品名・素材から、HTS推測・実在検証・FDA実務判定・CPSC証明書・2026年7月eFiling義務を一括で判定し、通関前アクションプラン付きの総合診断を返す。HTSコードを推定したい場合はhtsCodeを必ず省略（Soraの関税分類モデルが候補を出し、公式データと判例を添える）。品名・説明は一般名で（英語でも日本語でもよい）。未確定ならneeds_more_infoで質問を返す。返却: { product, overallStatus, summary, htsVerification, htsPrediction, fda, cpsc, clarifyingQuestions, impactExplanation, actionPlan }',
     {
       url: z.string().trim().optional().describe('商品ページのURL（Amazon、ECサイト、メーカー公式等。指定時は自動でスクレイピングして商品情報を取得）'),
-      productName: z.string().optional().describe('商品の一般名（英語、宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "Bicycle Helmet"）。日本語の商品は英訳して渡す'),
-      description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語）。事実だけを書く（"not ceramic" のような否定は検索語として扱われないので不要）'),
+      productName: z.string().optional().describe('商品の一般名（宣伝文句やブランド名は除く。例: "Wooden Building Blocks", "自転車用ヘルメット"）。英語でも日本語でもよい'),
+      description: z.string().optional().describe('商品の詳細説明・仕様・素材・用途など（英語でも日本語でもよい）。事実だけを書く（"not ceramic" のような否定の語は、読む前に外される）'),
       htsCode: z.string().optional().describe('ユーザーからプロンプト内で明示的に提示された既知のHTSコード（指定時は最優先で検証）。【LLM自身の推測・候補値の入力厳禁！】HTSコードを推測・特定したい場合は必ず省略（未指定）にすること。未指定時にSoraが公式データと判例から特定します'),
       targetAge: z.enum(['adult', 'child', 'unknown']).optional().describe('対象年齢層（child: 12歳以下の子供向け, adult: 一般/大人向け, unknown: 未指定/不明）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと'),
       material: z.string().optional().describe('主な素材（例: plastic, wood, metal, cotton）。不明な場合は省略しユーザーに確認すること。推測値を入れないこと。衣料は "100% polyester" の形（16 CFR 1610.1(d)(2)）'),

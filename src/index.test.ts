@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, spyOn } from 'bun:test';
 import { installExternalApiFixtures } from './test_fixtures/external_apis.js';
+import { fakeHtsModel, modelAnswer } from './test_fixtures/hts_model.js';
+import { setHtsModelForTest } from './services/hts_model.js';
 // 外部サイトへのライブ依存テストは既定でスキップし、
 // SORA_LIVE_TESTS=1 のときのみ実行する（CI・オフラインでの誤失敗を防ぐ）。
 const itLive = it.skipIf(!process.env.SORA_LIVE_TESTS);
@@ -10,9 +12,21 @@ const STEALTH_TEST_PAGE = 'data:text/html,<!doctype html><title>stealth</title>'
 // USITC・iTunes・気象庁・P2P地震情報・Yahoo! 道路交通情報は固定応答で確かめる（SORA_LIVE_TESTS=1 では本物を使う）
 let restoreExternalFetch: (() => void) | undefined;
 beforeAll(() => {
-  if (!process.env.SORA_LIVE_TESTS) restoreExternalFetch = installExternalApiFixtures();
+  if (!process.env.SORA_LIVE_TESTS) {
+    restoreExternalFetch = installExternalApiFixtures();
+    // HTS の推測のモデル（約 62MB）は読まず、品名ごとの決まった応答に差し替える
+    const helmet = [{ prefix: '6506103045', label: 'Athletic, recreational and sporting headgear', code: '6506103045' }, { prefix: '6506103030', label: 'Motorcycle helmets', code: '6506103030' }];
+    setHtsModelForTest(fakeHtsModel([
+      [/マグカップ|mug/i, modelAnswer(['6912004400'], { reader: 'ja' })],
+      [/helmet/i, modelAnswer(['6506103045', '6506103030'], { six: 0.7, ask: { digits: 10, options: helmet } })],
+      [/doll|toy|block/i, modelAnswer(['9503000073', '9503000071'], { six: 0.97 })],
+    ]));
+  }
 });
-afterAll(() => restoreExternalFetch?.());
+afterAll(() => {
+  restoreExternalFetch?.();
+  if (!process.env.SORA_LIVE_TESTS) setHtsModelForTest(undefined);
+});
 
 /** SORA_FETCH_ALLOW_PRIVATE_NETWORK を value にする（undefined なら消す）。元の状態（未設定なら未設定）へ戻す関数を返すので、テストの finally で呼ぶ。 */
 function setLocalFetch(value: string | undefined): () => void {
@@ -4509,32 +4523,28 @@ describe('Sora REST & MCP Endpoints', () => {
     expect(json.candidates.length).toBeGreaterThan(0);
     expect(json.evidence.crossStatus).toBe('ok');
     expect(json.evidence.rulings[0].url).toContain('rulings.cbp.gov');
-    // 候補が公式の階層で分かれるので、分岐点の質問が付く
+    expect(json.evidence.model.name).toBe('zeiban');
+    // 候補が公式の階層で分かれるので、分岐点の質問が付く。選択肢の htsPrefix を付けて再実行できる
     expect(json.decisionPoints[0].options.length).toBeGreaterThan(1);
+    expect(json.decisionPoints[0].options[0].htsPrefix).toBe('6506103045');
     expect(json.missingInputs).toContain('classificationDetail');
   });
 
-  it('POST /trade/hts-predict should reject input with no English word (400 INVALID_INPUT) and a missing productName', async () => {
-    const japanese = await app.fetch(
-      new Request('http://localhost/trade/hts-predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productName: '陶器のマグカップ' }),
-      }),
-    );
-    expect(japanese.status).toBe(400);
+  it('POST /trade/hts-predict should accept Japanese product text, and reject a missing productName or a malformed htsPrefix (400 INVALID_INPUT)', async () => {
+    const post = (body: unknown) =>
+      app.fetch(new Request('http://localhost/trade/hts-predict', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+    const japanese = await post({ productName: '陶器のマグカップ' });
+    expect(japanese.status).toBe(200);
     const body = (await japanese.json()) as any;
-    expect(body.code).toBe('INVALID_INPUT');
-    expect(body.error).toContain('英語');
+    expect(body.detectedSubheading).toBe('6912.00');
+    expect(body.evidence.model.reader).toBe('ja');
 
-    const missing = await app.fetch(
-      new Request('http://localhost/trade/hts-predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ description: 'a mug' }),
-      }),
-    );
-    expect(missing.status).toBe(400);
+    expect((await post({ description: 'a mug' })).status).toBe(400);
+    const badPrefix = await post({ productName: 'Ceramic Coffee Mug', htsPrefix: '691' });
+    expect(badPrefix.status).toBe(400);
+    const err = (await badPrefix.json()) as any;
+    expect(err.code).toBe('INVALID_INPUT');
+    expect(err.error).toContain('htsPrefix');
   });
 
   it('POST /trade/compliance REST endpoint should return structured compliance report', async () => {
@@ -4974,7 +4984,7 @@ describe('Sora REST & MCP Endpoints', () => {
 
       expect(SORA_MCP_INSTRUCTIONS).toContain('CRITICAL HTS RULE');
       expect(SORA_MCP_INSTRUCTIONS).toContain("NEVER supply a guessed 'htsCode'");
-      expect(SORA_MCP_INSTRUCTIONS).toContain('plain English generic name'); // HTS と判例は英語
+      expect(SORA_MCP_INSTRUCTIONS).toContain('in English or Japanese'); // 品名・説明は英語でも日本語でもよい
 
       const server = createMcpServer({ deferTools: false });
       expect((server.server as any)._instructions).toBe(SORA_MCP_INSTRUCTIONS);
@@ -4982,7 +4992,7 @@ describe('Sora REST & MCP Endpoints', () => {
       const complianceTool = regTools['check_product_compliance'];
       expect(complianceTool).toBeDefined();
       expect(complianceTool.description).toContain('HTSコードを推定したい場合はhtsCodeを必ず省略');
-      expect(complianceTool.description).toContain('英語の一般名');
+      expect(complianceTool.description).toContain('英語でも日本語でもよい');
     });
 
     it('Unique feature tools must feature mandatory directives and return annotations, while web tools preserve universal investigation descriptions', () => {

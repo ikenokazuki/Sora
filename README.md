@@ -2690,6 +2690,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_HTS_CROSS_INDEX_URL` | *(リリースの索引)* | 自分で作った判例の索引（`scripts/cross-index/build_index.py`）を使うときの URL（`https://` か `file://`）。`SORA_HTS_CROSS_INDEX_SHA256` と両方を指定します |
 | `SORA_HTS_CROSS_SOURCE` | `local` | HTS の推測が引く CBP の分類判例の照会先。`local` は手元の判例の索引（`SORA_HTS_DIR` の `cross.sqlite`。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに Sora の GitHub のリリースから約 6MB を取得し、SHA-256 を確かめて作ります。起動時の取得はありません）。`api` は CBP の判例検索の API（2026 年 11 月から 403 で使えません） |
 | `SORA_HTS_DIR` | `<SORA_DB_PATH のあるディレクトリ>/hts` | 米国 HTS（関税率表）全件のローカルコピー（`hts.sqlite`、約 21MB）の保存先。`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance` が初めて呼ばれたときに USITC から取得し（約 12MB・初回のみ約 20 秒）、7 日を過ぎると次の利用時に裏で更新します（失敗時は古いコピーのまま答えます）。起動時の取得・常駐処理はありません。`SORA_DB_PATH` が `:memory:` のときはメモリ上にだけ置きます。`hts-archive` モジュールを有効にすると、保存した HTS の版も `releases/` に置きます（Module 15） |
+| `SORA_HTS_MODEL_URL` | *(zeiban のリリース)* | HTS の推測に使う関税分類モデル zeiban の 3 つのファイル（`zeiban.wasm`・`zeiban.json`・`zeiban.bin`、合わせて約 62MB）を置いた場所の URL（`https://` か `file://`）。`/trade/hts-predict`・`/trade/compliance` が初めて呼ばれたときに取得し、`SORA_HTS_DIR` の `zeiban/` に保存します（初回のみ・SHA-256 を確かめる）。鏡や、外に出られない環境で手元のフォルダを指すための設定で、SHA-256 は Sora の版ごとに固定です（別の版のファイルは読みません） |
 
 **GCC**
 

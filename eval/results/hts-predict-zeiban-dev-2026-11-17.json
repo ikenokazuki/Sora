@@ -1,0 +1,858 @@
+{
+  "ranAt": "2026-11-17T04:02:48.257Z",
+  "noCross": false,
+  "split": "dev",
+  "rows": [
+    {
+      "id": "c001",
+      "split": "dev",
+      "name": "Stoneware Coffee Mug",
+      "expected": [
+        "691200"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 957,
+      "got": "6912.00.44.00",
+      "rate": "10%",
+      "confidence": "high"
+    },
+    {
+      "id": "c003",
+      "split": "dev",
+      "name": "Japanese Ceramic Rice Bowl",
+      "expected": [
+        "691110",
+        "691200"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 241,
+      "got": "6912.00.48.10",
+      "rate": "9.8%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c005",
+      "split": "dev",
+      "name": "Stainless Steel Frying Pan",
+      "expected": [
+        "732393"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 142,
+      "got": "7323.93.00.45",
+      "rate": "2%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c007",
+      "split": "dev",
+      "name": "Cast Iron Skillet",
+      "expected": [
+        "732391"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 94,
+      "got": "7323.91.50.40",
+      "rate": "5.3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c009",
+      "split": "dev",
+      "name": "Bamboo Chopsticks Set",
+      "expected": [
+        "441912",
+        "441919",
+        "441990"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 62,
+      "got": "4419.12.00.00",
+      "rate": "3.2%",
+      "confidence": "high"
+    },
+    {
+      "id": "c011",
+      "split": "dev",
+      "name": "Scented Candle",
+      "expected": [
+        "340600"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 88,
+      "got": "3406.00.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c013",
+      "split": "dev",
+      "name": "Folding Umbrella",
+      "expected": [
+        "660191",
+        "660199"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 108,
+      "got": "6601.91.00.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c015",
+      "split": "dev",
+      "name": "Ballpoint Pen",
+      "expected": [
+        "960810"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 103,
+      "got": "9608.10.00.00",
+      "rate": "0.8¢ each + 5.4%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c017",
+      "split": "dev",
+      "name": "Spiral Notebook",
+      "expected": [
+        "482020"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": false,
+      "ms": 131,
+      "got": "4820.10.20.40",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c019",
+      "split": "dev",
+      "name": "Leather Wallet",
+      "expected": [
+        "420231"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 76,
+      "got": "4202.31.60.00",
+      "rate": "8%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c021",
+      "split": "dev",
+      "name": "Leather Handbag",
+      "expected": [
+        "420221"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 129,
+      "got": "4202.21.90.00",
+      "rate": "9%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c023",
+      "split": "dev",
+      "name": "Men's Cotton T-Shirt",
+      "expected": [
+        "610910"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 71,
+      "got": "6109.10.00.27",
+      "rate": "16.5%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c025",
+      "split": "dev",
+      "name": "Silk Scarf",
+      "expected": [
+        "621410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 73,
+      "got": "6214.10.10.00",
+      "rate": "1.2%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c027",
+      "split": "dev",
+      "name": "Wool Knit Sweater",
+      "expected": [
+        "611011"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 149,
+      "got": "6110.11.00.70",
+      "rate": "16%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c029",
+      "split": "dev",
+      "name": "Leather Dress Shoes",
+      "expected": [
+        "640351",
+        "640359",
+        "640391",
+        "640399"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 95,
+      "got": "6403.59.60.60",
+      "rate": "8.5%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c031",
+      "split": "dev",
+      "name": "Quartz Wristwatch",
+      "expected": [
+        "910211"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 105,
+      "got": "9102.11.45",
+      "rate": "40¢ each + 8.5% on the case + 2.8% on the strap, band or bracelet + 5.3% on the battery",
+      "confidence": "medium"
+    },
+    {
+      "id": "c033",
+      "split": "dev",
+      "name": "Portable Bluetooth Speaker",
+      "expected": [
+        "851821",
+        "851822",
+        "851829"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 109,
+      "got": "8518.21.00.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c035",
+      "split": "dev",
+      "name": "Android Tablet",
+      "expected": [
+        "847130",
+        "847141",
+        "847150"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 111,
+      "got": "8471.30.01.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c037",
+      "split": "dev",
+      "name": "Smartphone",
+      "expected": [
+        "851713"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 78,
+      "got": "8517.13.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c039",
+      "split": "dev",
+      "name": "HDMI Cable",
+      "expected": [
+        "854442",
+        "854449"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 89,
+      "got": "8544.42.20.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c041",
+      "split": "dev",
+      "name": "Digital Camera",
+      "expected": [
+        "852589"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 135,
+      "got": "8525.89.40.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c043",
+      "split": "dev",
+      "name": "Shampoo",
+      "expected": [
+        "330510"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 39,
+      "got": "3305.10.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c045",
+      "split": "dev",
+      "name": "Perfume",
+      "expected": [
+        "330300"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 84,
+      "got": "3303.00.30.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c047",
+      "split": "dev",
+      "name": "Bar Soap",
+      "expected": [
+        "340111"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 54,
+      "got": "3401.11.50.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c049",
+      "split": "dev",
+      "name": "Matcha Powder",
+      "expected": [
+        "090210",
+        "090220"
+      ],
+      "ok6": false,
+      "ok4": false,
+      "inCandidates": true,
+      "ms": 161,
+      "got": "0909.32.00.00",
+      "rate": "Free",
+      "confidence": "low"
+    },
+    {
+      "id": "c051",
+      "split": "dev",
+      "name": "Instant Ramen Noodles",
+      "expected": [
+        "190230",
+        "210410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 44,
+      "got": "2104.10.00.20",
+      "rate": "3.2%",
+      "confidence": "low"
+    },
+    {
+      "id": "c053",
+      "split": "dev",
+      "name": "Whisky",
+      "expected": [
+        "220830"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 39,
+      "got": "2208.30.60.65",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c055",
+      "split": "dev",
+      "name": "Rice Crackers",
+      "expected": [
+        "190590"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 34,
+      "got": "1905.90.10.75",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c057",
+      "split": "dev",
+      "name": "Miso Paste",
+      "expected": [
+        "200899"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 35,
+      "got": "2008.99.91.10",
+      "rate": "6%",
+      "confidence": "high"
+    },
+    {
+      "id": "c059",
+      "split": "dev",
+      "name": "Anime Action Figure",
+      "expected": [
+        "950300",
+        "392640"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 183,
+      "got": "9503.00.00.90",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c061",
+      "split": "dev",
+      "name": "Wooden Building Blocks",
+      "expected": [
+        "950300"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 154,
+      "got": "9503.00.00.71",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c063",
+      "split": "dev",
+      "name": "Video Game Controller",
+      "expected": [
+        "950450"
+      ],
+      "ok6": false,
+      "ok4": false,
+      "inCandidates": true,
+      "ms": 186,
+      "got": "8526.92.10.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c065",
+      "split": "dev",
+      "name": "Golf Club",
+      "expected": [
+        "950631"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 117,
+      "got": "9506.31.00.00",
+      "rate": "4.4%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c067",
+      "split": "dev",
+      "name": "Bicycle Helmet",
+      "expected": [
+        "650610"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 81,
+      "got": "6506.10.60.45",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c069",
+      "split": "dev",
+      "name": "Plastic Hair Clip",
+      "expected": [
+        "961511"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 125,
+      "got": "9615.11.40.00",
+      "rate": "5.3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c071",
+      "split": "dev",
+      "name": "Toothbrush",
+      "expected": [
+        "960321"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 85,
+      "got": "9603.21.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c073",
+      "split": "dev",
+      "name": "Foam Mattress",
+      "expected": [
+        "940421"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 126,
+      "got": "9404.21.00.13",
+      "rate": "3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c075",
+      "split": "dev",
+      "name": "Leather Dog Collar",
+      "expected": [
+        "420100"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 74,
+      "got": "4201.00.30.00",
+      "rate": "2.4%",
+      "confidence": "high"
+    },
+    {
+      "id": "c077",
+      "split": "dev",
+      "name": "Disposable Plastic Cups",
+      "expected": [
+        "392410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 81,
+      "got": "3924.10.40.00",
+      "rate": "3.4%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c079",
+      "split": "dev",
+      "name": "Baby Cotton Bodysuit",
+      "expected": [
+        "611120"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 113,
+      "got": "6111.20.60.10",
+      "rate": "8.1%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c081",
+      "split": "dev",
+      "name": "Digital Thermometer",
+      "expected": [
+        "902519"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 110,
+      "got": "9025.19.80.20",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c083",
+      "split": "dev",
+      "name": "Camera Lens",
+      "expected": [
+        "900211",
+        "900219"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 118,
+      "got": "9002.11.90.00",
+      "rate": "2.3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c085",
+      "split": "dev",
+      "name": "Electric Toothbrush",
+      "expected": [
+        "850980",
+        "851090"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 105,
+      "got": "8509.80.50.45",
+      "rate": "4.2%",
+      "confidence": "high"
+    },
+    {
+      "id": "c087",
+      "split": "dev",
+      "name": "Electric Kettle",
+      "expected": [
+        "851679"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": false,
+      "ms": 147,
+      "got": "8516.71.00.80",
+      "rate": "3.7%",
+      "confidence": "low"
+    },
+    {
+      "id": "c089",
+      "split": "dev",
+      "name": "Microwave Oven",
+      "expected": [
+        "851650"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 103,
+      "got": "8516.50.00.60",
+      "rate": "2%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c091",
+      "split": "dev",
+      "name": "Wall Clock",
+      "expected": [
+        "910521",
+        "910529"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 114,
+      "got": "9105.21.80",
+      "rate": "30¢ each + 6.9% on the case + 5.3% on the battery",
+      "confidence": "medium"
+    },
+    {
+      "id": "c093",
+      "split": "dev",
+      "name": "Claw Hammer",
+      "expected": [
+        "820520"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 133,
+      "got": "8205.20.30.00",
+      "rate": "6.2%",
+      "confidence": "high"
+    },
+    {
+      "id": "c095",
+      "split": "dev",
+      "name": "Crayons",
+      "expected": [
+        "960990",
+        "960920"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 110,
+      "got": "9609.90.80.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c097",
+      "split": "dev",
+      "name": "Wireless Computer Mouse",
+      "expected": [
+        "847160"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 117,
+      "got": "8471.60.20.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c099",
+      "split": "dev",
+      "name": "USB Flash Drive",
+      "expected": [
+        "852351"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 122,
+      "got": "8523.51.00.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c101",
+      "split": "dev",
+      "name": "Over-Ear Headphones",
+      "expected": [
+        "851830"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 94,
+      "got": "8518.30.20.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c103",
+      "split": "dev",
+      "name": "Bamboo Cutting Board",
+      "expected": [
+        "441919",
+        "441990",
+        "441911"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 143,
+      "got": "4419.11.00.00",
+      "rate": "3.2%",
+      "confidence": "high"
+    }
+  ],
+  "summary": {
+    "all": {
+      "n": 52,
+      "top1Hs6": 48,
+      "top1Heading": 50,
+      "inCandidates": 50,
+      "errors": 0,
+      "byConfidence": {
+        "high": {
+          "n": 17,
+          "ok": 16
+        },
+        "medium": {
+          "n": 32,
+          "ok": 31
+        },
+        "low": {
+          "n": 3,
+          "ok": 1
+        }
+      },
+      "firstCallMs": 957,
+      "p50Ms": 109,
+      "p95Ms": 186
+    },
+    "dev": {
+      "n": 52,
+      "top1Hs6": 48,
+      "top1Heading": 50,
+      "inCandidates": 50,
+      "errors": 0,
+      "byConfidence": {
+        "high": {
+          "n": 17,
+          "ok": 16
+        },
+        "medium": {
+          "n": 32,
+          "ok": 31
+        },
+        "low": {
+          "n": 3,
+          "ok": 1
+        }
+      },
+      "firstCallMs": 957,
+      "p50Ms": 109,
+      "p95Ms": 186
+    }
+  }
+}

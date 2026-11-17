@@ -1,7 +1,7 @@
 // 米国税関（CBP）の分類判例（CROSS）。分類判例は「普段の言葉」と法令の用語をつなぐ手がかりになる。
 // 照会先は SORA_HTS_CROSS_SOURCE で選ぶ。既定の local は手元の判例の索引（cross_index.ts）、api は CBP の検索 API（rulings.cbp.gov）。
 // CBP の API は 2026 年 11 月からボット対策の後ろにあり、プログラムからは 403 になる（避けることはしない）。
-// どちらでも、失敗しても推測は止めない（呼び出し側は HTS の全文検索だけで答える）。API が連続で失敗したときは 60 秒、照会を控える。
+// 判例は HTS の推測の根拠として添えるだけで、10 桁は関税分類モデル（hts_model.ts）が決める。照会に失敗しても推測は止めない。API が連続で失敗したときは 60 秒、照会を控える。
 import { getFromCache, setToCache } from '../cache.js';
 import { envEnum } from '../config.js';
 import { errorMessage } from '../errors.js';
