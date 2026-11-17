@@ -2,7 +2,7 @@ import { feedEntriesToAcquisition, parseFeed } from './feeds.js';
 import type { SourceCatalogEntry } from '../source_catalog.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import { isRecentPublication, newsLanguage, planNewsQueries } from './news_queries.js';
 
@@ -61,6 +61,8 @@ export function createGoogleNewsProvider(fetchFn?: GdeltFetch): CountryIntelProv
         }));
       }));
       if (signal.aborted) throw signal.reason;
+      // 検索語の 1 つでも順番・予算で断られたら、成功した分だけの結果にしない（gaps つきの成功は、共有キャッシュに入って、別の利用者にも返る）
+      for (const outcome of outcomes) if (outcome.status === 'rejected') rethrowIfBusy(outcome.reason);
       const succeeded = outcomes.filter((outcome): outcome is PromiseFulfilledResult<AcquisitionItem[]> => outcome.status === 'fulfilled');
       if (succeeded.length === 0) {
         const error = (outcomes[0] as PromiseRejectedResult | undefined)?.reason;

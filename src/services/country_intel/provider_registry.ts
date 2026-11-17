@@ -1,4 +1,5 @@
 import { dbGetCache, dbSetCache } from '../../db.js';
+import { ResourceBusyError } from '../../errors.js';
 import type {
   CalendarEvent,
   CountryEvidence,
@@ -164,6 +165,8 @@ function isNetwork(error: unknown): boolean {
 }
 
 function failure(error: unknown): { status: ProviderRunStatus; errorCode: string } {
+  // Sora 側の順番・予算で断った（提供元の失敗ではない）。再試行もしない（callProvider は ProviderHttpError・通信の失敗だけ再試行する）
+  if (error instanceof ResourceBusyError) return { status: 'rate_limited', errorCode: 'PROVIDER_BUSY' };
   if (isTimeout(error)) return { status: 'unavailable', errorCode: 'PROVIDER_TIMEOUT' };
   if (error instanceof DOMException && error.name === 'AbortError') {
     return { status: 'unavailable', errorCode: 'PROVIDER_ABORTED' };

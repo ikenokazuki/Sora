@@ -1,5 +1,6 @@
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
+import { rethrowIfBusy } from '../provider_http.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import type { EvidenceDetail } from '../detail.js';
 
@@ -90,6 +91,8 @@ export function createOfficialWebProvider(deps: OfficialWebDeps): CountryIntelPr
           if (signal.aborted) throw signal.reason;
         }
       } catch (e) {
+        // Yahoo の順番・予算の断りは、提供元の失敗に包まず（再試行されて、予算をもう 1 回使う）、そのまま投げる
+        rethrowIfBusy(e);
         if (e instanceof ProviderHttpError || e instanceof ProviderNetworkError) throw e;
         if (signal.aborted) throw e;
         throw new ProviderNetworkError(String(e));

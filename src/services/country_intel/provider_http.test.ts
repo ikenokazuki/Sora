@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { fetchProviderResponse, isExpectedContentType, resetProviderHttpState } from './provider_http.js';
+import { createProviderHttpGate, fetchProviderResponse, isExpectedContentType, resetProviderHttpState } from './provider_http.js';
 import { ProviderHttpError } from './provider_registry.js';
 
 beforeEach(() => {
@@ -47,7 +47,8 @@ describe('provider http', () => {
       active -= 1;
       return okResponse();
     };
-    const run = (u: string): Promise<Response> => fetchProviderResponse(u, { sourceId: 's', timeoutMs: 5000, format: 'json', fetchFn, maxConcurrency: 2 });
+    const gate = createProviderHttpGate({ concurrency: 2 });
+    const run = (u: string): Promise<Response> => fetchProviderResponse(u, { sourceId: 's', timeoutMs: 5000, format: 'json', fetchFn, gate });
     const pending = [run('https://a.example/1'), run('https://b.example/2'), run('https://c.example/3')];
     await Bun.sleep(20);
     expect(peak).toBe(2);

@@ -92,6 +92,14 @@ export interface Limits {
   yahooQueueWaitMs: number;
   /** 1 人の利用者が 1 分に Yahoo へ出せる問い合わせの回数（同梱バイナリ・Web 検索の直取得・動画の直取得。キャッシュは数えない）。超えたら断る（429）。0 は制限なし */
   yahooBudgetPerMinute: number;
+  /** 国の情報の提供元（country_intel/provider_http.ts）への取得の順番を待つ要求の数の上限。tenant ごと。超えたら、待たせずに断る（その提供元は rate_limited / PROVIDER_BUSY）。1 回の報告は、取得を約 20 件（SNS ありで 24 件）、ほぼ同時に出すので、1 回分が通る大きさにする */
+  countryIntelQueuePerTenant: number;
+  /** 国の情報の提供元への取得の順番を待つ要求の数の上限。全体（tenant の合計）。超えたら、待たせずに断る */
+  countryIntelQueueTotal: number;
+  /** 国の情報の提供元への取得の順番を待つ時間の上限（ミリ秒）。超えたら断る。提供元ごとの時間切れ（8〜18 秒）が先に来れば、そちらで中止される */
+  countryIntelQueueWaitMs: number;
+  /** 1 人の利用者が 1 分に国の情報の提供元へ出せる取得の回数（キャッシュは数えない。再試行も 1 回と数える）。超えたら断る。0 は制限なし */
+  countryIntelBudgetPerMinute: number;
 }
 
 const MB = 1024 * 1024;
@@ -139,6 +147,10 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   yahooQueueTotal: 300,
   yahooQueueWaitMs: 120_000,
   yahooBudgetPerMinute: 0,
+  countryIntelQueuePerTenant: 100,
+  countryIntelQueueTotal: 300,
+  countryIntelQueueWaitMs: 30_000,
+  countryIntelBudgetPerMinute: 0,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -184,6 +196,10 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   yahooQueueTotal: 30,
   yahooQueueWaitMs: 20_000,
   yahooBudgetPerMinute: 60,
+  countryIntelQueuePerTenant: 30,
+  countryIntelQueueTotal: 120,
+  countryIntelQueueWaitMs: 10_000,
+  countryIntelBudgetPerMinute: 120,
 });
 
 /**

@@ -3,7 +3,7 @@ import { normalizeProviderCountryCode } from '../geo_codes.js';
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 
@@ -198,7 +198,11 @@ export function createGdacsProvider(fetchFn?: GdeltFetch, opts: { apiTimeoutMs?:
     // API＋RSS の合計で収める。全体締め切り（29秒）内に収める。
     timeoutMs: 18_000,
     async run(input: ProviderInput, signal: AbortSignal) {
-      const apiItems = await fetchGdacsApi(runFetch, signal, apiTimeoutMs).catch(() => null);
+      const apiItems = await fetchGdacsApi(runFetch, signal, apiTimeoutMs).catch((error: unknown) => {
+        // 順番・予算の断りは、RSS に切り替えず、そのまま投げる（RSS の部分的な結果が、共有キャッシュに入る）
+        rethrowIfBusy(error);
+        return null;
+      });
       if (apiItems) return { items: apiItems.items(input, new Date()), coverage: ['disasters'] };
       // API 失敗時（タイムアウト含む）は RSS へ一度フォールバックする。成功分は report 側で保持される。
       const rssItems = await fetchGdacsRss(runFetch, signal, rssTimeoutMs);
@@ -216,6 +220,7 @@ async function fetchGdacsApi(
   try {
     res = await fetchProviderResponse(buildGdacsUrl(), { sourceId: 'gdacs', timeoutMs, format: 'json', signal, fetchFn: runFetch });
   } catch (e) {
+    rethrowIfBusy(e);
     if (signal.aborted) throw e;
     if (e instanceof ProviderHttpError) throw e;
     throw new ProviderNetworkError(String(e));
@@ -235,6 +240,7 @@ async function fetchGdacsRss(
   try {
     res = await fetchProviderResponse(GDACS_RSS_URL, { sourceId: 'gdacs-rss', timeoutMs, format: 'xml', signal, fetchFn: runFetch });
   } catch (e) {
+    rethrowIfBusy(e);
     if (signal.aborted) throw e;
     if (e instanceof ProviderHttpError) throw e;
     throw new ProviderNetworkError(String(e));

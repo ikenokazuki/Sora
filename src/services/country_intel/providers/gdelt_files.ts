@@ -3,7 +3,7 @@ import { normalizeProviderCountryCode } from '../geo_codes.js';
 import type { CollectionWindow } from '../detail.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderLocalError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import { parseGdeltEventsResponse, type GdeltEventRow } from './gdelt_events.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { RegionIdentity } from '../types.js';
@@ -188,6 +188,7 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
       try {
         updateRes = await fetchProviderResponse(GDELT_LAST_UPDATE_URL, { sourceId: 'gdelt_export', timeoutMs: 10000, format: 'text', signal, fetchFn: runFetch });
       } catch (e) {
+        rethrowIfBusy(e);
         if (signal.aborted) throw e;
         if (e instanceof ProviderHttpError) throw e;
         throw new ProviderNetworkError(String(e));
@@ -203,6 +204,7 @@ export function createGdeltExportProvider(deps: GdeltExportProviderDeps = {}): C
           bytes = new Uint8Array(await zipRes.arrayBuffer());
         } catch (e) {
           if (signal.aborted) throw e;
+          rethrowIfBusy(e);
           if (e instanceof ProviderHttpError && e.status === 404 && back < MAX_EARLIER_SLOTS) {
             candidate = previousGdeltExportUrl(candidate);
             if (candidate) continue;

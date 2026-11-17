@@ -2,7 +2,7 @@ import { normalizeEvidence } from '../evidence.js';
 import { inferCountryCodesFromText } from '../place_country.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 
@@ -54,6 +54,7 @@ export function createEonetProvider(fetchFn?: GdeltFetch): CountryIntelProvider 
       try {
         res = await fetchProviderResponse(buildEonetUrl(), { sourceId: 'eonet', timeoutMs: 10000, format: 'json', signal, fetchFn: runFetch });
       } catch (e) {
+        rethrowIfBusy(e);
         if (signal.aborted) throw e;
         if (e instanceof ProviderHttpError) throw e;
         throw new ProviderNetworkError(String(e));

@@ -1,7 +1,7 @@
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 export const WIKI_CURRENT_API = 'https://en.wikipedia.org/w/api.php';
@@ -45,6 +45,7 @@ export function createWikiCurrentProvider(fetchFn?: GdeltFetch, now?: Date): Cou
       try {
         res = await fetchProviderResponse(WIKI_CURRENT_API + '?' + params.toString(), { sourceId: 'wiki_current', timeoutMs: 8000, format: 'json', signal, fetchFn: runFetch });
       } catch (e) {
+        rethrowIfBusy(e);
         if (signal.aborted) throw e;
         if (e instanceof ProviderHttpError) throw e;
         throw new ProviderNetworkError(String(e));
