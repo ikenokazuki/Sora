@@ -13,6 +13,15 @@ import { htsDirectory, queryTerms } from './hts_data.js';
 export const CROSS_INDEX_URL = 'https://github.com/ikenokazuki/Sora/releases/download/cross-index-2/cross-rulings-index-2.jsonl.gz';
 export const CROSS_INDEX_SHA256 = 'a5a605b2f81de5c38aeb732d6a5f4e86d3950518fcc65a6300145d74f8a9cd93';
 export const CROSS_RULING_URL = 'https://rulings.cbp.gov/ruling/';
+/**
+ * 判例の頁の URL。CBP の頁は、判例番号の頭の「NY」「HQ」を外した番号（英大文字 1 字＋数字か、数字だけ）で引ける
+ * （"NY N357245" → /ruling/N357245、"HQ 113176" → /ruling/113176）。頭の語を付けたままだと「not available」になる。
+ * それ以外の形（索引のもとのデータで英字が小文字になっている、2011 年までの一部）は、番号が当てにならず頁も引けないので、URL を付けない（空の文字列）。
+ */
+export function crossRulingUrl(rulingNumber: string): string {
+  const id = rulingNumber.trim().replace(/^(?:NY|HQ)\s+/, '');
+  return /^[A-Z]?\d+$/.test(id) ? `${CROSS_RULING_URL}${id}` : '';
+}
 /** 索引を使ったときに表示する出典（2012 年からの判例の公開データは MIT、ATLAS は Apache-2.0 の表示の義務）。 */
 export const CROSS_INDEX_ATTRIBUTION =
   'CBP の分類判例（米国政府の著作物）から作った索引。2011 年までの判例の品名・説明は、判例の原文を書き直したもの。2012 年からの判例は “AI-Extracted CBP Customs Rulings Dataset”（fklc/cbp-rulings-past-2012、https://huggingface.co/datasets/fklc/cbp-rulings-past-2012、Copyright (c) 2026 Fatih Kilic、MIT License）の品名・説明・コードを、名前を消して使用（同じ判例が無いものは、原文を書き直したもの）。一部の判例は “CROSS Rulings HTS Dataset for Tariff Classification by Flexify.AI Inc. (https://www.flexify.ai)” （https://huggingface.co/datasets/flexifyai/cross_rulings_hts_dataset_for_tariffs）の問い文を、名前を消して使用。';
@@ -162,12 +171,12 @@ export function searchCrossIndex(term: string, limit: number): { rulings: CrossR
   return {
     totalHits,
     rulings: rows.map((r) => ({
-      // 判例番号の無い判例は、重複を除く鍵だけ作り、URL は空（根拠には出さない）
+      // 判例番号の無い判例と、頁を引けない形の番号の判例は、URL が空（根拠には出さない）。番号の無い判例は、重複を除く鍵だけ作る
       rulingNumber: r.number || `unnumbered:${r.id}`,
       date: r.date,
       subject: r.subject,
       tariffs: r.tariffs.split(' ').filter(Boolean),
-      url: r.number ? `${CROSS_RULING_URL}${encodeURIComponent(r.number)}` : '',
+      url: r.number ? crossRulingUrl(r.number) : '',
     })),
   };
 }

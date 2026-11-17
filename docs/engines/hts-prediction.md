@@ -47,7 +47,7 @@ Sora の `lookup_hts` は、`htsCode` を省くと、商品名・説明（英語
 - CBP の判例検索（rulings.cbp.gov の API）は、2026 年 11 月の時点でボット対策の後ろにあり、プログラムからの要求は 403 になります（本文は `Security parameters are missing from this request context.`）。Sora はこれを避けません。そこで、公開されている判例のデータから作った索引を、Sora の GitHub のリリースに置いて使います。
 - 索引は、推測が初めて呼ばれたときに取得します（gzip で約 8MB）。SHA-256 を確かめてから、SQLite の全文検索（FTS5）の表にして、HTS と同じ場所（`SORA_HTS_DIR`）に `cross.sqlite` として保存します。起動時の取得や常駐の処理はありません。用意ができるまでの呼び出しは、判例なしで答え（推測の答えは変わりません）、`evidence.crossNote` に「判例の索引を準備中」と残します。取得に失敗したら、1 時間は取り直しません。
 - 照会は CBP の検索と同じく AND 条件です（照会語の全ての語を、判例の品名か説明に含む判例）。品名を説明の 2 倍の重みにした BM25 で並べ、上位 10 件を見ます。
-- 判例を使ったときは、`evidence.attribution` に出典を表示します。判例番号のある判例は `evidence.rulings` に rulings.cbp.gov への URL つきで出します。判例番号の無い判例（下の ATLAS の分）は、`evidence.rulings` には出しません。
+- 判例を使ったときは、`evidence.attribution` に出典を表示します。判例番号のある判例は `evidence.rulings` に rulings.cbp.gov への URL つきで出します（URL は、番号の頭の「NY」「HQ」を外して作ります）。索引のもとのデータで番号の英字が小文字になっている判例（2011 年までの一部、約 8 千行）は、番号が当てにならず頁も引けないので、根拠には出しません。判例番号の無い判例（下の ATLAS の分）は、`evidence.rulings` には出しません。
 - `SORA_HTS_CROSS_SOURCE=api` にすると、これまでどおり CBP の API に問い合わせます（1 回 5 秒で時間切れ、24 時間キャッシュ、失敗したら 60 秒は問い合わせない、分類の判例だけで取り消された判例は除く）。今は 403 で `unavailable` になります。
 - 自分で作った索引を使うときは、`SORA_HTS_CROSS_INDEX_URL`（`file://` も可）と `SORA_HTS_CROSS_INDEX_SHA256` を両方指定します。
 

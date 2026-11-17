@@ -1899,7 +1899,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
           "tariffs": [
             "9617001000"
           ],
-          "url": "https://rulings.cbp.gov/ruling/NY%20N357245"
+          "url": "https://rulings.cbp.gov/ruling/N357245"
         },
         { ... }
       ],
@@ -1911,7 +1911,7 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
           "tariffs": [
             "7323930080"
           ],
-          "url": "https://rulings.cbp.gov/ruling/NY%20N299732"
+          "url": "https://rulings.cbp.gov/ruling/N299732"
         },
         { ... }
       ]

@@ -7,7 +7,7 @@ import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
 import { fakeHtsModel, modelAnswer } from '../test_fixtures/hts_model.js';
 import { lookupCrossRulings, resetCrossBreakerForTest } from './cbp_cross.js';
-import { type CrossIndexLine, ensureCrossIndex, resetCrossIndexForTest, searchCrossIndex } from './cross_index.js';
+import { type CrossIndexLine, crossRulingUrl, ensureCrossIndex, resetCrossIndexForTest, searchCrossIndex } from './cross_index.js';
 import { resetHtsDataForTest } from './hts_data.js';
 import { setHtsModelForTest } from './hts_model.js';
 import { predictHtsCode } from './trade.js';
@@ -82,7 +82,15 @@ describe('local CROSS ruling index', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].url).toBe('');
     expect(hits[0].tariffs).toEqual(['6912004400']);
-    expect(searchCrossIndex('building blocks', 10)?.rulings[0].url).toBe('https://rulings.cbp.gov/ruling/NY%20N000004');
+    // URL は、頭の「NY」「HQ」を外した番号で作る（付けたままだと、CBP の頁は「not available」になる）
+    expect(searchCrossIndex('building blocks', 10)?.rulings[0].url).toBe('https://rulings.cbp.gov/ruling/N000004');
+    expect(crossRulingUrl('NY N357245')).toBe('https://rulings.cbp.gov/ruling/N357245');
+    expect(crossRulingUrl('HQ H002925')).toBe('https://rulings.cbp.gov/ruling/H002925');
+    expect(crossRulingUrl('HQ 113176')).toBe('https://rulings.cbp.gov/ruling/113176');
+    expect(crossRulingUrl('N352469')).toBe('https://rulings.cbp.gov/ruling/N352469'); // CBP の API の番号（頭の語なし）
+    // 英字が小文字の番号（もとのデータの、2011 年までの一部）は、頁を引けないので URL を付けない
+    expect(crossRulingUrl('NY a80366')).toBe('');
+    expect(crossRulingUrl('')).toBe('');
   });
 
   it('answers unavailable with a note while the index is being prepared, and uses it once ready', async () => {
