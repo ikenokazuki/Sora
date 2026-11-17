@@ -37,6 +37,7 @@
 - **HTS の推測（`lookup_hts` の `htsCode` なし・`POST /trade/hts-predict`・`check_product_compliance` の中の推測）の10桁を、関税分類モデル [zeiban](https://github.com/ikenokazuki/zeiban)（Apache-2.0）が決めるようになりました。** これまでは、関税率表の全文検索と、CBP の分類判例の票を合わせていました。説明文・階層での位置・税率は、これまでどおり USITC の最新の表から引きます。
 - **日本語の品名・説明を受け付けます。** これまでは「英語にして再実行」の入力の誤り（REST は 400）でした。日本語の文は、モデルの日本語用の層で読みます（応答の `evidence.model.reader` が `ja`）。
 - **判例は、根拠として添えるだけになりました。** 最有力の6桁を挙げた判例を `evidence.rulings` に、別の6桁を挙げた判例を新しい欄 `evidence.otherRulings` に出します。判例で答えは変えません。判例の索引に、その品そのものの判例があるときは、判例の側が当たっていることが多いので、`otherRulings` も確かめてください。
+- **根拠の判例の URL が開けるようになりました。** v4.2.0 で手元の判例の索引に切り替えてから、`evidence.rulings` の URL が `…/ruling/NY%20N357245` の形になり、CBP の頁で「not available」になっていました。番号の頭の「NY」「HQ」を外した形（`…/ruling/N357245`）に直しました。索引のもとのデータで番号の英字が小文字になっている判例（2011 年までの一部）は、頁を引けないので、根拠に出さなくなりました。
 - **新しい引数 `htsPrefix`**（`lookup_hts`・`POST /trade/hts-predict`）: `decisionPoints` の選択肢に `htsPrefix` が付きます。選んだ選択肢の値を渡して再実行すると、その区分の下の行だけから選び直します（これまでは、区分の語を `description` に足して再実行する形でした）。
 - **応答の型は同じで、中身の意味が変わる欄があります。**
   - `bestMatch.confidence` は、モデルの「6桁までが正しい確率」から決めます（0.9 以上 `high`、0.5 以上 `medium`）。`bestMatch.score` は「この10桁が正しい確率」×100 です。

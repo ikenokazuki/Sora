@@ -5,7 +5,7 @@
 import { getFromCache, setToCache } from '../cache.js';
 import { envEnum } from '../config.js';
 import { errorMessage } from '../errors.js';
-import { CROSS_RULING_URL, crossIndexPendingNote, searchCrossIndex } from './cross_index.js';
+import { CROSS_RULING_URL, crossIndexPendingNote, crossRulingUrl, searchCrossIndex } from './cross_index.js';
 
 export const CROSS_SEARCH_URL = 'https://rulings.cbp.gov/api/search';
 export { CROSS_RULING_URL };
@@ -91,7 +91,7 @@ async function fetchRulings(term: string): Promise<{ rulings: CrossRuling[]; tot
       subject: (r.subject ?? '').replace(/\s+/g, ' ').trim(),
       date: (r.rulingDate ?? '').slice(0, 10),
       tariffs,
-      url: `${CROSS_RULING_URL}${encodeURIComponent(r.rulingNumber)}`,
+      url: crossRulingUrl(r.rulingNumber),
     });
   }
   const totalHits = body.totalHits ?? rulings.length;
