@@ -1,8 +1,9 @@
 import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Env } from '../config.js';
-import { loadAddressConfig } from './address_config.js';
-import type { AddressData } from './address_data.js';
+import { runAsCaller } from '../security/caller.js';
+import { type AddressConfig, loadAddressConfig } from './address_config.js';
+import { ADDRESS_SYSTEM_TENANT, type AddressData } from './address_data.js';
 import { AddressUnavailableError } from './address_errors.js';
 import { jobArtifactId, type BuildJob } from './address_store.js';
 
@@ -68,6 +69,11 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
 export async function runPreload(data: AddressData, options: PreloadOptions = {}): Promise<PreloadState | null> {
   const target = data.config.preload;
   if (!data.enabled || !target) return null;
+  // システムの作業として動かす: 利用者の構築の待ちの数・予算に数えない（数えると、利用者の上限で事前取得が断られて止まる）。順番は、利用者と交互に取る
+  return runAsCaller(ADDRESS_SYSTEM_TENANT, () => runPreloadAsSystem(data, options, target));
+}
+
+async function runPreloadAsSystem(data: AddressData, options: PreloadOptions, target: NonNullable<AddressConfig['preload']>): Promise<PreloadState | null> {
   const now = options.now ?? Date.now;
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const log = options.log ?? ((message: string) => console.log(`[Sora/Address] ${message}`));

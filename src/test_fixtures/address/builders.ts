@@ -2,6 +2,8 @@ import type { AddressConfig, AddressMode } from '../../services/address_config.j
 import { AddressData, type AddressBuilder } from '../../services/address_data.js';
 import { runBuildJob } from '../../services/address_jobs.js';
 import { AddressStore, type BuildJob } from '../../services/address_store.js';
+import type { QueuePolicy } from '../../security/fair_queue.js';
+import type { TenantBudget } from '../../security/tenant_budget.js';
 import { SMALL_MINIMUM, sampleUpstream, type FakeUpstream } from './harness.js';
 
 /** 偽の取得元に対して、構築ジョブを同じプロセスの中で実行する。 */
@@ -84,6 +86,10 @@ export interface TestAddressDataOptions {
   preload?: AddressConfig['preload'];
   now?: () => number;
   cooldownMs?: number;
+  /** 構築の順番の方針（待てる数）。省略時は水準（SORA_ISOLATION）の表。 */
+  queuePolicy?: () => QueuePolicy;
+  /** 1 人の予算。省略時は水準の表。 */
+  budget?: TenantBudget;
   /** 中身の構築役を包む（GatedBuilder など）。 */
   wrap?: (inner: InProcessBuilder) => AddressBuilder;
 }
@@ -103,7 +109,7 @@ export function createTestAddressData(dir: string, options: TestAddressDataOptio
     concurrency: options.concurrency ?? 1,
     preload: options.preload ?? null,
   };
-  const data = new AddressData({ config, builder, store, now, cooldownMs: options.cooldownMs, log: () => undefined });
+  const data = new AddressData({ config, builder, store, now, cooldownMs: options.cooldownMs, queuePolicy: options.queuePolicy, budget: options.budget, log: () => undefined });
   liveData.push(data);
   return { data, store, up, inner, builder };
 }

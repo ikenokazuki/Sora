@@ -141,10 +141,16 @@ describe('limits', () => {
     expect(STRICT_LIMITS.countryIntelQueuePerTenant).toBeGreaterThanOrEqual(24);
   });
 
+  test('住所データの構築（5f-4）: 待てる構築は 1 人が strict 30・standard 100、全体が strict 120・standard 300。1 人の予算は strict が 1 分に 60 回、standard は無し（0）。1 回の問い合わせが頼む構築は最大 15 件（逆ジオコーディング: 全国の 3 件と、最大 4 市区町村 × 3 種）で、strict の 1 人の数は、その 2 回分', () => {
+    expect(STRICT_LIMITS).toMatchObject({ addressQueuePerTenant: 30, addressQueueTotal: 120, addressBudgetPerMinute: 60 });
+    expect(STANDARD_LIMITS).toMatchObject({ addressQueuePerTenant: 100, addressQueueTotal: 300, addressBudgetPerMinute: 0 });
+    expect(STRICT_LIMITS.addressQueuePerTenant).toBeGreaterThanOrEqual(2 * 15);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
-  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute'];
+  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute', 'addressBudgetPerMinute'];
 
   test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;

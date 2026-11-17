@@ -1,4 +1,4 @@
-import { AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { AddressBusyError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 
 export interface UnavailableItem {
   artifact: string;
@@ -26,6 +26,8 @@ export class Gaps {
   absorb(error: unknown): void {
     if (error instanceof AddressPendingError) this.pending.add(error.pending);
     else if (error instanceof AddressUnavailableError && error.artifact) this.unavailable.set(error.artifact, error.message);
+    // 構築の順番・予算で断られたデータは、取得に失敗したデータと同じに記録する（断った理由が文に入っている）
+    else if (error instanceof AddressBusyError) this.unavailable.set(error.artifact, error.message);
     else throw error;
   }
 

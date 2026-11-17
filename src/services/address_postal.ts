@@ -1,6 +1,6 @@
 import type { AddressContext } from './address_context.js';
 import type { AddressData } from './address_data.js';
-import { AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { AddressBusyError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 import type { NormalizedAddress } from './address_normalize.js';
 import {
   linkPostalRows, refineByStreetNames, zipsForTown, type PostalKind, type PostalLink, type PostalRow, type ZipMatch,
@@ -101,6 +101,7 @@ export async function lookupZip(ctx: AddressContext, input: string, options: { w
   const note = (error: unknown): void => {
     if (error instanceof AddressPendingError && error.pending.startsWith('city:')) pending.add(error.pending);
     else if (error instanceof AddressUnavailableError && error.artifact?.startsWith('city:')) unavailable.set(error.artifact, error.message);
+    else if (error instanceof AddressBusyError && error.artifact.startsWith('city:')) unavailable.set(error.artifact, error.message);
     else throw error;
   };
 

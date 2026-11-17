@@ -354,6 +354,9 @@ publicDataRoutes.get('/geo/poi', async (c) => {
 async function addressErrorResponse(c: Context, err: unknown) {
   const { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError, addressErrorMessage } = await import('../services/address_errors.js');
   const message = addressErrorMessage(err) || errorMessage(err) || 'Address lookup failed';
+  // Sora の構築の順番・予算で断った（AddressBusyError。取得の失敗ではない）: 429 と Retry-After
+  const busy = busyResponse(c, err);
+  if (busy) return busy;
   if (err instanceof AddressInputError) return formatError(c, message, 'INVALID_INPUT', 400);
   if (err instanceof AddressDisabledError) return formatError(c, message, 'ADDRESS_DISABLED', 404);
   // 待ち時間までにデータが揃わなかった。構築は裏で続くので、しばらくして再実行すれば答えられる。
