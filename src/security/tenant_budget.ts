@@ -39,6 +39,7 @@ const BUDGET_WORDS: Record<BusyResource, string> = {
   yahoo: 'Yahoo への問い合わせ',
   country_intel: '国の情報の取得',
   address: '住所データの構築',
+  pdf: 'PDF の解析',
 };
 
 /** 窓の幅の書き方（ちょうど分なら「1 分」、そうでなければ「30 秒」） */

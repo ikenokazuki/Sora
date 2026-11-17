@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -78,6 +78,29 @@ describe('hts-archive REST', () => {
     expect(new TextDecoder().decode(Bun.gunzipSync(new Uint8Array(await gz.arrayBuffer())))).toBe(body);
     expect((generateOpenApiDocument() as any).paths['/trade/hts/releases/{id}'].get).toBeDefined();
     expect(JSON.stringify(await (await app.request('/')).json())).toContain('GET /trade/hts/releases');
+  });
+
+  test('gzip を受け取れない相手には、同期の解凍（Bun.gunzipSync。イベントループを止め、展開後の全体をメモリに置く）でなく、ストリームで解凍して返す。内容は同じ', async () => {
+    process.env.SORA_MODULES = 'all,hts-archive';
+    const sync = spyOn(Bun, 'gunzipSync');
+    try {
+      const plain = await app.request('/trade/hts/releases/2026HTSRev22');
+      expect(plain.status).toBe(200);
+      expect(plain.headers.get('content-type')).toContain('application/json');
+      expect(plain.headers.get('content-encoding')).toBeNull();
+      expect(await plain.text()).toBe(body);
+      expect(sync).not.toHaveBeenCalled();
+    } finally {
+      sync.mockRestore();
+    }
+  });
+
+  test('保存した gzip が壊れていたら、以前と同じく 500（200 を送り始めて、途中で接続を切らない）。gzip を受け取れる相手には、そのまま返す', async () => {
+    process.env.SORA_MODULES = 'all,hts-archive';
+    writeFileSync(join(dir, 'releases', '2026HTSRev22.json.gz'), new TextEncoder().encode('this is not gzip'));
+    const res = await app.request('/trade/hts/releases/2026HTSRev22');
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ code: 'ARCHIVE_ERROR', retryable: false });
   });
 
   test('rejects a malformed id with 400 and an unknown one with 404', async () => {

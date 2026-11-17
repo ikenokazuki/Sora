@@ -51,6 +51,7 @@ export const RESOURCE_WORDS: Record<BusyResource, { subject: string; waiting: st
   yahoo: { subject: 'Yahoo への問い合わせの順番', waiting: 'Yahoo への問い合わせの順番が来るのを' },
   country_intel: { subject: '国の情報の取得の順番', waiting: '国の情報の取得の順番が来るのを' },
   address: { subject: '住所データの構築の順番', waiting: '住所データの構築の順番が来るのを' },
+  pdf: { subject: 'PDF の解析の順番', waiting: 'PDF の解析の順番が来るのを' },
 };
 
 /** 待ち行列が断る例外を作る（カウンターを 1 回数える）。SimpleSemaphore のほか、自前の待ち行列（住所データの構築）も使う */

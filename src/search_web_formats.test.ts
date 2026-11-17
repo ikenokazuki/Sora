@@ -1,4 +1,5 @@
 import { describe, expect, setSystemTime, test } from 'bun:test';
+import { ResourceBusyError } from './errors.js';
 import { SEARCH_WEB_INPUT_SHAPE, SearchWebRequestSchema, buildSearchWebCacheKey, isTransientWebSearch, searchWebForRest, searchWebWithFormats } from './search_web_formats.js';
 describe('search_web formats orchestration',()=>{
   test('legacy no-format path preserves provider values without scraping',async()=>{ const provider={items:[{title:'A',url:'https://e/a',snippet:'s'}],count:1,source:'web'}; let calls=0; const r=await searchWebWithFormats({query:'x'},'legacy',{searchYahooWeb:async()=>provider,scrapeUrl:async()=>{calls++; throw new Error('no');}} as any); expect(r).toEqual(provider); expect(calls).toBe(0); });
@@ -83,5 +84,36 @@ describe('REST /search/web cache: an answer that came from a throttled source is
     const bypass = source(() => healthy);
     await searchWebForRest({ query, noCache: true }, 'legacy', bypass.deps);
     expect(bypass.calls()).toBe(1);
+  });
+});
+
+describe('REST /search/web cache: 結果のページの読み取りが、順番・予算で断られた応答は、共有のキャッシュに入れない（設計 6。穴 26。5f の教訓）', () => {
+  const busy = () => new ResourceBusyError('PDF の解析の順番を待つ要求が、この利用者の上限（8 件）に達しています', 'tenant_queue_full', 5, 'pdf');
+  const provider = { items: [{ title: 'A', url: 'https://e/a.pdf', snippet: 's' }, { title: 'B', url: 'https://e/b', snippet: 'b' }], count: 2, source: 'web' };
+  const okScrape = async () => ({ content: '# P\n\nusable body with enough characters 123456789012345678901234567890' });
+  let n = 0;
+  const query = () => `busy-cache-${Date.now()}-${++n}`;
+
+  test('A の呼び出しで 1 件が断られた応答（scrapeError つき）を、残さない。次に呼んだ B は、断られずに、全部の結果を得る', async () => {
+    const q = query();
+    const a = await searchWebForRest({ query: q, formats: ['markdown'], limit: 2 }, 'name:A', {
+      searchYahooWeb: (async () => provider) as never,
+      scrapeUrl: (async ({ url }: { url: string }) => { if (url.endsWith('.pdf')) throw busy(); return okScrape(); }) as never,
+    });
+    expect(a.data.items[0].scrapeError).toContain('PDF の解析の順番');
+    const b = await searchWebForRest({ query: q, formats: ['markdown'], limit: 2 }, 'name:B', { searchYahooWeb: (async () => provider) as never, scrapeUrl: okScrape as never });
+    expect(b.cached).toBe(false);
+    expect(b.data.items[0].scrapeError).toBeUndefined();
+    expect(b.data.items[0].markdown).toContain('usable body');
+  });
+
+  test('断られていない通常の失敗（blocked など）は、これまでどおり残す', async () => {
+    const q = query();
+    let calls = 0;
+    const deps = { searchYahooWeb: (async () => provider) as never, scrapeUrl: (async ({ url }: { url: string }) => { calls++; if (url.endsWith('.pdf')) throw new Error('blocked'); return okScrape(); }) as never };
+    await searchWebForRest({ query: q, formats: ['markdown'], limit: 2 }, 'name:A', deps);
+    const again = await searchWebForRest({ query: q, formats: ['markdown'], limit: 2 }, 'name:A', deps);
+    expect(again.cached).toBe(true);
+    expect(calls).toBe(2);
   });
 });

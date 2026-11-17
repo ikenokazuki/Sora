@@ -134,7 +134,7 @@ import { getYoutubePage } from './services/youtube.js';
 import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
-import { errorMessage, ScrapeInputError } from './errors.js';
+import { errorMessage, ResourceBusyError, ScrapeInputError } from './errors.js';
 import { chargeQuota, quotaDay, refundQuota } from './security/quota.js';
 
 // ==========================================
@@ -884,8 +884,15 @@ export async function scrapeUrl(options: {
       const contentType = (response.headers.get('Content-Type') || '').toLowerCase();
 
       if (contentType.includes('application/pdf') || url.toLowerCase().endsWith('.pdf')) {
-        const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
-        const { fullContent, ...pdfResult } = await parsePdfToMarkdown(buf, finalUrl, maxChars);
+        // 解析の順番が来てから、本体（最大 30MB）を読む（待っている間に、本体をメモリに持たない）。断られたら、読まずに、接続を閉じる
+        let parsed: Awaited<ReturnType<typeof parsePdfToMarkdown>>;
+        try {
+          parsed = await parsePdfToMarkdown(() => readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES), finalUrl, maxChars, { tenantId });
+        } catch (e) {
+          await response.body?.cancel().catch(() => {});
+          throw e;
+        }
+        const { fullContent, ...pdfResult } = parsed;
         result = await finalizeScrapeResult(pdfResult, { ...finalizeOpts, highlightSource: fullContent });
         cacheResult(result);
         return result;
@@ -2089,6 +2096,16 @@ async function integratedSearchTracked(options: {
   // ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
   const scrapeDeadlineMs = options.scrapeDeadlineMs ?? envInt('SORA_SEARCH_SCRAPE_DEADLINE_MS');
   let scrapeDeadlineHit = false;
+  // 結果のページの読み取りが、順番・予算で断られたとき（ResourceBusyError）。断った利用者の欠けた結果（scrapeError つき）は、共有のキャッシュに入れない
+  let busyHit = false;
+  const scrapeTracked: typeof scrapeUrl = async (...scrapeArgs) => {
+    try {
+      return await scrapeUrl(...scrapeArgs);
+    } catch (e) {
+      if (e instanceof ResourceBusyError) busyHit = true;
+      throw e;
+    }
+  };
   const videoDeadlineAt = Date.now() + scrapeDeadlineMs;
   let enrichedResults = topItems;
   if (scrapeContent) {
@@ -2099,7 +2116,7 @@ async function integratedSearchTracked(options: {
         const itemSnippet = item.snippet || item.description || '';
 
         try {
-          const scrape = await scrapeUrl({
+          const scrape = await scrapeTracked({
             url: itemUrl,
             tenantId: requestTenantId,
             // 検索語の URL には検索結果の題名が無い（X の読み取りは、渡した題名をそのまま題名にする）
@@ -2201,7 +2218,7 @@ async function integratedSearchTracked(options: {
           const spareSnippet = spareItem?.snippet || spareItem?.description || '';
           incrementSecurityCounter('sora_scrape_refill_total');
           try {
-            const scrape = await scrapeUrl({
+            const scrape = await scrapeTracked({
               url: spareUrl,
               tenantId: requestTenantId,
               contextTitle: spareItem?.title,
@@ -2279,7 +2296,7 @@ async function integratedSearchTracked(options: {
             if (!spareUrl) continue;
             const spareSnippet = spareItem?.snippet || spareItem?.description || '';
             try {
-              const scrape = await scrapeUrl({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: evidenceQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, noCache, ...mediaOption });
+              const scrape = await scrapeTracked({ url: spareUrl, tenantId: requestTenantId, contextTitle: spareItem?.title, snippet: spareSnippet, maxChars, timeoutMs: 12000, query: evidenceQuery, extractHighlights, onlyMainContent, formats, annotateTemporal, highlightMaxCount, noCache, ...mediaOption });
               const enrichedSpare: Record<string, any> = { ...spareItem, ...pageTitle(scrape), ogImage: scrape.ogImage, description: scrape.description, publishedTime: scrape.publishedTime, author: scrape.author, siteName: scrape.siteName, twitterHandle: scrape.twitterHandle, socialLinks: scrape.socialLinks, pageType: scrape.pageType, highlights: scrape.highlights, highlightItems: scrape.highlightItems, highlightDiagnostics: scrape.highlightDiagnostics, temporalAnchors: scrape.temporalAnchors, textFragmentUrl: scrape.textFragmentUrl, cached: scrape.cached, ...(scrape.isTruncated ? { isTruncated: true } : {}) };
               Object.assign(enrichedSpare, projectRequestedScrapeFormats(scrape, formats, { minMarkdownChars: 50 }));
               enrichedSpare.selectionReason = 'scrape_refill';
@@ -2478,12 +2495,12 @@ async function integratedSearchTracked(options: {
   // response (the cache key already separates verbose from compact).
   // verbose が真のときは schedule を足さず、results[].events のまま返す（MCP の入力スキーマと OpenAPI の説明どおり）。
   if (options.verbose === true) {
-    if (!noCache && !scrapeDeadlineHit) cacheResponse(finalResponse);
+    if (!noCache && !scrapeDeadlineHit && !busyHit) cacheResponse(finalResponse);
     return finalResponse;
   }
   const publicResponse = formatCompactIntegratedSearchResponse(finalResponse, {});
-  // 締切で欠けた結果は劣化応答なのでキャッシュしない
-  if (!noCache && !scrapeDeadlineHit) cacheResponse(publicResponse);
+  // 締切で欠けた結果・順番や予算で断られた結果は劣化応答なのでキャッシュしない
+  if (!noCache && !scrapeDeadlineHit && !busyHit) cacheResponse(publicResponse);
   return publicResponse;
 }
 

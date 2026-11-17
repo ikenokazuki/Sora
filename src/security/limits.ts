@@ -106,6 +106,18 @@ export interface Limits {
   addressQueueTotal: number;
   /** 1 人の利用者が 1 分に頼める、新しい構築の回数（構築を始める回。同じ ID の 2 回目・できあがっている成果物は数えない）。超えたら断る（429）。0 は制限なし */
   addressBudgetPerMinute: number;
+  /** PDF から 1 回に読むページ数の上限（先頭から。超えたぶんは読まず、結果に isTruncated と metadata.pagesRead を付ける）。読んだ文字が必要な量（ハイライトの元の 20 万字）に達したら、これより前に止める */
+  pdfMaxPages: number;
+  /** PDF の 1 回の解析に使う時間の上限（ミリ秒）。ページごとに調べ、超えたら、読んだページまでで止める（結果に isTruncated と警告）。1 ページが重い PDF（ページ数 × 重さ）が、枠を握り続けないため */
+  pdfMaxParseMs: number;
+  /** PDF の解析（同時 2 件。全員で共有）の順番を待つ解析の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
+  pdfQueuePerTenant: number;
+  /** PDF の解析の順番を待つ解析の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
+  pdfQueueTotal: number;
+  /** PDF の解析の順番を待つ時間の上限（ミリ秒）。超えたら断る（429） */
+  pdfQueueWaitMs: number;
+  /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
+  audioMaxDurationSec: number;
 }
 
 const MB = 1024 * 1024;
@@ -160,6 +172,12 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   addressQueuePerTenant: 100,
   addressQueueTotal: 300,
   addressBudgetPerMinute: 0,
+  pdfMaxPages: 1000,
+  pdfMaxParseMs: 60_000,
+  pdfQueuePerTenant: 50,
+  pdfQueueTotal: 200,
+  pdfQueueWaitMs: 60_000,
+  audioMaxDurationSec: 3600,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -212,6 +230,12 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   addressQueuePerTenant: 30,
   addressQueueTotal: 120,
   addressBudgetPerMinute: 60,
+  pdfMaxPages: 200,
+  pdfMaxParseMs: 15_000,
+  pdfQueuePerTenant: 20,
+  pdfQueueTotal: 80,
+  pdfQueueWaitMs: 30_000,
+  audioMaxDurationSec: 900,
 });
 
 /**

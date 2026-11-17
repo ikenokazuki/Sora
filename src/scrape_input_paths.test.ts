@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from 'bun:test';
 import { resolveChromiumPath } from './browser_engine.js';
+import { ResourceBusyError } from './errors.js';
+import { pdfSlots } from './pdf.js';
 import * as browserStealth from './browser_stealth.js';
 import * as cache from './cache.js';
 import * as scraper from './scraper.js';
@@ -104,6 +106,50 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
   });
 
   const base = () => `http://127.0.0.1:${server.port}`;
+
+  describe('PDF の解析の順番（scrape が、呼んだ利用者の分で数える）', () => {
+    const SAVED = process.env.SORA_ISOLATION;
+    afterEach(() => {
+      if (SAVED === undefined) delete process.env.SORA_ISOLATION;
+      else process.env.SORA_ISOLATION = SAVED;
+    });
+    /** 同時 2 件を握り、tenant の待ちを、strict の上限（20 件）まで埋める。返す関数で、全部を放す */
+    async function fill(tenantId: string): Promise<() => Promise<void>> {
+      process.env.SORA_ISOLATION = 'strict';
+      const leases = [await pdfSlots.acquire('name:S'), await pdfSlots.acquire('name:S')];
+      const waiting = Array.from({ length: 20 }, () => pdfSlots.acquire(tenantId).then((release) => release(), () => undefined));
+      return async () => {
+        for (const release of leases) release();
+        await Promise.all(waiting);
+      };
+    }
+
+    test('混み合っていたら、scrapeUrl は、呼んだ利用者の分の上限で、ResourceBusyError（PDF の資源）で断る。ほかの利用者は待てる', async () => {
+      const drain = await fill('name:A');
+      try {
+        const error = await scrapeUrl({ tenantId: 'name:A', url: `${base()}/doc.pdf`, formats: ['markdown'], noCache: true }).then(() => undefined, (e: unknown) => e);
+        expect(error).toBeInstanceOf(ResourceBusyError);
+        expect(error).toMatchObject({ resource: 'pdf', reason: 'tenant_queue_full' });
+        const other = scrapeUrl({ tenantId: 'name:B', url: `${base()}/doc.pdf`, formats: ['markdown'], noCache: true });
+        await drain();
+        expect((await other).content).toContain(pdfText);
+      } finally {
+        await drain();
+      }
+    }, 60_000);
+
+    test('REST の /scrape は、429 と Retry-After（RESOURCE_BUSY）', async () => {
+      const drain = await fill('legacy');
+      try {
+        const res = await scrapeRoutes.request('/scrape', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: `${base()}/doc.pdf`, noCache: true }) });
+        expect(res.status).toBe(429);
+        expect(res.headers.get('retry-after')).toBe('5');
+        expect(await res.json()).toMatchObject({ code: 'RESOURCE_BUSY', retryable: true });
+      } finally {
+        await drain();
+      }
+    }, 60_000);
+  });
 
   describe('maskPii', () => {
     test('html・rawHtml・title・description にもかかる（静的な取得）', async () => {

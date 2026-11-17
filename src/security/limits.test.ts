@@ -147,6 +147,13 @@ describe('limits', () => {
     expect(STRICT_LIMITS.addressQueuePerTenant).toBeGreaterThanOrEqual(2 * 15);
   });
 
+  test('重い処理（5g）: PDF は 1 回に読むページが strict 200・standard 1,000、1 回の解析の時間が strict 15 秒・standard 60 秒まで、順番を待つ解析が 1 人 strict 20・standard 50、全体 strict 80・standard 200、待ち時間 strict 30 秒・standard 60 秒。音声は、長さが strict 15 分・standard 1 時間まで', () => {
+    expect(STRICT_LIMITS).toMatchObject({ pdfMaxPages: 200, pdfMaxParseMs: 15_000, pdfQueuePerTenant: 20, pdfQueueTotal: 80, pdfQueueWaitMs: 30_000, audioMaxDurationSec: 900 });
+    expect(STANDARD_LIMITS).toMatchObject({ pdfMaxPages: 1000, pdfMaxParseMs: 60_000, pdfQueuePerTenant: 50, pdfQueueTotal: 200, pdfQueueWaitMs: 60_000, audioMaxDurationSec: 3600 });
+    // 1 回の呼び出しが並列に頼む PDF の最大（search_deep・search_web の limit の上限）が、自分の分だけで断られずに通る大きさ
+    expect(STRICT_LIMITS.pdfQueuePerTenant).toBeGreaterThanOrEqual(20);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
