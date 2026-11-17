@@ -1,3 +1,5 @@
+import { ResourceBusyError, type BusyReason } from '../errors.js';
+
 /** 住所機能の例外。REST と MCP でのエラーの種類をここで決める。 */
 
 /** 入力の誤り（REST では INVALID_INPUT / 400）。 */
@@ -33,6 +35,17 @@ export class AddressPendingError extends Error {
   constructor(readonly pending: string) {
     super(`address data pending: ${pending}`);
     this.name = 'AddressPendingError';
+  }
+}
+
+/**
+ * 構築の順番・予算で断った（ResourceBusyError の一種。REST では 429 と Retry-After）。artifact は、頼んだが断られたデータの ID。
+ * 取れている範囲で答える呼び出し側は、取得に失敗したデータ（AddressUnavailableError）と同じに、この ID と文を記録して続ける。
+ */
+export class AddressBusyError extends ResourceBusyError {
+  constructor(message: string, reason: BusyReason, retryAfterSec: number, readonly artifact: string) {
+    super(message, reason, retryAfterSec, 'address');
+    this.name = 'AddressBusyError';
   }
 }
 

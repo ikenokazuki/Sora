@@ -100,6 +100,12 @@ export interface Limits {
   countryIntelQueueWaitMs: number;
   /** 1 人の利用者が 1 分に国の情報の提供元へ出せる取得の回数（キャッシュは数えない。再試行も 1 回と数える）。超えたら断る。0 は制限なし */
   countryIntelBudgetPerMinute: number;
+  /** 住所データの構築（address_data.ts）の順番を待つ構築の数の上限。tenant ごと（その tenant が新しく頼んだ構築。実行中は数えない）。超えたら、待たせずに断る（429）。1 回の問い合わせが頼む構築は、最大で 15 件（逆ジオコーディング。全国の 3 件と、最大 4 市区町村 × 町字・番地・街区の 3 種） */
+  addressQueuePerTenant: number;
+  /** 住所データの構築の順番を待つ構築の数の上限。全体（tenant の合計。システムの事前取得は数えない）。超えたら、待たせずに断る（429） */
+  addressQueueTotal: number;
+  /** 1 人の利用者が 1 分に頼める、新しい構築の回数（構築を始める回。同じ ID の 2 回目・できあがっている成果物は数えない）。超えたら断る（429）。0 は制限なし */
+  addressBudgetPerMinute: number;
 }
 
 const MB = 1024 * 1024;
@@ -151,6 +157,9 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   countryIntelQueueTotal: 300,
   countryIntelQueueWaitMs: 30_000,
   countryIntelBudgetPerMinute: 0,
+  addressQueuePerTenant: 100,
+  addressQueueTotal: 300,
+  addressBudgetPerMinute: 0,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -200,6 +209,9 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   countryIntelQueueTotal: 120,
   countryIntelQueueWaitMs: 10_000,
   countryIntelBudgetPerMinute: 120,
+  addressQueuePerTenant: 30,
+  addressQueueTotal: 120,
+  addressBudgetPerMinute: 60,
 });
 
 /**

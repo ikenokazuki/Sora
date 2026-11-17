@@ -53,7 +53,8 @@ export const RESOURCE_WORDS: Record<BusyResource, { subject: string; waiting: st
   address: { subject: '住所データの構築の順番', waiting: '住所データの構築の順番が来るのを' },
 };
 
-function busy(resource: BusyResource, reason: QueueBusyReason, policy: QueuePolicy): ResourceBusyError {
+/** 待ち行列が断る例外を作る（カウンターを 1 回数える）。SimpleSemaphore のほか、自前の待ち行列（住所データの構築）も使う */
+export function queueBusyError(resource: BusyResource, reason: QueueBusyReason, policy: QueuePolicy): ResourceBusyError {
   incrementSecurityCounter(`sora_${resource}_busy_${reason}_total`);
   const words = RESOURCE_WORDS[resource];
   const message = {
@@ -126,7 +127,7 @@ export class SimpleSemaphore {
         timer = setTimeout(() => {
           this.remove(waiter);
           waiter.cleanup();
-          reject(busy(this.resource, 'queue_timeout', policy));
+          reject(queueBusyError(this.resource, 'queue_timeout', policy));
         }, policy.waitMs);
         timer.unref?.();
       }
@@ -147,8 +148,8 @@ export class SimpleSemaphore {
   }
 
   private assertRoomToWait(tenantId: string, policy: QueuePolicy): void {
-    if ((this.queues.get(tenantId)?.length ?? 0) >= policy.perTenant) throw busy(this.resource, 'tenant_queue_full', policy);
-    if (this.waitingTotal >= policy.total) throw busy(this.resource, 'queue_full', policy);
+    if ((this.queues.get(tenantId)?.length ?? 0) >= policy.perTenant) throw queueBusyError(this.resource, 'tenant_queue_full', policy);
+    if (this.waitingTotal >= policy.total) throw queueBusyError(this.resource, 'queue_full', policy);
   }
 
   get activeCount(): number {

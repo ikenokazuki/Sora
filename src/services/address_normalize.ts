@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { AddressData } from './address_data.js';
 import { lookupMlit } from './address_mlit.js';
-import { AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { AddressBusyError, AddressDisabledError, AddressInputError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 import { lgCode6, type TownEntry, type TownJson } from './address_names.js';
 import type { NumberRanges } from './address_numbers.js';
 
@@ -325,6 +325,9 @@ export class AddressNormalizer {
           notes.pending = [error.pending];
         } else if (error instanceof AddressUnavailableError && error.artifact?.startsWith('city:')) {
           notes.unavailable = [{ artifact: error.artifact, message: error.message }];
+        } else if (error instanceof AddressBusyError && (error.artifact.startsWith('city:') || error.artifact.startsWith('num:'))) {
+          // 番地・号（段B）の断りは、ライブラリへの町字の配り（serveCity）から投げ直される。世代に覚えさせない
+          notes.unavailable = [{ artifact: error.artifact, message: error.message }];
         } else {
           throw error;
         }
@@ -361,7 +364,13 @@ export class AddressNormalizer {
     // （日本郵便は、正しい7桁の郵便番号があれば市区町村名を省略してよいとしている）。
     const zipForCity = postalCode ?? options.zipcode;
     if (result.level === 0 && zipForCity) {
-      const city = await this.cityOfPostalCode(zipForCity, options.waitMs);
+      let city: string | null = null;
+      try {
+        city = await this.cityOfPostalCode(zipForCity, options.waitMs);
+      } catch (error) {
+        if (!(error instanceof AddressBusyError)) throw error;
+        notes.unavailable = [{ artifact: error.artifact, message: error.message }];
+      }
       if (city) {
         const filled = await this.normalize(`${city}${address}`, { ...options, zipcode: undefined });
         if (filled.level > 0) return { ...filled, input, postalCode };
@@ -420,6 +429,8 @@ export class AddressNormalizer {
       };
     } catch (error) {
       if (error instanceof AddressPendingError) notes.pending = [error.pending];
+      // 構築を断られたデータは、取得に失敗したデータと同じに、ID と文を答えに付ける（ABR だけの答えを、完全な答えとして返さない）
+      else if (error instanceof AddressBusyError) notes.unavailable = [{ artifact: error.artifact, message: error.message }];
       return result;
     }
   }
@@ -445,7 +456,9 @@ export class AddressNormalizer {
       const { reader } = await this.data.postal(waitMs);
       const cities = new Set(reader.byZip(zipcode).map((row) => `${row.pref}${row.city}`));
       return cities.size === 1 ? ([...cities][0] ?? null) : null;
-    } catch {
+    } catch (error) {
+      // 構築の順番・予算の断りは、「決まらない」と同じに黙らず、呼び出し側が答えに記録できるよう投げ直す
+      if (error instanceof AddressBusyError) throw error;
       return null;
     }
   }
@@ -526,6 +539,8 @@ export class AddressNormalizer {
     } catch (error) {
       if (error instanceof AddressPendingError) generation.missing.set(numId, { pending: true, message: error.message });
       else if (error instanceof AddressUnavailableError) generation.missing.set(numId, { pending: false, message: error.message });
+      // 構築の順番・予算の断りは、世代に覚えさせない（世代は全員で共有で、24 時間か、段B の版が変わるまで続く。覚えると、断られていない利用者にも、構築されないまま、
+      // 断られた利用者の欠けた答えが返り続ける）。この呼び出しだけが失敗する（normalize が、市区町村までの答えに unavailable を付ける）
       else throw error;
       // 段B が揃ったとき（版が空文字でなくなったとき）に、この世代を読み直す。
       generation.served.set(numId, '');

@@ -1,8 +1,14 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { statSync } from 'node:fs';
 import { join } from 'node:path';
+import { ResourceBusyError } from '../errors.js';
+import { trimMap } from '../security/bounded_map.js';
+import { currentCaller } from '../security/caller.js';
+import { type QueuePolicy, queueBusyError } from '../security/fair_queue.js';
+import { limits } from '../security/limits.js';
+import { TenantBudget } from '../security/tenant_budget.js';
 import type { AddressConfig } from './address_config.js';
-import { AddressDisabledError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
+import { AddressBusyError, AddressDisabledError, AddressPendingError, AddressUnavailableError } from './address_errors.js';
 import { AddressHttpError } from './address_http.js';
 import { cityNameOf, lgCode6, type JaCity, type JaJson, type TownJson } from './address_names.js';
 import {
@@ -46,7 +52,23 @@ export interface AddressDataOptions {
   cooldownMs?: number;
   /** 国外 IP の拒否（403）のあとの待ち。 */
   blockedCooldownMs?: number;
+  /** 構築の順番の方針（待てる数）。呼ぶたびに読む。省略時は水準（SORA_ISOLATION）の表（addressQueuePolicy）。 */
+  queuePolicy?: () => QueuePolicy;
+  /** 1 人の予算（新しい構築を頼む回数）。省略時は水準の表。 */
+  budget?: TenantBudget;
   log?: (message: string) => void;
+}
+
+/**
+ * システムの事前取得（SORA_ADDRESS_PRELOAD）が使う利用者。構築の待ちの数にも予算にも数えない（利用者の順番は取る。事前取得が利用者を待たせず、
+ * 利用者に待たされもしない）。認証が決める tenant は、この名前にならない（鍵の名前は `name:` を前に付けた形）。
+ */
+export const ADDRESS_SYSTEM_TENANT = 'system:address-preload';
+
+/** 構築の順番の既定の方針。待てる数は水準の表。待ち時間は無し（構築は、頼んだ人が待ちきれなくても、裏で続いて残る） */
+export function addressQueuePolicy(): QueuePolicy {
+  const current = limits();
+  return { perTenant: current.addressQueuePerTenant, total: current.addressQueueTotal, waitMs: Number.POSITIVE_INFINITY, sharePercent: 100 };
 }
 
 /** 全国マスターの 1 市区町村。 */
@@ -87,6 +109,10 @@ function buildMasterIndex(ver: string, ja: JaJson): MasterIndex {
 interface QueueItem {
   job: BuildJob;
   id: string;
+  /** 新しい構築として頼んだ利用者（待つ数の上限・予算はこの人の分） */
+  creator: string;
+  /** この構築を待っている利用者（頼んだ人と、あとから同じ ID を頼んだ人）。どの人の順番でも動ける */
+  owners: Set<string>;
   resolve: () => void;
   reject: (error: Error) => void;
 }
@@ -107,6 +133,8 @@ const HOUR = 3_600_000;
 export type BuildPolicy = 'never' | 'background';
 const buildPolicy = new AsyncLocalStorage<BuildPolicy>();
 const PRIORITY: Record<BuildJob['kind'], number> = { master: 0, postal: 1, index: 2, city: 3, num: 4, mlit: 5 };
+/** 全国の小さな構築。ほかの前提になるので、市区町村の構築より先に動かす */
+const NATIONAL_KINDS: ReadonlySet<BuildJob['kind']> = new Set(['master', 'postal', 'index']);
 const TOWN_CACHE_MAX = 50;
 const NUMBERS_CACHE_MAX = 30;
 /** 郵便番号を作り直したあと、古い読み取り役を閉じるまでの猶予。使用中の呼び出しを壊さない。 */
@@ -134,6 +162,11 @@ export class AddressData {
   private readonly inflight = new Map<string, Promise<void>>();
   private readonly failures = new Map<string, FailureRecord>();
   private running = 0;
+  private readonly budget: TenantBudget;
+  private readonly queuePolicy: () => QueuePolicy;
+  /** 利用者ごとの、最後に構築を始めてもらった番号（小さいほど、長く順番が来ていない） */
+  private readonly servedAt = new Map<string, number>();
+  private turn = 0;
   private snapshot: { key: string; status: AddressStatus } | null = null;
   private masterCache: MasterIndex | null = null;
   private readonly townCache = new Map<string, { ver: string; json: TownJson }>();
@@ -148,6 +181,8 @@ export class AddressData {
     this.cooldownMs = options.cooldownMs ?? 60_000;
     this.blockedCooldownMs = options.blockedCooldownMs ?? 600_000;
     this.log = options.log ?? ((message) => console.warn(message));
+    this.queuePolicy = options.queuePolicy ?? addressQueuePolicy;
+    this.budget = options.budget ?? new TenantBudget({ resource: 'address', policy: () => ({ perWindow: limits().addressBudgetPerMinute, windowMs: 60_000 }), now: this.now });
   }
 
   get config(): AddressConfig {
@@ -201,7 +236,12 @@ export class AddressData {
     }
     const policy = buildPolicy.getStore();
     if (policy) {
-      if (policy === 'background' && !this.cooling(id)) void this.enqueue(job);
+      if (policy === 'background' && !this.cooling(id)) {
+        // 頼んだが断られたときは、「取得中」ではない（構築は始まらない）。Pending を投げると、正規化の共有の世代が「取得中」と覚えて、
+        // 構築されないまま、別の利用者にも「取得中」が返り続ける。断りをそのまま投げる
+        const refused = this.begin(job, currentCaller());
+        if (refused instanceof AddressBusyError) throw refused;
+      }
       throw new AddressPendingError(id);
     }
     const failure = this.failures.get(id);
@@ -331,12 +371,32 @@ export class AddressData {
     return this.now() - failure.at < Math.min(base * 2 ** (failure.count - 1), HOUR);
   }
 
-  private enqueue(job: BuildJob): Promise<void> {
+  /**
+   * 構築を待ち行列に入れる。呼んでいる利用者（currentCaller）は、ここで決める（構築が動く文脈は、最初に触った人のものを引き継ぐので当てにしない）。
+   * すでにある ID（待ち行列・実行中）は新しい構築ではないので、断らず、予算も使わない。待ち行列にあるなら、この利用者の順番でも動けるようにする。
+   * 新しい構築は、待つ数の上限（1 人・全体）を確かめてから、予算を使う。断ったら、始めず、AddressBusyError で失敗する Promise を返す
+   * （返り値を無視する呼び出し「待たない」でも、未処理の拒否にならない）。
+   */
+  private enqueue(job: BuildJob, tenantId: string = currentCaller()): Promise<void> {
+    const started = this.begin(job, tenantId);
+    if (!(started instanceof AddressBusyError)) return started;
+    const rejected = Promise.reject(started);
+    rejected.catch(() => undefined);
+    return rejected;
+  }
+
+  /** enqueue の本体。受け付けたら（すでにある ID への相乗りを含む）その Promise、断ったら AddressBusyError を返す（投げない） */
+  private begin(job: BuildJob, tenantId: string): Promise<void> | AddressBusyError {
     const id = jobArtifactId(job);
     const existing = this.inflight.get(id);
-    if (existing) return existing;
+    if (existing) {
+      this.queue.find((item) => item.id === id)?.owners.add(tenantId);
+      return existing;
+    }
+    const refused = this.admit(id, tenantId);
+    if (refused) return refused;
     const promise = new Promise<void>((resolve, reject) => {
-      this.queue.push({ job, id, resolve, reject });
+      this.queue.push({ job, id, creator: tenantId, owners: new Set([tenantId]), resolve, reject });
     });
     // 待つ人がいない裏の再確認が失敗しても、未処理の rejection にしない。
     promise.catch(() => undefined);
@@ -345,14 +405,55 @@ export class AddressData {
     return promise;
   }
 
-  /** 空きがあれば待機中のジョブを始める。小さくて他の前提になる全国マスター・郵便番号を、市区町村より先にする。 */
+  /** 新しい構築を受け付けるか。断るなら、その例外。受け付けるなら、予算を使う（システムの事前取得は、確かめず、使わない） */
+  private admit(id: string, tenantId: string): AddressBusyError | undefined {
+    if (tenantId === ADDRESS_SYSTEM_TENANT) return undefined;
+    const policy = this.queuePolicy();
+    const waiting = this.queue.filter((item) => item.creator !== ADDRESS_SYSTEM_TENANT);
+    const reason = waiting.filter((item) => item.creator === tenantId).length >= policy.perTenant ? 'tenant_queue_full'
+      : waiting.length >= policy.total ? 'queue_full' : undefined;
+    if (reason) {
+      const busy = queueBusyError('address', reason, policy);
+      return new AddressBusyError(busy.message, busy.reason, busy.retryAfterSec, id);
+    }
+    try {
+      this.budget.spend(tenantId);
+    } catch (error) {
+      if (error instanceof ResourceBusyError) return new AddressBusyError(error.message, error.reason, error.retryAfterSec, id);
+      throw error;
+    }
+    return undefined;
+  }
+
+  /**
+   * 次に始める構築を選ぶ。小さくて他の前提になる全国の構築（マスター・郵便番号・索引）を、市区町村の構築より先にする。
+   * 同じ段の中では、いちばん長く順番が来ていない利用者の順番で動かす（頼んだ数の多い人が、少ない人を待たせない）。種類ごとの優先度（町字 → 番地・号 → 街区）は、
+   * 利用者の公平のあとで、同じ利用者の中でだけ効かせる（他人が町字を頼み続けても、自分の番地・号や街区が後回しにならない）。
+   * 構築が複数の利用者に待たれているときは、そのどの人の順番でも動ける。すべて同じなら、先に頼んだ構築。
+   */
+  private pickNext(): { index: number; tenant: string } {
+    let best = { index: 0, tenant: '', tier: Number.POSITIVE_INFINITY, served: Number.POSITIVE_INFINITY, priority: Number.POSITIVE_INFINITY };
+    this.queue.forEach((item, index) => {
+      const tier = NATIONAL_KINDS.has(item.job.kind) ? 0 : 1;
+      const priority = PRIORITY[item.job.kind];
+      for (const tenant of item.owners) {
+        const served = this.servedAt.get(tenant) ?? 0;
+        if (tier < best.tier || (tier === best.tier && (served < best.served || (served === best.served && priority < best.priority)))) {
+          best = { index, tenant, tier, served, priority };
+        }
+      }
+    });
+    return best;
+  }
+
+  /** 空きがあれば待機中のジョブを始める（選び方は pickNext）。 */
   private pump(): void {
     while (this.running < this.config.concurrency && this.queue.length > 0) {
-      let next = 0;
-      for (let index = 1; index < this.queue.length; index++) {
-        if (PRIORITY[(this.queue[index] as QueueItem).job.kind] < PRIORITY[(this.queue[next] as QueueItem).job.kind]) next = index;
-      }
-      const [item] = this.queue.splice(next, 1) as [QueueItem];
+      const { index, tenant } = this.pickNext();
+      const [item] = this.queue.splice(index, 1) as [QueueItem];
+      this.servedAt.delete(tenant);
+      this.servedAt.set(tenant, ++this.turn);
+      trimMap(this.servedAt, limits().hostMapMaxEntries, () => false);
       this.running += 1;
       void this.execute(item);
     }
