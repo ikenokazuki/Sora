@@ -3,7 +3,7 @@ import * as cheerio from 'cheerio';
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 import { GLOBAL_FEED_CATALOG, type SourceCatalogEntry } from '../source_catalog.js';
@@ -157,6 +157,7 @@ export function createGlobalFeedsProvider(fetchFn?: GdeltFetch, catalog: readonl
         try {
           res = await fetchProviderResponse(entry.url, { sourceId: entry.id, timeoutMs: 10000, format: 'xml', signal, fetchFn: runFetch });
         } catch (e) {
+          rethrowIfBusy(e);
           if (signal.aborted) throw e;
           if (e instanceof ProviderHttpError) throw e;
           throw new ProviderNetworkError(String(e));

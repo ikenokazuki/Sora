@@ -2,7 +2,7 @@ import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../pr
 import type { EvidenceDetail } from '../detail.js';
 import { normalizeEvidence } from '../evidence.js';
 import { ProviderHttpError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, providerHttpGate, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 
 /** 鍵なしで公開投稿に届く取得先。順序は応答の安定したものから。 */
@@ -93,14 +93,20 @@ function toItems(posts: FediversePost[], providerId: string, input: ProviderInpu
 }
 
 async function postJson(fetchFn: GdeltFetch, url: string, body: unknown, signal: AbortSignal): Promise<unknown> {
-  const res = await fetchFn(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-    signal,
-  });
-  if (!res.ok) throw new ProviderHttpError(res.status, undefined, 'Fediverse HTTP ' + res.status);
-  return res.json();
+  // Misskey への POST は fetchProviderResponse を通らないので、順番・予算の入口を直接通す（GET の Mastodon と同じ扱い）
+  const release = await providerHttpGate.admit(signal);
+  try {
+    const res = await fetchFn(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) throw new ProviderHttpError(res.status, undefined, 'Fediverse HTTP ' + res.status);
+    return await res.json();
+  } finally {
+    release();
+  }
 }
 
 export function createFediverseProvider(fetchFn?: GdeltFetch, sources: readonly { kind: 'misskey' | 'mastodon'; host: string }[] = FEDIVERSE_TAG_SOURCES): CountryIntelProvider {
@@ -129,6 +135,8 @@ export function createFediverseProvider(fetchFn?: GdeltFetch, sources: readonly 
             }
           } catch (error) {
             if (signal.aborted) break;
+            // 順番・予算の断りは、gaps に書いて続けず、そのまま投げる（gaps つきの成功は、共有キャッシュに入って、別の利用者にも返る）
+            rethrowIfBusy(error);
             gaps.push({ area: 'social_observations', reason: source.host + ' tag ' + tag + ': ' + String((error as Error)?.message ?? error).slice(0, 160) });
           }
           if (items.length >= 30) break;

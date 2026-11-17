@@ -1,7 +1,7 @@
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 export const BAIDU_HOT_URL = 'https://top.baidu.com/board?tab=realtime';
@@ -120,6 +120,7 @@ export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
         try {
           res = await fetchProviderResponse(url, { sourceId: 'baidu_hot', timeoutMs, format: 'text', signal, fetchFn: runFetch });
         } catch (e) {
+          rethrowIfBusy(e);
           if (signal.aborted) throw e;
           if (e instanceof ProviderHttpError) throw e;
           throw new ProviderNetworkError(String(e));
@@ -143,6 +144,8 @@ export function createBaiduHotProvider(fetchFn?: GdeltFetch): CountryIntelProvid
           }
         } catch (e) {
           if (signal.aborted) throw e;
+          // 順番・予算の断りは、次の段で救済せず、そのまま投げる（次の段の成功が、共有キャッシュに入る）
+          rethrowIfBusy(e);
           lastError = e;
         }
       }

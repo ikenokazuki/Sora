@@ -3,7 +3,7 @@ import type { EvidenceDetail } from '../detail.js';
 import { envError, envList } from '../../../config.js';
 import { normalizeEvidence } from '../evidence.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 
 export const BLUESKY_JETSTREAM_ENDPOINT = 'wss://jetstream.us-east.bsky.network/xrpc/network.bsky.jetstream.subscribeEvents';
@@ -130,6 +130,7 @@ export function createBlueskyProvider(fetchFn?: GdeltFetch): CountryIntelProvide
       try {
         res = await fetchProviderResponse(url, { sourceId: 'bluesky', timeoutMs: 8000, format: 'json', signal, fetchFn: runFetch });
       } catch (error) {
+        rethrowIfBusy(error);
         if (signal.aborted) throw error;
         if (error instanceof ProviderHttpError) throw error;
         throw new ProviderNetworkError(String(error));

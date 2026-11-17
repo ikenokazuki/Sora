@@ -1,7 +1,7 @@
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
-import { fetchProviderResponse } from '../provider_http.js';
+import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
 
@@ -69,6 +69,7 @@ export function createWallstreetLiveProvider(fetchFn?: GdeltFetch): CountryIntel
       try {
         res = await fetchProviderResponse(WALLSTREET_LIVE_URL, { sourceId: 'wallstreet_live', timeoutMs: 8000, format: 'json', signal, fetchFn: runFetch });
       } catch (e) {
+        rethrowIfBusy(e);
         if (signal.aborted) throw e;
         if (e instanceof ProviderHttpError) throw e;
         throw new ProviderNetworkError(String(e));

@@ -135,10 +135,16 @@ describe('limits', () => {
     expect(STANDARD_LIMITS).toMatchObject({ yahooQueuePerTenant: 100, yahooQueueTotal: 300, yahooQueueWaitMs: 120_000, yahooBudgetPerMinute: 0 });
   });
 
+  test('国の情報の提供元（5f-3）: 順番を待てる数は 1 人が strict 30・standard 100、全体が strict 120・standard 300。待ち時間は strict 10 秒・standard 30 秒。1 人の予算は strict が 1 分に 120 回、standard は無し（0）。strict の 1 人の数は、1 回の報告が出す取得（SNS ありで 24 件）が通る大きさ', () => {
+    expect(STRICT_LIMITS).toMatchObject({ countryIntelQueuePerTenant: 30, countryIntelQueueTotal: 120, countryIntelQueueWaitMs: 10_000, countryIntelBudgetPerMinute: 120 });
+    expect(STANDARD_LIMITS).toMatchObject({ countryIntelQueuePerTenant: 100, countryIntelQueueTotal: 300, countryIntelQueueWaitMs: 30_000, countryIntelBudgetPerMinute: 0 });
+    expect(STRICT_LIMITS.countryIntelQueuePerTenant).toBeGreaterThanOrEqual(24);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
-  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute'];
+  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute'];
 
   test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;
