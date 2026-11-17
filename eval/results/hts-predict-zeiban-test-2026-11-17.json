@@ -1,0 +1,829 @@
+{
+  "ranAt": "2026-11-17T03:49:48.610Z",
+  "noCross": false,
+  "split": "test",
+  "rows": [
+    {
+      "id": "c002",
+      "split": "test",
+      "name": "Porcelain Tea Cup and Saucer Set",
+      "expected": [
+        "691110"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 329,
+      "got": "6911.10.52.00",
+      "rate": "8%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c004",
+      "split": "test",
+      "name": "Vacuum Insulated Stainless Steel Water Bottle",
+      "expected": [
+        "961700"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 107,
+      "got": "9617.00.30.00",
+      "rate": "6.9%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c006",
+      "split": "test",
+      "name": "Nonstick Aluminum Frying Pan",
+      "expected": [
+        "761510"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 137,
+      "got": "7615.10.30.25",
+      "rate": "3.1%",
+      "confidence": "high"
+    },
+    {
+      "id": "c008",
+      "split": "test",
+      "name": "Chef Knife",
+      "expected": [
+        "821191",
+        "821192"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 84,
+      "got": "8211.92.20.00",
+      "rate": "0.8¢ each + 4.6%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c010",
+      "split": "test",
+      "name": "Glass Flower Vase",
+      "expected": [
+        "701399"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 91,
+      "got": "7013.99.80.90",
+      "rate": "11.3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c012",
+      "split": "test",
+      "name": "Cotton Bath Towel",
+      "expected": [
+        "630260"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 97,
+      "got": "6302.60.00.20",
+      "rate": "9.1%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c014",
+      "split": "test",
+      "name": "Sunglasses",
+      "expected": [
+        "900410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 138,
+      "got": "9004.10.00.00",
+      "rate": "2%",
+      "confidence": "high"
+    },
+    {
+      "id": "c016",
+      "split": "test",
+      "name": "Mechanical Pencil",
+      "expected": [
+        "960840"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 88,
+      "got": "9608.40.40.00",
+      "rate": "6.6%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c018",
+      "split": "test",
+      "name": "Paperback Novel",
+      "expected": [
+        "490199"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 45,
+      "got": "4901.99.00.75",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c020",
+      "split": "test",
+      "name": "Polyester Backpack",
+      "expected": [
+        "420292"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 82,
+      "got": "4202.92.31.20",
+      "rate": "17.6%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c022",
+      "split": "test",
+      "name": "Hard Shell Suitcase",
+      "expected": [
+        "420212"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 57,
+      "got": "4202.12.21.20",
+      "rate": "20%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c024",
+      "split": "test",
+      "name": "Women's Denim Jeans",
+      "expected": [
+        "620462"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 137,
+      "got": "6204.62.80.11",
+      "rate": "16.6%",
+      "confidence": "high"
+    },
+    {
+      "id": "c026",
+      "split": "test",
+      "name": "Cotton Crew Socks",
+      "expected": [
+        "611595"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 43,
+      "got": "6115.95.90.00",
+      "rate": "13.5%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c028",
+      "split": "test",
+      "name": "Running Shoes",
+      "expected": [
+        "640411"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 86,
+      "got": "6404.11.90.80",
+      "rate": "20%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c030",
+      "split": "test",
+      "name": "Baseball Cap",
+      "expected": [
+        "650500"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 185,
+      "got": "6505.00.20.60",
+      "rate": "7.5%",
+      "confidence": "high"
+    },
+    {
+      "id": "c032",
+      "split": "test",
+      "name": "USB-C Wall Charger",
+      "expected": [
+        "850440"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 89,
+      "got": "8504.40.95.50",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c034",
+      "split": "test",
+      "name": "Wireless Earbuds",
+      "expected": [
+        "851830",
+        "851762"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 77,
+      "got": "8518.30.20.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c036",
+      "split": "test",
+      "name": "Laptop Computer",
+      "expected": [
+        "847130"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 62,
+      "got": "8471.30.01.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c038",
+      "split": "test",
+      "name": "LED Desk Lamp",
+      "expected": [
+        "940521",
+        "940529"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 147,
+      "got": "9405.21.60.10",
+      "rate": "6%",
+      "confidence": "high"
+    },
+    {
+      "id": "c040",
+      "split": "test",
+      "name": "Lithium-ion Power Bank",
+      "expected": [
+        "850760"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 84,
+      "got": "8507.60.00.90",
+      "rate": "3.4%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c042",
+      "split": "test",
+      "name": "Lipstick",
+      "expected": [
+        "330410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 45,
+      "got": "3304.10.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c044",
+      "split": "test",
+      "name": "Face Moisturizer Cream",
+      "expected": [
+        "330499"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 42,
+      "got": "3304.99.50.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c046",
+      "split": "test",
+      "name": "Toothpaste",
+      "expected": [
+        "330610"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 60,
+      "got": "3306.10.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c048",
+      "split": "test",
+      "name": "Japanese Green Tea",
+      "expected": [
+        "090210"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 52,
+      "got": "0902.10.90.50",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c050",
+      "split": "test",
+      "name": "Soy Sauce",
+      "expected": [
+        "210310"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 45,
+      "got": "2103.10.00.00",
+      "rate": "3%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c052",
+      "split": "test",
+      "name": "Sake",
+      "expected": [
+        "220600"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 33,
+      "got": "2206.00.45.00",
+      "rate": "3¢/liter",
+      "confidence": "medium"
+    },
+    {
+      "id": "c054",
+      "split": "test",
+      "name": "Milk Chocolate Bar",
+      "expected": [
+        "180631",
+        "180632",
+        "180690"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 48,
+      "got": "1806.31.00.65",
+      "rate": "5.6%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c056",
+      "split": "test",
+      "name": "Dried Seaweed Nori",
+      "expected": [
+        "121221",
+        "121229"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 34,
+      "got": "1212.21.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c058",
+      "split": "test",
+      "name": "Plush Teddy Bear",
+      "expected": [
+        "950300"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 188,
+      "got": "9503.00.00.73",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c060",
+      "split": "test",
+      "name": "Jigsaw Puzzle",
+      "expected": [
+        "950300"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 106,
+      "got": "9503.00.00.90",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c062",
+      "split": "test",
+      "name": "Playing Cards",
+      "expected": [
+        "950440"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 73,
+      "got": "9504.40.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c064",
+      "split": "test",
+      "name": "Yoga Mat",
+      "expected": [
+        "950691"
+      ],
+      "ok6": false,
+      "ok4": false,
+      "inCandidates": true,
+      "ms": 125,
+      "got": "4008.21.00.00",
+      "rate": "Free",
+      "confidence": "low"
+    },
+    {
+      "id": "c066",
+      "split": "test",
+      "name": "Fishing Rod",
+      "expected": [
+        "950710"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 80,
+      "got": "9507.10.00.40",
+      "rate": "6%",
+      "confidence": "high"
+    },
+    {
+      "id": "c068",
+      "split": "test",
+      "name": "Adult Bicycle",
+      "expected": [
+        "871200"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 60,
+      "got": "8712.00.15.10",
+      "rate": "11%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c070",
+      "split": "test",
+      "name": "Hair Brush",
+      "expected": [
+        "960329"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 125,
+      "got": "9603.29.80.10",
+      "rate": "0.3¢ each + 3.6%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c072",
+      "split": "test",
+      "name": "Wooden Dining Table",
+      "expected": [
+        "940360"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 85,
+      "got": "9403.60.80.40",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c074",
+      "split": "test",
+      "name": "Bed Pillow",
+      "expected": [
+        "940490"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 140,
+      "got": "9404.90.20.60",
+      "rate": "6%",
+      "confidence": "high"
+    },
+    {
+      "id": "c076",
+      "split": "test",
+      "name": "Plastic Food Storage Container",
+      "expected": [
+        "392410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 80,
+      "got": "3924.10.40.00",
+      "rate": "3.4%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c078",
+      "split": "test",
+      "name": "Silicone Spatula",
+      "expected": [
+        "392410"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 77,
+      "got": "3924.10.40.00",
+      "rate": "3.4%",
+      "confidence": "high"
+    },
+    {
+      "id": "c080",
+      "split": "test",
+      "name": "Disposable Face Mask",
+      "expected": [
+        "630790"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 86,
+      "got": "6307.90.98.70",
+      "rate": "7%",
+      "confidence": "high"
+    },
+    {
+      "id": "c082",
+      "split": "test",
+      "name": "Adhesive Bandages",
+      "expected": [
+        "300590"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 65,
+      "got": "3005.10.50.00",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c084",
+      "split": "test",
+      "name": "Binoculars",
+      "expected": [
+        "900510"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 118,
+      "got": "9005.10.00.40",
+      "rate": "Free",
+      "confidence": "medium"
+    },
+    {
+      "id": "c086",
+      "split": "test",
+      "name": "Hair Dryer",
+      "expected": [
+        "851631"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 116,
+      "got": "8516.31.00.00",
+      "rate": "3.9%",
+      "confidence": "high"
+    },
+    {
+      "id": "c088",
+      "split": "test",
+      "name": "Rice Cooker",
+      "expected": [
+        "851660"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": false,
+      "ms": 90,
+      "got": "8516.79.00.00",
+      "rate": "2.7%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c090",
+      "split": "test",
+      "name": "LED Light Bulb",
+      "expected": [
+        "853952"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 153,
+      "got": "8539.52.00.91",
+      "rate": "2%",
+      "confidence": "high"
+    },
+    {
+      "id": "c092",
+      "split": "test",
+      "name": "Steel Screws",
+      "expected": [
+        "731815"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 30,
+      "got": "7318.12.00.00",
+      "rate": "12.5%",
+      "confidence": "medium"
+    },
+    {
+      "id": "c094",
+      "split": "test",
+      "name": "Acrylic Paint Set",
+      "expected": [
+        "321390"
+      ],
+      "ok6": false,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 45,
+      "got": "3213.10.00.00",
+      "rate": "6.5% on the entire set",
+      "confidence": "medium"
+    },
+    {
+      "id": "c096",
+      "split": "test",
+      "name": "Silicone Phone Case",
+      "expected": [
+        "392690"
+      ],
+      "ok6": false,
+      "ok4": false,
+      "inCandidates": true,
+      "ms": 55,
+      "got": "4202.99.90.00",
+      "rate": "20%",
+      "confidence": "high"
+    },
+    {
+      "id": "c098",
+      "split": "test",
+      "name": "Mechanical Keyboard",
+      "expected": [
+        "847160"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 99,
+      "got": "8471.60.20.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c100",
+      "split": "test",
+      "name": "SD Memory Card",
+      "expected": [
+        "852351"
+      ],
+      "ok6": true,
+      "ok4": true,
+      "inCandidates": true,
+      "ms": 109,
+      "got": "8523.51.00.00",
+      "rate": "Free",
+      "confidence": "high"
+    },
+    {
+      "id": "c102",
+      "split": "test",
+      "name": "Smart Watch",
+      "expected": [
+        "851762",
+        "910212"
+      ],
+      "ok6": false,
+      "ok4": false,
+      "inCandidates": false,
+      "ms": 66,
+      "got": "9029.20.40.80",
+      "rate": "Free",
+      "confidence": "low"
+    }
+  ],
+  "summary": {
+    "all": {
+      "n": 51,
+      "top1Hs6": 44,
+      "top1Heading": 48,
+      "inCandidates": 49,
+      "errors": 0,
+      "byConfidence": {
+        "medium": {
+          "n": 28,
+          "ok": 24
+        },
+        "high": {
+          "n": 21,
+          "ok": 20
+        },
+        "low": {
+          "n": 2,
+          "ok": 0
+        }
+      },
+      "firstCallMs": 329,
+      "p50Ms": 84,
+      "p95Ms": 185
+    },
+    "test": {
+      "n": 51,
+      "top1Hs6": 44,
+      "top1Heading": 48,
+      "inCandidates": 49,
+      "errors": 0,
+      "byConfidence": {
+        "medium": {
+          "n": 28,
+          "ok": 24
+        },
+        "high": {
+          "n": 21,
+          "ok": 20
+        },
+        "low": {
+          "n": 2,
+          "ok": 0
+        }
+      },
+      "firstCallMs": 329,
+      "p50Ms": 84,
+      "p95Ms": 185
+    }
+  }
+}

@@ -16,7 +16,7 @@ Sora GitHub releases on first use of HTS prediction. The index contains:
    (https://www.apache.org/licenses/LICENSE-2.0).
    Changes: only the product description in each question and the codes in the
    first answer line are kept; names, numbers and codes were removed from the
-   description. These entries carry no ruling number and are used only as votes.
+   description. These entries carry no ruling number and are not shown as evidence.
 
 3. Data taken from "AI-Extracted CBP Customs Rulings Dataset"
    (fklc/cbp-rulings-past-2012,
@@ -47,3 +47,11 @@ Sora GitHub releases on first use of HTS prediction. The index contains:
    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
    SOFTWARE.
+
+This product also downloads the tariff classification model "zeiban"
+(zeiban.wasm, zeiban.json, zeiban.bin) from https://github.com/ikenokazuki/zeiban
+on first use of HTS prediction. zeiban is licensed under the Apache License,
+Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0). The attribution for the
+model's base model and training data (the U.S. tariff schedule, CBP rulings, the
+Flexify.AI dataset above, public product catalogues and Japan Customs advance
+rulings) is in the NOTICE file of that repository.

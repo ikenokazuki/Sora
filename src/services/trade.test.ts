@@ -1,16 +1,17 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
+import { type FakeHtsModel, fakeHtsModel, modelAnswer } from '../test_fixtures/hts_model.js';
 import { resetCrossBreakerForTest } from './cbp_cross.js';
 import { CPSC_HTS_LIST } from './cpsc_hts_data.js';
-import { resetHtsDataForTest } from './hts_data.js';
+import { HTS_EXPORT_URL, resetHtsDataForTest } from './hts_data.js';
+import { HTS_MODEL_VERSION, setHtsModelForTest } from './hts_model.js';
 import {
   TradeInputError,
   checkCpscCertificate,
   checkFdaRegulated,
   checkProductCompliance,
   crossQueriesFor,
-  detectProductAgeGender,
   findCpscListCategory,
   parseFiberContent,
   predictHtsCode,
@@ -19,22 +20,46 @@ import {
   verifyHtsCode,
 } from './trade.js';
 
-// HTS の分類は、USITC の関税率表（全件）と CBP の分類判例から推測する。
+// HTS の10桁は関税分類モデルが決め、説明文・税率は USITC の関税率表から引き、CBP の分類判例は根拠として添える。
+// ここでは、モデルを規則の表（品名 → 応答）に差し替えて、応答の組み立てを確かめる。本物のモデルは読まない。
+const HELMET_OPTIONS = [
+  { prefix: '6506103045', label: 'Athletic, recreational and sporting headgear', code: '6506103045' },
+  { prefix: '6506103030', label: 'Motorcycle helmets', code: '6506103030' },
+];
+const MODEL_RULES: Parameters<typeof fakeHtsModel>[0] = [
+  [/マグカップ/, modelAnswer(['6912004400'], { reader: 'ja' })],
+  [/block|toy/i, modelAnswer(['9503000073', '9503000071'], { six: 0.97 })],
+  [/mug|tableware/i, modelAnswer(['6912004400', '6912004500'])],
+  [/helmet/i, modelAnswer(['6506103045', '6506103030'], { six: 0.7, ask: { digits: 10, options: HELMET_OPTIONS } })],
+  [/dining table|furniture/i, modelAnswer(['9403608040', '9403608093'], { six: 0.8 })],
+  [/penlight/i, modelAnswer(['9405428440'])],
+  [/power bank|battery/i, modelAnswer(['8507600010', '8507600090'])],
+  [/cream|cosmetic|serum/i, modelAnswer(['3304995000', '3304991000'])],
+  [/tea/i, modelAnswer(['0902101050', '0902109050'])],
+  [/t-shirt|undershirt|tee\b/i, modelAnswer(['6109100012', '6109100011'])],
+  [/widget/i, modelAnswer(['9405114010', '9403608093'], { six: 0.2, ask: { digits: 4, options: [{ prefix: '9405', label: 'Luminaires and lighting fittings', code: '9405114010' }, { prefix: '9403', label: 'Other furniture', code: '9403608093' }] } })],
+];
 // ここでは実際の関税率表と判例の応答の抜粋（test_fixtures）で、推測の組み立てを確かめる。精度は eval/hts_predict_cases.json と scripts/eval-hts-predict.ts で測る。
 describe('HTS prediction and product compliance', () => {
   let restore: (() => void) | undefined;
+  let model: FakeHtsModel;
   beforeAll(() => {
     restore = installExternalApiFixtures();
   });
-  afterAll(() => restore?.());
+  afterAll(() => {
+    restore?.();
+    setHtsModelForTest(undefined);
+  });
   beforeEach(() => {
     clearCache();
     resetCrossBreakerForTest();
     resetHtsDataForTest();
+    model = fakeHtsModel(MODEL_RULES);
+    setHtsModelForTest(model);
   });
 
   describe('predictHtsCode', () => {
-    it('classifies a toy from rulings that cite an obsolete subheading (9503.30 was merged into 9503.00) and picks the age line the ruling cited', async () => {
+    it('takes the 10-digit code from the model, and the wording and the duty rate from the official tariff', async () => {
       const res = await predictHtsCode({
         productName: 'Wooden Building Blocks for Toddlers',
         description: 'Educational wooden puzzle block toy for children aged 3+. Non-toxic paint.',
@@ -45,21 +70,31 @@ describe('HTS prediction and product compliance', () => {
       expect(res.bestMatch.htsCode).toBe('9503.00.00.73');
       expect(res.bestMatch.description).toBe('3 to 12 years of age');
       expect(res.bestMatch.confidence).toBe('high');
+      expect(res.bestMatch.score).toBe(60); // モデルの「この10桁が正しい確率」
       // 率はその行に無く、親の 9503.00.00 から継承（見出しの率を既定値にしない）
       expect(res.bestMatch.generalRate).toBe('Free');
       expect(res.bestMatch.rateFrom).toBe('9503.00.00');
+      expect(res.bestMatch.reason).toContain('zeiban');
       expect(res.bestMatch.cpsc?.certificateType).toBe('CCC');
       expect(res.bestMatch.cpsc?.eFilingRequired).toBe(true);
+      expect(res.candidates.map((c) => c.htsCode)).toEqual(['9503.00.00.73', '9503.00.00.71']);
+      expect(res.candidates.map((c) => c.score)).toEqual([60, 40]); // 候補の中での割合
+      expect(res.evidence.model).toMatchObject({ name: 'zeiban', version: HTS_MODEL_VERSION, htsRelease: '2026HTSRev22' });
       expect(res.evidence.crossStatus).toBe('ok');
       expect(res.evidence.crossQuery).toBe('wooden building blocks'); // "for Toddlers" より前の名詞句で判例を引く
+      // 判例が挙げた古い小見出し（9503.30 は 9503.00 に統合された）も、現行の6桁に直して根拠に数える
       expect(res.evidence.rulings.length).toBeGreaterThan(0);
       expect(res.evidence.rulings[0].url).toStartWith('https://rulings.cbp.gov/ruling/');
       expect(res.evidence.dataFetchedAt).toBeTruthy();
       expect(res.inputCompleteness).toBe('complete');
       expect(res.decisionPoints).toBeUndefined();
+      // モデルに渡すのは、品名・素材・分類・説明だけ（年齢・食品接触・電池は CPSC・FDA の判定に使う）
+      expect(model.calls).toHaveLength(1);
+      expect(model.calls[0]).toMatchObject({ name: 'Wooden Building Blocks for Toddlers', material: 'wood' });
+      expect(Object.keys(model.calls[0]).sort()).toEqual(['categories', 'description', 'material', 'name', 'prefix']);
     });
 
-    it('classifies tableware with a ruling-confirmed high confidence and flags FDA FD1 food contact', async () => {
+    it('flags FDA FD1 for tableware, and marks the candidates that a ruling also cites', async () => {
       const res = await predictHtsCode({
         productName: 'Ceramic Coffee Mug',
         description: 'Stoneware coffee mug for kitchen use',
@@ -72,29 +107,107 @@ describe('HTS prediction and product compliance', () => {
       expect(res.category).toContain('Ceramic tableware');
       expect(res.bestMatch.fda?.fdFlag).toBe('FD1');
       expect(res.bestMatch.fda?.possiblePrograms).toContain('FCS');
-      expect(res.candidates[0].sources).toEqual(['hts-text', 'cbp-ruling']);
+      expect(res.candidates[0].sources).toEqual(['model', 'cbp-ruling']);
       expect(res.inputCompleteness).toBe('complete');
       expect(res.impactExplanation).toContain('十分に提供');
     });
 
-    it('asks which official branch the product falls in when the candidates split, and offers the official wording as options', async () => {
+    it('derives the confidence label from the model’s six-digit confidence (0.9 and up is high, 0.5 and up is medium)', async () => {
+      const label = async (six: number) => {
+        setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['6912004400'], { six })]]));
+        return (await predictHtsCode({ productName: 'Ceramic Coffee Mug', material: 'ceramic' })).bestMatch.confidence;
+      };
+      expect(await label(0.9)).toBe('high');
+      expect(await label(0.89)).toBe('medium');
+      expect(await label(0.5)).toBe('medium');
+      expect(await label(0.49)).toBe('low');
+    });
+
+    it('passes the model’s question on as a decision point with the official wording, and re-runs under the prefix the caller chose', async () => {
       const res = await predictHtsCode({
         productName: 'Aerodynamic Bicycle Helmet',
         description: 'Protective adult cycling helmet with adjustable chin strap.',
         targetAge: 'adult',
       });
       expect(res.detectedSubheading).toBe('6506.10');
-      expect(res.bestMatch.confidence).not.toBe('high');
+      expect(res.bestMatch.confidence).toBe('medium');
       expect(res.missingInputs).toContain('classificationDetail');
       const dp = res.decisionPoints?.[0];
       expect(dp?.question).toContain('分類の確認');
-      expect(dp?.question).toContain('Safety headgear');
+      expect(dp?.question).toContain('htsPrefix');
       // 自転車用ヘルメットの枝は、"helmet" の語を含まない公式の説明（Athletic, recreational and sporting headgear）
-      expect(dp?.options.some((o) => o.text.includes('Athletic, recreational and sporting headgear'))).toBe(true);
-      expect(dp?.options.some((o) => o.text.includes('Motorcycle helmets'))).toBe(true);
-      expect(dp?.options.every((o) => o.htsCode?.startsWith('6506.10'))).toBe(true);
+      expect(dp?.options.map((o) => o.text)).toEqual(['Athletic, recreational and sporting headgear', 'Motorcycle helmets']);
+      // 選択肢のコードと税率は、手元の関税率表から引く
+      expect(dp?.options.map((o) => o.htsCode)).toEqual(['6506.10.30.45', '6506.10.30.30']);
+      expect(dp?.options.map((o) => o.htsPrefix)).toEqual(['6506103045', '6506103030']);
       expect(res.clarifyingQuestions?.some((q) => q.includes('選択肢'))).toBe(true);
       expect(res.impactExplanation).toContain('classificationDetail');
+
+      const again = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', htsPrefix: '6506.10.30.30' });
+      expect(model.calls.at(-1)?.prefix).toBe('6506103030'); // 点や空白は外して渡す
+      expect(again.bestMatch.reason).toContain('指定された頭の桁');
+      for (const bad of ['650', '65061030301', 'abcd']) {
+        await expect(predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', htsPrefix: bad })).rejects.toBeInstanceOf(TradeInputError);
+      }
+    });
+
+    it('carries the model’s question as a decision point even when it does not need asking, without calling the input incomplete', async () => {
+      setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['6506103045', '6506103030'], { six: 0.8, ask: { digits: 10, options: HELMET_OPTIONS, flag: false } })]]));
+      const res = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', material: 'plastic', targetAge: 'adult' });
+      expect(res.decisionPoints?.[0].options).toHaveLength(2);
+      expect(res.missingInputs ?? []).not.toContain('classificationDetail');
+      expect(res.clarifyingQuestions?.some((q) => q.includes('選択肢')) ?? false).toBe(false);
+      // 確度が low なら、印が無くても確かめる
+      setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['6506103045', '6506103030'], { six: 0.3, ask: { digits: 10, options: HELMET_OPTIONS, flag: false } })]]));
+      const low = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', material: 'plastic', targetAge: 'adult' });
+      expect(low.missingInputs).toContain('classificationDetail');
+    });
+
+    it('skips a model code that is not in the current tariff (the model is pinned to one revision), and stops trusting the model’s confidence', async () => {
+      setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['9999000000', '6912004400'], { six: 0.97, ask: { digits: 2, options: [{ prefix: '99', label: 'x', code: '9999000000' }, { prefix: '69', label: 'y', code: '6912004400' }] } })]]));
+      const res = await predictHtsCode({ productName: 'Ceramic Coffee Mug', material: 'ceramic' });
+      expect(res.bestMatch.htsCode).toBe('6912.00.44.00');
+      expect(res.bestMatch.confidence).toBe('low');
+      expect(res.bestMatch.score).toBe(0);
+      expect(res.bestMatch.reason).toContain('手元の関税率表に無い');
+      expect(res.candidates.map((c) => c.htsCode)).toEqual(['6912.00.44.00']);
+      expect(res.decisionPoints).toBeUndefined(); // モデルの質問は、モデルの1位を前提にしているので出さない
+
+      setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['9999000000', '9998000000'])]]));
+      const err = await predictHtsCode({ productName: 'Ceramic Coffee Mug' }).catch((e) => e);
+      expect(err.message).toContain('関税率表に1つもありません');
+      expect(err).not.toBeInstanceOf(TradeInputError); // 入力の誤りではない（REST では 500）
+    });
+
+    it('finds the 8-digit tariff line when the model writes a line that has no statistical suffix as 10 digits ending in 00', async () => {
+      // 表の抜粋に、8桁で終わる行（掛け時計）を足す
+      const extra = [
+        { htsno: '9105', indent: '0', description: 'Other clocks:', general: '', special: '', other: '' },
+        { htsno: '9105.21', indent: '1', description: 'Wall clocks: Electrically operated:', general: '', special: '', other: '' },
+        { htsno: '9105.21.80', indent: '2', description: 'Other', general: '30¢ each + 6.9%', special: '', other: '' },
+        { htsno: '9105.29', indent: '1', description: 'Wall clocks: Other:', general: '', special: '', other: '' },
+        { htsno: '9105.29.10', indent: '2', description: 'Valued not over $5 each', general: '', special: '', other: '' },
+        { htsno: '9105.29.10.10', indent: '3', description: 'Not designed to operate for over 47 hours', general: '', special: '', other: '' },
+      ];
+      const fixtureFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        const res = await fixtureFetch(input as never, init);
+        return raw === HTS_EXPORT_URL ? Response.json([...((await res.json()) as unknown[]), ...extra]) : res;
+      }) as typeof fetch;
+      try {
+        resetHtsDataForTest();
+        // 9105.29.10.00 は、表では細分のある8桁の行（葉ではない）なので、当てはめない
+        setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['9105291000', '9105218000'])]]));
+        const res = await predictHtsCode({ productName: 'Wall Clock' });
+        expect(res.bestMatch.htsCode).toBe('9105.21.80');
+        expect(res.bestMatch.generalRate).toBe('30¢ each + 6.9%');
+        expect(res.bestMatch.reason).toContain('手元の関税率表に無い');
+        expect(res.candidates.map((c) => c.htsCode)).toEqual(['9105.21.80']);
+      } finally {
+        globalThis.fetch = fixtureFetch;
+        resetHtsDataForTest();
+      }
     });
 
     it('asks only what the CPSC/FDA checks actually need, not what keywords suggest', async () => {
@@ -125,30 +238,29 @@ describe('HTS prediction and product compliance', () => {
       expect(tea.bestMatch.fda?.priorNoticeRequired).toBe(true);
     });
 
-    it('prefers the product over its parts and accessories unless the text mentions them', async () => {
-      const battery = await predictHtsCode({ productName: 'Rechargeable Power Bank', description: 'Portable lithium-ion battery pack with USB cable.', hasBattery: true });
-      expect(battery.detectedSubheading).toBe('8507.60');
-      expect(battery.bestMatch.htsCode).toBe('8507.60.00.10');
-    });
-
-    it('tells the caller to translate when there is no English word, because the tariff and the rulings are English', async () => {
-      const err = await predictHtsCode({ productName: '陶器のマグカップ', description: '食器' }).catch((e) => e);
-      expect(err).toBeInstanceOf(TradeInputError);
-      expect(err.message).toContain('英語');
+    it('reads Japanese product text (the model has a reader for it), and does not query the English ruling index for it', async () => {
+      const asked: string[] = [];
+      const fixtureFetch = globalThis.fetch;
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        if (new URL(raw).hostname === 'rulings.cbp.gov') asked.push(raw);
+        return fixtureFetch(input as never, init);
+      }) as typeof fetch;
+      try {
+        const res = await predictHtsCode({ productName: '陶器のマグカップ', description: '食器' });
+        expect(res.detectedSubheading).toBe('6912.00');
+        expect(res.evidence.model.reader).toBe('ja');
+        expect(res.bestMatch.reason).toContain('日本語');
+        expect(res.evidence.crossStatus).toBe('no_rulings');
+        expect(asked).toEqual([]);
+        expect(model.calls[0]).toMatchObject({ name: '陶器のマグカップ', description: '食器' });
+      } finally {
+        globalThis.fetch = fixtureFetch;
+      }
       await expect(predictHtsCode({ productName: '   ' })).rejects.toBeInstanceOf(TradeInputError);
-      // 日本語が主の文の英字は、ブランド名や単位の断片（以前は "mAh USB" などで無人航空機・歯車の候補を返した）
-      const fragments = await predictHtsCode({
-        productName: 'ハンディファン ExampleBrand',
-        description: '首掛け・卓上・手持ちの3WAYで使える携帯扇風機です。容量 1000mAh、USB 充電、風量は3段階。',
-      }).catch((e) => e);
-      expect(fragments).toBeInstanceOf(TradeInputError);
-      expect(fragments.message).toContain('英語');
-      // 英語が主なら、日本語が混じっても照合する
-      const mixed = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug 陶器のマグカップ', material: 'ceramic' });
-      expect(mixed.detectedSubheading).toBe('6912.00');
     });
 
-    it('still answers from the tariff text alone when the ruling database is unreachable', async () => {
+    it('still gives the same answer when the ruling database is unreachable (rulings are evidence, not part of the prediction)', async () => {
       const fixtureFetch = globalThis.fetch;
       globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
         const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -160,27 +272,41 @@ describe('HTS prediction and product compliance', () => {
         expect(res.evidence.crossStatus).toBe('unavailable');
         expect(res.evidence.crossNote).toContain('503: down'); // 拒否の理由（応答の本文）も残す
         expect(res.evidence.rulings).toEqual([]);
+        expect(res.evidence.otherRulings).toBeUndefined();
         expect(res.detectedSubheading).toBe('6912.00');
-        expect(res.bestMatch.confidence).toBe('low'); // 判例の票が無い全文検索だけの推測は low（medium でも dev の的中が半分）
-        expect(res.candidates[0].sources).toEqual(['hts-text']);
-        // 総合判定は推測のコードで先へ進まず、聞き返す（判例が無いことと、htsCode を渡せば進むことを伝える）
+        expect(res.bestMatch.confidence).toBe('high');
+        expect(res.candidates[0].sources).toEqual(['model']);
+        // 総合判定も、推測のコードで先へ進む
         const compliance = await checkProductCompliance({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic', foodContact: true });
-        expect(compliance.overallStatus).toBe('needs_more_info');
-        expect(compliance.fda).toBeUndefined();
-        expect(compliance.clarifyingQuestions?.some((q) => q.includes('CROSS') && q.includes('htsCode'))).toBe(true);
+        expect(compliance.overallStatus).not.toBe('needs_more_info');
+        expect(compliance.fda?.fdFlag).toBe('FD1');
       } finally {
         globalThis.fetch = fixtureFetch;
       }
     });
 
-    it('does not search for words the description rules out ("Not ceramic, not a mug"), which pulled tableware into the candidates', async () => {
+    it('shows the rulings that cite another subheading separately, without changing the answer', async () => {
+      // モデルは玩具と答え、判例（"ceramic coffee mug"）は 6912 を挙げている
+      setHtsModelForTest(fakeHtsModel([[/./, modelAnswer(['9503000073'])]]));
+      const res = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', material: 'ceramic' });
+      expect(res.bestMatch.htsCode).toBe('9503.00.00.73');
+      expect(res.evidence.rulings).toEqual([]);
+      expect(res.evidence.otherRulings?.length).toBeGreaterThan(0);
+      expect(res.evidence.otherRulings?.length).toBeLessThanOrEqual(3);
+      expect(res.evidence.otherRulings?.some((r) => r.tariffs.some((t) => t.startsWith('6912')))).toBe(true);
+      expect(res.evidence.otherRulings?.every((r) => r.url.startsWith('https://rulings.cbp.gov/ruling/') && !r.tariffs.some((t) => t.startsWith('950300')))).toBe(true);
+      expect(res.candidates[0].sources).toEqual(['model']);
+      expect(res.bestMatch.reason).toContain('0件が同じ6桁');
+    });
+
+    it('does not pass the words the description rules out ("Not ceramic, not a mug") to the model', async () => {
       expect(stripNegations('Round coaster. Not textile, not tin foil, not ceramic. Without battery, non-toxic paint.')).not.toMatch(/textile|foil|ceramic|battery|toxic/);
       expect(stripNegations('Round coaster of PU leather, 8.8 cm')).toBe('Round coaster of PU leather, 8.8 cm');
-      const base = { productName: 'Wooden Building Blocks for Toddlers', description: 'Educational wooden toy blocks for children aged 3+.' };
-      const withNegation = await predictHtsCode({ ...base, description: `${base.description} Not ceramic, not a mug, not a helmet.` });
-      const without = await predictHtsCode(base);
-      expect(withNegation.candidates.map((c) => c.htsCode.slice(0, 6))).toEqual(without.candidates.map((c) => c.htsCode.slice(0, 6)));
-      expect(withNegation.candidates.some((c) => c.htsCode.startsWith('6912') || c.htsCode.startsWith('6506'))).toBe(false);
+      await predictHtsCode({ productName: 'Wooden Building Blocks for Toddlers', description: 'Educational wooden toy blocks for children aged 3+. Not ceramic, not a mug, not a helmet.' });
+      expect(model.calls[0].description).toBe('Educational wooden toy blocks for children aged 3+.');
+      // 否定の語を外しても、残りの文はそのまま渡る
+      await predictHtsCode({ productName: 'Round Coaster', description: 'Round coaster of PU leather. Not textile, not tin foil. Diameter 8.8 cm, with a mug print.' });
+      expect(model.calls[1].description).toBe('Round coaster of PU leather. Diameter 8.8 cm, with a mug print.');
     });
 
     it('puts the explicit material first in the ruling queries ("plastic coaster" reaches 3924.10 rulings that "coaster" alone does not show)', async () => {
@@ -208,62 +334,19 @@ describe('HTS prediction and product compliance', () => {
       const unsure = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', description: 'Protective adult cycling helmet.' });
       expect(unsure.bestMatch.confidence).not.toBe('high');
       expect(unsure.missingInputs).toContain('material');
-      expect(unsure.clarifyingQuestions?.some((q) => q.includes('material に英語で指定'))).toBe(true);
+      expect(unsure.clarifyingQuestions?.some((q) => q.includes('material に指定'))).toBe(true);
       const given = await predictHtsCode({ productName: 'Aerodynamic Bicycle Helmet', description: 'Protective adult cycling helmet.', material: 'plastic' });
-      expect(given.clarifyingQuestions?.some((q) => q.includes('material に英語で指定'))).toBe(false);
+      expect(given.clarifyingQuestions?.some((q) => q.includes('material に指定'))).toBe(false);
       const sure = await predictHtsCode({ productName: 'Ceramic Coffee Mug', description: 'Stoneware coffee mug for kitchen use', targetAge: 'adult', foodContact: true });
       expect(sure.bestMatch.confidence).toBe('high');
-      expect(sure.clarifyingQuestions?.some((q) => q.includes('material に英語で指定')) ?? false).toBe(false);
+      expect(sure.clarifyingQuestions?.some((q) => q.includes('material に指定')) ?? false).toBe(false);
     });
 
-    it('does not report an answer for nonsense with a confident label', async () => {
+    it('labels a doubtful answer low and carries the model’s question', async () => {
       const res = await predictHtsCode({ productName: 'Quantum Widget Model X', description: 'A completely novel gadget with no established classification.' });
       expect(res.bestMatch.confidence).toBe('low');
       expect(res.evidence.crossStatus).toBe('no_rulings');
       expect(res.missingInputs).toContain('classificationDetail');
-    });
-  });
-
-  describe('age and gender line selection (10-digit choice inside the best subheading)', () => {
-    it('reads the age and gender from the description text, facts first', () => {
-      expect(detectProductAgeGender("Men's Cotton T-Shirt", 'adult')).toMatchObject({ men: true });
-      expect(detectProductAgeGender("Women's Cotton T-Shirt", 'adult')).toMatchObject({ women: true });
-      expect(detectProductAgeGender("Women's Cotton T-Shirt", 'adult').men).toBeUndefined(); // "women" contains "men"
-      expect(detectProductAgeGender('blocks for children aged 3-plus.', 'child')).toMatchObject({ children: true, ageYears: 3 });
-      expect(detectProductAgeGender('Soft blocks for babies under 3 years.', 'child')).toMatchObject({ infants: true });
-      expect(detectProductAgeGender('Wooden blocks.', 'child')).toMatchObject({ children: true });
-      expect(detectProductAgeGender('Wooden blocks.', undefined).children).toBeUndefined();
-    });
-
-    it('picks the "3 to 12 years" line for a toy described as aged 3+', async () => {
-      const res = await predictHtsCode({
-        productName: 'Wooden Building Blocks for Toddlers',
-        description: 'Educational wooden puzzle block toy for children aged 3-plus. Non-toxic paint.',
-        targetAge: 'child',
-        material: 'wood',
-      });
-      expect(res.detectedSubheading).toBe('9503.00');
-      expect(res.bestMatch.htsCode).toBe('9503.00.00.73');
-      expect(res.bestMatch.confidence).not.toBe('low');
-      expect(res.bestMatch.reason).toContain('3歳以上');
-    });
-
-    it('picks the matching gender line for apparel when the text says it', async () => {
-      // 白いTシャツ（品名に white が無いので暫定は "all white" の行だが、男女の区分は men's の枝）
-      const men = await predictHtsCode({ productName: "Men's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee, 100% cotton', targetAge: 'adult' });
-      expect(men.bestMatch.htsCode.startsWith('6109.10')).toBe(true);
-      expect(men.bestMatch.path?.join(' ')).toMatch(/Men's/);
-      expect(men.bestMatch.path?.join(' ')).not.toMatch(/Women's/);
-      const women = await predictHtsCode({ productName: "Women's Cotton T-Shirt", description: 'Short sleeve knitted crew neck tee for women, 100% cotton', targetAge: 'adult' });
-      expect(women.bestMatch.description).toMatch(/Women's/);
-    });
-
-    it('keeps the adult apparel line when targetAge is adult (the age/gender change is not part of v4.1)', async () => {
-      const input = { productName: "Men's Thermal Undershirt", description: 'cotton knit thermal undershirt', material: 'cotton' };
-      const adult = await predictHtsCode({ ...input, targetAge: 'adult' });
-      const plain = await predictHtsCode(input);
-      expect(adult.bestMatch.htsCode).toBe('6109.10.00.11');
-      expect(plain.bestMatch.htsCode).toBe('6109.10.00.11');
     });
   });
 
@@ -434,18 +517,23 @@ describe('HTS prediction and product compliance', () => {
       expect(res.clarifyingQuestions?.length).toBeGreaterThan(0);
     });
 
-    it('asks for an English description when the product text has no English word', async () => {
-      const res = await checkProductCompliance({ productName: '陶器のマグカップ', description: '食器として使う陶器のマグカップ' });
-      expect(res.overallStatus).toBe('needs_more_info');
-      expect(res.clarifyingQuestions?.[0]).toContain('英語');
-      expect(res.missingInputs).toEqual(['productDetails']);
+    it('classifies a Japanese product text without asking for a translation', async () => {
+      const res = await checkProductCompliance({ productName: '陶器のマグカップ', description: '食器として使う陶器のマグカップ', foodContact: true });
+      expect(res.overallStatus).not.toBe('needs_more_info');
+      expect(res.product.htsCode).toBe('6912.00.44.00');
+      expect(res.htsPrediction?.evidence.model.reader).toBe('ja');
+      expect(res.fda?.fdFlag).toBe('FD1');
     });
 
-    it('tells the caller to translate a Japanese product page instead of reporting "nothing found"', async () => {
-      const res = await checkProductCompliance({ productName: '【あさみみちゃん】ランダムPUレザーコースター', description: 'PUレザータイプのコースター 素材：PUレザー 直径8.8cm' });
+    it('says why when the model cannot be used, instead of proceeding with a default code', async () => {
+      setHtsModelForTest(() => {
+        throw new Error('関税分類モデルを用意できませんでした（HTTP 503）');
+      });
+      const res = await checkProductCompliance({ productName: 'PU Leather Coaster', description: 'Round coaster of PU leather, 8.8 cm' });
       expect(res.overallStatus).toBe('needs_more_info');
-      expect(res.clarifyingQuestions?.[0]).toContain('日本語');
-      expect(res.clarifyingQuestions?.[0]).toContain('英語');
+      expect(res.clarifyingQuestions?.[0]).toContain('関税分類モデルを用意できませんでした');
+      expect(res.missingInputs).toEqual(['productDetails']);
+      expect(res.htsPrediction).toBeUndefined();
     });
 
     it('asks for the product name when there is nothing to classify', async () => {

@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { clearCache } from '../cache.js';
 import { installExternalApiFixtures } from '../test_fixtures/external_apis.js';
+import { fakeHtsModel, modelAnswer } from '../test_fixtures/hts_model.js';
 import { lookupCrossRulings, resetCrossBreakerForTest } from './cbp_cross.js';
 import { type CrossIndexLine, ensureCrossIndex, resetCrossIndexForTest, searchCrossIndex } from './cross_index.js';
 import { resetHtsDataForTest } from './hts_data.js';
+import { setHtsModelForTest } from './hts_model.js';
 import { predictHtsCode } from './trade.js';
 
 // 手元の判例の索引（SORA_HTS_CROSS_SOURCE=local、既定）。索引のファイルはテストの中で作り、file:// で読ませる。
@@ -114,8 +116,9 @@ describe('local CROSS ruling index', () => {
     expect(res.query).toBe('oak widget table');
   });
 
-  it('predicts from the local index by default and shows the attribution, without listing unnumbered rulings', async () => {
+  it('shows the rulings from the local index by default, with the attribution and without listing unnumbered rulings', async () => {
     const restore = installExternalApiFixtures(); // HTS の全件データの写し（判例の照会先は API になるので、あとで local に戻す）
+    setHtsModelForTest(fakeHtsModel([[/mug/i, modelAnswer(['6912004400'])]])); // 10 桁はモデルが決め、判例は根拠に添える
     try {
       resetHtsDataForTest();
       setEnv('SORA_HTS_CROSS_SOURCE', undefined);
@@ -131,6 +134,7 @@ describe('local CROSS ruling index', () => {
     } finally {
       restore();
       resetHtsDataForTest();
+      setHtsModelForTest(undefined);
     }
   });
 });
