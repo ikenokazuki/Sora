@@ -3,7 +3,7 @@ import { CACHE_TTL_DEFAULT, CACHE_TTL_EMPTY, cacheKeyDigest, getFromCache, runWi
 import { errorMessage } from '../errors.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
-import { AudioDecodeError, decodeAudioWindows, type DecodedWindows } from './audio_decode.js';
+import { AudioDecodeError, AudioTooLongError, UNPROBED_MAX_BYTES, decodeAudioWindows, type DecodedWindows } from './audio_decode.js';
 import { toMusicItem, type MusicItem } from './music.js';
 import { DATA_URI_PREFIX, MIN_WINDOW_SECONDS, SignatureTooShortError, WINDOW_SECONDS, checkSignatureBase64, signatureUri } from './shazam_signature.js';
 
@@ -37,6 +37,11 @@ const NO_MATCH = 'Shazam で曲を特定できませんでした。別の位置�
 const NOT_AUDIO = '音声・動画として読めませんでした。動画のページ（YouTube など）ではなく、音声・動画ファイル（mp3・m4a・wav・ogg・webm・flac・mp4 など）の URL を渡してください。';
 const TOO_SHORT = '音が短すぎるか静かすぎます（3 秒以上の音が要ります）。offsetSec が音の長さを超えていないかも確かめてください。';
 const UNCERTAIN = '音の高さ・速さのずれが大きい当たりです（別の曲のことがあります）。別の位置（offsetSec）でも確かめてください。';
+/** 音の長さが上限を超える（デコードの前に断った）。上限は水準で決まる（limits.ts の audioMaxDurationSec） */
+const tooLong = (e: AudioTooLongError): string =>
+  e.durationSec === undefined
+    ? `音の長さを確かめられない大きなファイルです（長さを読めないファイルは ${UNPROBED_MAX_BYTES / 1024 / 1024} MB まで）。曲の部分だけを切り出した音を渡してください。`
+    : `音が長すぎます（${Math.round(e.limitSec / 60)} 分まで）。曲の部分だけを切り出した音を渡してください。`;
 const TOO_LARGE = `ファイルが大きすぎます（URL から読むのは ${MAX_URL_BYTES / 1024 / 1024} MB まで）。曲の部分だけを切り出した音を渡してください。`;
 
 export class SongRecognitionInputError extends Error {}
@@ -271,6 +276,7 @@ async function identify(audio: DownloadedAudio, offsetSec: number | undefined, c
   try {
     decoded = await (deps.decode ?? decodeAudioWindows)(audio.bytes, (d) => pickWindows(d, offsetSec), tenantId);
   } catch (e) {
+    if (e instanceof AudioTooLongError) return { result: refusal('too-large', tooLong(e)), ttlMs: CACHE_TTL_EMPTY };
     if (e instanceof AudioDecodeError) return { result: refusal('not-audio', NOT_AUDIO), ttlMs: CACHE_TTL_EMPTY };
     throw e;
   }

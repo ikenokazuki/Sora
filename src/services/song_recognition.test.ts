@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
 import { toneBursts } from '../test_fixtures/audio.js';
-import { AudioDecodeError } from './audio_decode.js';
+import { AudioDecodeError, AudioTooLongError } from './audio_decode.js';
 import { DATA_URI_PREFIX, signatureUri } from './shazam_signature.js';
 import { MAX_URL_BYTES, SongRecognitionInputError, downloadAudio, parseShazamResponse, pickWindows, recognizeSignature, recognizeSong } from './song_recognition.js';
 
@@ -151,6 +151,20 @@ describe('recognizeSong', () => {
     expect(await recognizeSong({ audio: audio(8) }, { fetchFn: fn, decode: decodeOk(2) })).toMatchObject({ found: false, reason: 'too-short' });
     const html = { bytes: new Uint8Array([60]), contentType: 'text/html; charset=utf-8' };
     expect(await recognizeSong({ audio: html }, { fetchFn: fn, decode: decodeOk() })).toMatchObject({ found: false, reason: 'not-audio' });
+  });
+
+  test('音が長すぎる（長さの上限を超える）ときは、too-large で、長さの上限を分で示す。長さを確かめられない大きなファイルも too-large（上限の分は同じ文）', async () => {
+    const { fn } = fakeFetch({});
+    const tooLong = async () => { throw new AudioTooLongError(5400, 900); };
+    const out = await recognizeSong({ audio: audio(60) }, { fetchFn: fn, decode: tooLong });
+    expect(out).toMatchObject({ found: false, reason: 'too-large', itunes: null });
+    expect(out.message).toContain('15 分');
+    const unknown = async () => { throw new AudioTooLongError(undefined, 3600); };
+    const out2 = await recognizeSong({ audio: audio(61) }, { fetchFn: fn, decode: unknown });
+    expect(out2).toMatchObject({ found: false, reason: 'too-large' });
+    expect(out2.message).toContain('確かめられない');
+    expect(out2.message).toContain('4 MB');
+    expect(out2.message).not.toContain('分まで');
   });
 
   test('a silent window is skipped, and only silence is too short', async () => {

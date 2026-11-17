@@ -1918,7 +1918,7 @@ export const ShazamTrackSchema = z.object({
 
 export const SongRecognitionResultSchema = z.object({
   found: z.boolean().describe('曲を特定できたか'),
-  reason: z.enum(['no-match', 'not-audio', 'too-short', 'too-large', 'download-failed']).optional().describe('found が false の理由: "no-match"(Shazam が特定できない), "not-audio"(音声・動画として読めない。ページの URL など), "too-short"(3 秒未満・無音), "too-large"(URL のファイルが 20 MB 超), "download-failed"(URL を読めない)'),
+  reason: z.enum(['no-match', 'not-audio', 'too-short', 'too-large', 'download-failed']).optional().describe('found が false の理由: "no-match"(Shazam が特定できない), "not-audio"(音声・動画として読めない。ページの URL など), "too-short"(3 秒未満・無音), "too-large"(URL のファイルが 20 MB 超、または音が長すぎる〔上限は SORA_ISOLATION の水準で決まる。strict 15 分・standard 1 時間〕、または長さを読めない 4 MB 超のファイル), "download-failed"(URL を読めない)'),
   message: z.string().optional().describe('found が false のとき、または当たりが確かでない（match.uncertain）ときの説明と次の手'),
   itunes: MusicItemSchema.nullable().describe('iTunes の曲（search_music の items と同じ形。id は trackId）。iTunes で見つからなければ null'),
   itunesMatch: z.enum(['apple-id', 'title-artist']).nullable().describe('iTunes の曲の見つけ方: "apple-id"(Shazam の Apple の曲 ID), "title-artist"(曲名とアーティストの一致)。見つからなければ null'),

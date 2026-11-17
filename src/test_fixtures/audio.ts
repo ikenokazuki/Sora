@@ -32,3 +32,16 @@ export function wavBytes(seconds: number, hz = 440, rate = 44100): Uint8Array {
   }
   return out;
 }
+
+/** 8 bit・モノラルの WAV（無音）。長い音を、小さなバイト数で作る（rate × 秒 バイト）。 */
+export function wavMono8(seconds: number, rate = 8000): Uint8Array {
+  const frames = Math.round(seconds * rate);
+  const out = new Uint8Array(44 + frames).fill(128);
+  const v = new DataView(out.buffer);
+  const ascii = (at: number, text: string) => { for (let i = 0; i < text.length; i++) out[at + i] = text.charCodeAt(i); };
+  ascii(0, 'RIFF'); v.setUint32(4, 36 + frames, true); ascii(8, 'WAVE'); ascii(12, 'fmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+  v.setUint32(28, rate, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+  ascii(36, 'data'); v.setUint32(40, frames, true);
+  return out;
+}

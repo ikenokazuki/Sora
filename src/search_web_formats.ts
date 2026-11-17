@@ -5,6 +5,7 @@ import {
   type SearchWebRequest,
 } from './types.js';
 import { searchCacheTtl } from './cache.js';
+import { ResourceBusyError } from './errors.js';
 import { normalizeDomainList, searchYahooWeb } from './services/yahoo.js';
 import { scrapeUrl } from './scraper.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
@@ -20,10 +21,16 @@ export function buildSearchWebCacheKey(o: SearchWebRequest): string {
   const limit=o.limit ?? (o.formats&&o.formats.length>0?5:'provider');
   return ['search:web:v3',o.query,(normalizeDomainList(o.includeDomains)||[]).join(','),(normalizeDomainList(o.excludeDomains)||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
 }
-/** 検索元が制限中（throttled）か、古い結果を返した（stale）応答。取り直せるように、キャッシュしない。 */
+/**
+ * 結果のページの読み取りが、順番・予算で断られた（ResourceBusyError）応答。断った利用者の欠けた結果（scrapeError つき）を、共有のキャッシュに入れると、
+ * 余裕のある別の利用者にも返るので、残さない（設計 6。穴 26。5f の教訓）。応答の型は変えないので、応答のオブジェクトで覚える
+ */
+const busyDegraded = new WeakSet<object>();
+
+/** 検索元が制限中（throttled）か、古い結果を返した（stale）か、結果のページの読み取りが断られた応答。取り直せるように、キャッシュしない。 */
 export function isTransientWebSearch(result: unknown): boolean {
   const r = result as { throttled?: unknown; stale?: unknown } | null | undefined;
-  return r?.throttled === true || r?.stale === true;
+  return r?.throttled === true || r?.stale === true || (typeof result === 'object' && result !== null && busyDegraded.has(result));
 }
 
 /** REST の POST /search/web。キャッシュを読み、検索し、取り直す必要のない応答だけを書く（制限中の空の結果を 30 分残さない）。 */
@@ -51,12 +58,15 @@ export async function searchWebWithFormats(o: SearchWebRequest,tenantId: string,
   const items=Array.isArray(base?.items)?base.items:[];
   const limit=Math.min(Math.max(o.limit ?? (has?5:items.length||1),1),20); const selected=items.slice(0,limit);
   if(!has) return formatCompactWebSearchResponse({...base,items:selected,count:selected.length},compactOpt);
+  let busyHit=false;
   const enriched=await Promise.all(selected.map(async (item:any)=>{
     const url=item?.url||item?.link; if(!url) return item; const snippet=item?.snippet||item?.description||'';
     try {
       const scrape=await deps.scrapeUrl({url,tenantId,contextTitle:item?.title,snippet,maxChars:o.maxChars,timeoutMs:12_000,query:o.query,extractHighlights:false,onlyMainContent:o.onlyMainContent,formats,noCache:o.noCache});
       return {...item,...projectRequestedScrapeFormats(scrape,formats,{minMarkdownChars:50,markdownFallback:snippet?`# ${item?.title||'Web Search Result'}\n\nURL: ${url}\n\n${snippet}`:undefined})};
-    } catch(e:any) { return {...item,scrapeError:e?.message||String(e)}; }
+    } catch(e:any) { if(e instanceof ResourceBusyError) busyHit=true; return {...item,scrapeError:e?.message||String(e)}; }
   }));
-  return formatCompactWebSearchResponse({...base,items:enriched,count:enriched.length},compactOpt);
+  const response=formatCompactWebSearchResponse({...base,items:enriched,count:enriched.length},compactOpt);
+  if(busyHit&&typeof response==='object'&&response!==null) busyDegraded.add(response);
+  return response;
 }

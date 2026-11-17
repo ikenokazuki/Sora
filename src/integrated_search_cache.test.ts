@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, spyOn, test } from 'bun:test';
 import * as yahoo from './services/yahoo.js';
 import * as scraper from './scraper.js';
 import { integratedSearch } from './scraper.js';
+import { ResourceBusyError } from './errors.js';
 
 // search_deep（integratedSearch）のキャッシュ。以前はキーに maxChars が無く、maxChars: 300 で呼んだ直後に
 // maxChars: 30000 で呼んでも、300 文字の結果が `cached: true` で返っていた（逆なら、節約のために小さくした値が無視される）。
@@ -125,4 +126,28 @@ test('noCache: true は本文の取得（scrapeUrl）にも届く（上位・補
     video.mockRestore();
     scrape.mockRestore();
   }
+});
+
+test('結果のページの読み取りが、順番・予算で断られた応答は、キャッシュに入れない（断られた利用者の欠けた結果が、別の利用者に返らない。設計 6。穴 26）', async () => {
+  stubWebSearch('busy-not-cached');
+  const query = 'integrated cache busy not cached';
+  const scrapeSpy = spyOn(scraper, 'scrapeUrl').mockRejectedValue(new ResourceBusyError('PDF の解析の順番を待つ要求が、この利用者の上限（8 件）に達しています', 'tenant_queue_full', 5, 'pdf'));
+  const first = await search(query, { tenantId: 'name:A' });
+  scrapeSpy.mockRestore();
+  expect(JSON.stringify(first.results[0])).toContain('PDF の解析の順番');
+  const second = await search(query, { tenantId: 'name:B' });
+  expect(second.cached).toBeFalsy();
+  expect(second.results[0].scrapeError).toBeUndefined();
+  expect(second.results[0].markdown).toContain('Widget specification');
+});
+
+test('verbose（診断つきの応答）も、断られた応答は、キャッシュに入れない', async () => {
+  stubWebSearch('busy-not-cached-verbose');
+  const query = 'integrated cache busy not cached verbose';
+  const scrapeSpy = spyOn(scraper, 'scrapeUrl').mockRejectedValue(new ResourceBusyError('PDF の解析の順番を待つ要求が、この利用者の上限（20 件）に達しています', 'tenant_queue_full', 5, 'pdf'));
+  await search(query, { tenantId: 'name:A', verbose: true });
+  scrapeSpy.mockRestore();
+  const second = await search(query, { tenantId: 'name:B', verbose: true });
+  expect(second.cached).toBeFalsy();
+  expect(second.results[0].scrapeError).toBeUndefined();
 });
