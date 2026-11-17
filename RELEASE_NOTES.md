@@ -32,6 +32,24 @@
 - **名前の変わらない `SORA_ALLOW_ANONYMOUS` も、読み方が変わりました。** v4 は `true` だけを真と読みましたが、v5 は `1`・`yes`・`on`・`TRUE` も真です。キーを設定していて `SORA_ALLOW_ANONYMOUS` に `true` 以外の真の綴り（v4 では無効だったもの）を書いていた場合、v5 ではキー無しの要求も、誤ったキーの要求も、匿名として通ります（警告は出ません）。`false` にするか、消してください。
 - **空白だけの `SORA_API_KEY` は、未設定として扱います。** v4 では、空白だけの値も認証の鍵として扱われ（実質すべての要求が `401`）、v5 では認証が無効（Fail-Open）で起動し、警告だけを出します。キーを使うなら、値を確かめてください。
 
+## HTS の推測を関税分類モデルに入れ替え（#128）
+
+- **HTS の推測（`lookup_hts` の `htsCode` なし・`POST /trade/hts-predict`・`check_product_compliance` の中の推測）の10桁を、関税分類モデル [zeiban](https://github.com/ikenokazuki/zeiban)（Apache-2.0）が決めるようになりました。** これまでは、関税率表の全文検索と、CBP の分類判例の票を合わせていました。説明文・階層での位置・税率は、これまでどおり USITC の最新の表から引きます。
+- **日本語の品名・説明を受け付けます。** これまでは「英語にして再実行」の入力の誤り（REST は 400）でした。日本語の文は、モデルの日本語用の層で読みます（応答の `evidence.model.reader` が `ja`）。
+- **判例は、根拠として添えるだけになりました。** 最有力の6桁を挙げた判例を `evidence.rulings` に、別の6桁を挙げた判例を新しい欄 `evidence.otherRulings` に出します。判例で答えは変えません。判例の索引に、その品そのものの判例があるときは、判例の側が当たっていることが多いので、`otherRulings` も確かめてください。
+- **新しい引数 `htsPrefix`**（`lookup_hts`・`POST /trade/hts-predict`）: `decisionPoints` の選択肢に `htsPrefix` が付きます。選んだ選択肢の値を渡して再実行すると、その区分の下の行だけから選び直します（これまでは、区分の語を `description` に足して再実行する形でした）。
+- **応答の型は同じで、中身の意味が変わる欄があります。**
+  - `bestMatch.confidence` は、モデルの「6桁までが正しい確率」から決めます（0.9 以上 `high`、0.5 以上 `medium`）。`bestMatch.score` は「この10桁が正しい確率」×100 です。
+  - `candidates` は、モデルの上位の10桁の行（最大 5 件）です（これまでは、6桁ごとの代表の行）。`sources` は `model` と `cbp-ruling` です（`hts-text` は無くなりました）。
+  - `decisionPoints` は、モデルの候補が最初に分かれる段の質問です。`missingInputs` の `classificationDetail` と `clarifyingQuestions` に入るのは、モデルが「聞いたほうがよい」と判断したときと、`confidence` が `low` のときだけです。
+  - 新しい欄 `evidence.model`（モデルの名前・版・モデルの関税率表の版）。
+  - `targetAge`・`foodContact`・`hasBattery` は、推測には使わず、CPSC・FDA の判定にだけ使います。
+- **精度**: 評価セット（`eval/hts_predict_cases.json`）の1位の6桁は、dev 52 件で 41 → 48 件、test 51 件で 36 → 44 件です。短い通販の商品名（モデルの側のテスト用 422 品）では、6桁 14.0% → 38.4%、10桁 7.1% → 24.9% です。**1位の10桁は、そのまま申告に使える精度ではありません。** 数と限界は `docs/engines/hts-prediction.md` にあります。
+- **運用者へ**: モデルは Sora に同梱していません。HTS の推測が初めて呼ばれたときに、zeiban のリリース（v0.2.1）から 3 つのファイル（`zeiban.wasm`・`zeiban.json`・`zeiban.bin`、約 62MB）を取得し、Sora のコードに固定した SHA-256 を確かめて、`SORA_HTS_DIR` の `zeiban/` に保存します。推測を使わなければ、取得もメモリの増えもありません。
+  - モデルは WebAssembly として、同じプロセスの中で動きます（子プロセスなし。外からの取り込みの無いモジュール）。読み込むとメモリが約 80MB 増え、1 件の計算は約 25 ミリ秒（同期）です。
+  - 外に出られない環境では、3 つのファイルを置いた場所を、新しい設定 `SORA_HTS_MODEL_URL`（`https://` か `file://`）で指定します。SHA-256 は固定なので、別の版のファイルは読めません。
+  - 取得か読み込みに失敗すると、推測は理由つきのエラーになり、1 時間は取り直しません（`check_product_compliance` は、`htsCode` を省いたときに `needs_more_info` を返します）。
+
 ## ツールの統合
 
 - **初期公開の 13 ツールだけで、今まで遅延読み込みだった 3 つの機能も使えます。** `scrape` の `urls`（旧 `scrape_batch`）、`fetch_social_post` の X の投稿（旧 `fetch_x_post`）、`search_laws` の `lawId` による条文の全文（旧 `get_law_text`）です。`search_tools` で有効にする手間が要りません。

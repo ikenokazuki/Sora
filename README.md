@@ -580,9 +580,9 @@ iTunes 公式 Search API と連携した楽曲・アルバム・アーティス�
 
 | ツール名 | 説明 | 識別プロパティ | 主要引数 |
 |---|---|---|---|
-| `lookup_hts` | 米国の HTS/HS コードを、入力で照合と推測に分けて引きます（応答の `mode` が `verify` か `predict`）。**照合**（`htsCode` を指定）: LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 **推測**（`htsCode` を省く）: 商品の英語の一般名・説明から、USITC 公式 HTS 全件（約 2 万の申告用の行）の階層つき全文検索と、CBP の分類判例（CROSS）を6桁の単位で統合し、米国通関申告に必須となる10桁HTSコード・一般関税率（その行に率が無ければ祖先から継承）・関連PGA規制（CPSC/FDA）を推測します。候補が公式の階層で分かれるときは、公式の説明文を選択肢にした確認質問（`decisionPoints`）を返します。**入力は英語**（日本語の商品は英訳して渡す。英語が主でないと 400）。 | `mode`、照合は `source: "usitc-hts"`、推測は `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `htsCode` (string, 任意): 照合したいHTSコード (例: "9503.00.0073")。ユーザーが示したコードだけを入れる（推測したいときは省く）。指定すると照合、省くと推測<br>- `description` (string, 照合では必須): 照合では商品の説明（素材・用途・機能・加工度合い等）で、判定には使わず、根拠の記録として応答の `productDescription` に返す。推測では詳細説明・用途（英語）<br>- `productName` (string, 推測では必須): 商品の一般名（英語、宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測の検索語には入るが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。`true` のときだけ推測の検索語に battery を足す。`false` では何もしない<br>`productName` から `hasBattery` までは推測（`htsCode` を省いたとき）だけの引数で、`htsCode` と一緒に指定すると入力の誤り |
+| `lookup_hts` | 米国の HTS/HS コードを、入力で照合と推測に分けて引きます（応答の `mode` が `verify` か `predict`）。**照合**（`htsCode` を指定）: LLM・利用者が推論したHTSコード候補を米国USITC公式データ（HTS 全件のローカルコピー）と照合し実在確認・正式品目名・公式の階層での位置・一般関税率（その行に率が無ければ祖先から継承）を取得します。2026 HTS Revision 18（大統領布告 PP 11059/11055）や通商法301条に基づくChapter 99特別追加関税の適用リスク・通関士確認手順もガイダンスします。 **推測**（`htsCode` を省く）: 商品の一般名・説明（英語でも日本語でもよい）から、関税分類モデル [zeiban](https://github.com/ikenokazuki/zeiban) が米国通関申告に必須となる10桁HTSコードの候補を出し、USITC 公式 HTS 全件の説明文・一般関税率（その行に率が無ければ祖先から継承）、関連PGA規制（CPSC/FDA）、根拠の CBP 分類判例（CROSS）を添えます。候補が公式の階層で分かれる所を、公式の説明文を選択肢にした質問（`decisionPoints`）で返し、選んだ選択肢の `htsPrefix` を付けて再実行すると、その下から選び直します。1位の10桁は、そのまま申告に使える精度ではありません（3.21）。 | `mode`、照合は `source: "usitc-hts"`、推測は `bestMatch`, `detectedSubheading`, `decisionPoints`, `evidence` | - `htsCode` (string, 任意): 照合したいHTSコード (例: "9503.00.0073")。ユーザーが示したコードだけを入れる（推測したいときは省く）。指定すると照合、省くと推測<br>- `description` (string, 照合では必須): 照合では商品の説明（素材・用途・機能・加工度合い等）で、判定には使わず、根拠の記録として応答の `productDescription` に返す。推測では詳細説明・用途（英語でも日本語でもよい）<br>- `productName` (string, 推測では必須): 商品の一般名（英語でも日本語でもよい。宣伝文句やブランド名は除く。例: "Stainless Steel Water Bottle"）<br>- `material` (string, 任意): 主素材 (例: cotton, wood, ceramic)<br>- `productCategory` (string, 任意): カテゴリ (例: toy, tableware, cosmetics, food)。推測のモデルには渡すが、CPSC の判定は読まない<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵/同梱の有無。HTS の推測には使わない<br>- `htsPrefix` (string, 任意): もう分かっている頭の桁（2・4・6・8・10 桁の数字）。前の応答の `decisionPoints` の選択肢の `htsPrefix` を渡すと、その区分の下から選び直す<br>`productName` から `htsPrefix` までは推測（`htsCode` を省いたとき）だけの引数で、`htsCode` と一緒に指定すると入力の誤り |
 | `check_regulations` | HTSコードと製品情報から、米国の規制を判定します。`agencies`（既定は両方）で選んだ機関ごとに、節（`cpsc`・`fda`）を返します。**cpsc**: HTSコードと製品情報から、米国CPSC（消費者製品安全委員会）管轄品目の適合証明書（GCC/CCC）発行要否・CBP ACEへの電子申告（eFiling: 2026年7月8日より完全義務化、De Minimis免責除外なし）義務有無を判定します。非規制対象品に対しては通関保留エラー防止のためのACE免責申告コード（`disclaimerCodeHint`: A（規則の対象外と確かめた品）、B（16 CFR 1610.1(d) の免除の大人の衣料。Intended Use Code 130.006））を案内します。 **fda**: HTSコードおよび商品情報から、米国CBP/FDA実務で機械的に用いられるPGAフラグ（FD1: 用途により該当/食品接触物質, FD2: 食品以外必須/化粧品MoCRA・医薬品・医療機器, FD3: 用途により食品, FD4: 食品必須/事前通知Prior Notice PNC確認番号必須）を判定し、必要な通関アクションとACE免責（Disclaimer）を案内します。 | `agencies`、`cpsc` は `source: "cpsc-hts-list"`、`fda` は `fdFlag`, `priorNoticeRequired` | - `htsCode` (string, 必須): HTSコード (例: "9503.00.0073", "0902.10.10.15")<br>- `agencies` (string[], 任意, 既定 `["cpsc","fda"]`): 判定する機関（`cpsc`・`fda`）。応答は、選んだ機関ごとの節（`cpsc`・`fda`）<br>- `targetAge` (string, `cpsc` では必須): `"adult"` \| `"child"` \| `"unknown"`。12歳以下は GCC でなく CPC<br>- `material` (string, 任意): 主な素材。衣料では繊維の組成（`"100% polyester"` の形）で 16 CFR 1610.1(d)(2) の免除を決める。ほかでは確認の質問を出すか消すかだけ<br>- `hasBattery` (boolean, 任意): 電池を使う製品か。true で `batteryType` が `button_coin` なら 16 CFR 1263 を当てる<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"`。`button_coin` は `hasBattery` を省いても電池ありとして扱う（`false` とは矛盾で 400）。other はリチウムイオン電池・空気亜鉛電池（16 CFR 1263.1(d) で対象外）など<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `foodContact` (boolean, 任意, `fda` だけ): 食品・飲料接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>`targetAge` から `fabricWeightOzPerSqYd` までは `cpsc` だけの引数。選ばなかった機関だけの引数を指定すると入力の誤り |
-| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材。衣料は `"100% polyester"` の形（16 CFR 1610.1(d)(2)）<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足す。`batteryType` が `"button_coin"` なら、CPSC の判定に 16 CFR 1263 を当て、注意書きを 1 行足す。`false` では何もしない（`batteryType` が `"button_coin"` だと矛盾で 400）<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"` |
+| `check_product_compliance` | 商品ページのURL、または商品名・説明・素材・カテゴリ（英語でも日本語でもよい）から、HTS推測エンジンと連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。HTSコードの確度が低い、または英語の情報が無いときは、既定のコードで進めず `needs_more_info` と確認質問を返します。 | `overallStatus`, `actionPlan`, `htsPrediction` | - `url` (string, 任意): 商品ページURL (指定時は自動スクレイプ)<br>- `productName` (string, 任意): 商品の一般名（英語）<br>- `description` (string, 任意): 商品説明・素材・用途（英語）<br>- `htsCode` (string, 任意): ユーザー指定の既知HTSコード（【LLM推測値の入力厳禁】省略時にSoraが自動推測）<br>- `targetAge` (string, 任意): `"adult"` \| `"child"` \| `"unknown"`<br>- `material` (string, 任意): 主素材。衣料は `"100% polyester"` の形（16 CFR 1610.1(d)(2)）<br>- `fabricSurface` (string, 任意): `"plain"` \| `"raised"`。衣料の生地の表面（plain: 平ら, raised: 起毛・フリース・パイル）。16 CFR 1610.1(d)(1) の判定に使う<br>- `fabricWeightOzPerSqYd` (number, 任意): 衣料の生地の重さ（oz/sq yd。g/m² なら 33.906 で割る）。平らな生地で 2.6 以上なら 16 CFR 1610.1(d)(1) の免除<br>- `productCategory` (string, 任意): 製品カテゴリ。推測の検索語には入るが、CPSC の判定は読まない<br>- `foodContact` (boolean, 任意): 飲食接触用途か。効くのは、HTSの4桁がFCSの表の品目（3924・4419・6911・6912・7013・7323）のときだけ<br>- `hasBattery` (boolean, 任意): 電池内蔵の有無。`true` のときだけ推測の検索語に battery を足す。`batteryType` が `"button_coin"` なら、CPSC の判定に 16 CFR 1263 を当て、注意書きを 1 行足す。`false` では何もしない（`batteryType` が `"button_coin"` だと矛盾で 400）<br>- `batteryType` (string, 任意): `"button_coin"` \| `"other"` |
 | `generate_gcc_certificate` | 米国CPSCの一般適合証明書（GCC。`16 CFR 1110.11` の要素）と、通関の保留に出す一式（表紙・品ごとの GCC・免除の説明）を、呼び出し側の記録から作ります（JSON の要約と印刷用 HTML）。HTS は推測せず、判例も HTS の全件も読みません。外に出るのは、`url` を付けた品の商品ページを、番号の候補（`suggestions`）のために静的な取得で読むときだけです（候補は証明書に載せません）。足りない記録は既定でエラー（`MISSING_REQUIRED_GCC_FIELDS`。下書きは `allowDraft: true`）、見本・仮置きの値は `UNVERIFIED_PLACEHOLDER_INPUT`、12 歳以下は `cpc_required_instead`。 | `packageId`, `overallStatus`, `counts`, `items`, `packageHtml` | - `items` (array, 必須, 1〜50 件): 1 件 1 製品。`htsCode`（10 桁）・`productName`（英語）は必須。ほかは `identifier`・`identifierType`、`brand`・`description`、`targetAge`、`material`・`fabricSurface`・`fabricWeightOzPerSqYd`（衣料）、`hasBattery`・`batteryType`、`foodContact`、`citations`（試験報告書の規則。`[]` は「当てはまる規則が無いと確かめた」）、`manufacture`・`testing`、`url`（番号の候補を読む。5 件まで。証明書には載せない）<br>- `certifier` / `recordCustodian` (任意): `{ name, street, city, state, country, email, phone }`。省くと環境変数 `SORA_GCC_CERTIFIER` / `SORA_GCC_CUSTODIAN`（JSON）<br>- `orderNumber` / `awbNumber` / `carrier` / `invoiceNumber` (任意): 表紙に載せる注文・運送状の番号<br>- `allowDraft` (boolean, 任意, デフォルト: false): 足りない項目があっても下書きを返す |
 
 ---
@@ -1787,155 +1787,153 @@ LLM・利用者が推論したHTSコード候補を、米国USITC公式データ
   ```
 
 ### 3.21 商品情報からのHTS/HSコード推測 (`POST /trade/hts-predict`)
-商品の**英語の一般名・説明**から、米国通関申告に必須となる10桁HTSコード・一般関税率・関連PGA規制（CPSC/FDA）を推測します。品目ごとの規則表や辞書は持たず、次の二つの公式データを**6桁の単位**で統合します。
+商品の**一般名・説明**（英語でも日本語でもよい）から、米国通関申告に必須となる10桁HTSコード・一般関税率・関連PGA規制（CPSC/FDA）を推測します。品目ごとの規則表や辞書は持ちません。使うのは次の 3 つです。
 
-1. **USITC 公式 HTS 全件の階層つき全文検索**: 初回の呼び出しで HTS 全件（約 12MB）を取得し、SQLite に保存します（`SORA_HTS_DIR`。約 21MB）。「Other:」「Available in specified sets:」のような説明だけの中間行も含む完全な木として持ち、各行に祖先の説明（`path`）と、継承した関税率（`rateFrom`）を付けます。申告に使う約 2 万の行を FTS5（BM25）で引きます。
-2. **CBP の分類判例（CROSS）**: 「wallet → 4202.31」「wristwatch → 9102」のように、普段の言葉と法令の用語をつなぎます。CBP の判例検索の API は 2026 年 11 月からプログラムの要求を断るため（ボット対策。Sora は避けません）、公開データから作った手元の判例の索引（約 10.4 万行、gzip で約 8MB）を、このツールが初めて呼ばれたときに Sora の GitHub のリリースから取得して引きます（作り方と出典は [docs/engines/hts-prediction.md](docs/engines/hts-prediction.md)）。検索は AND 条件なので、品名を絞りながら（全ての語 → 前置詞より前の名詞句 → 後ろの4・3・2・1語）具体的なものから順に試し、10件になるまで集めます（"leather coaster" の 2件のような少数でも的確な判例を先頭に残し、足りない分を "coaster" のような一般的な語で補います）。商品の説明にある否定（"not ceramic" など）は、検索語として扱いません。`material` を指定すると、素材つきの照会（"plastic coaster"）を最も具体的なものとして先頭で試します。同じ品名でも素材で章が分かれるためです（plastic coaster は 3924.10、textile coaster は 6304.93、ceramic coaster は 6912）。確度が `high` でなく素材が未指定のときは、`material` の指定を促す質問を返します。判例が挙げたコードは現行の木で照合し、改訂で番号が変わったもの（9503.30 → 9503.00 など）は現行の6桁へ振り分けます。
+1. **関税分類モデル zeiban**（10桁を決める）: [zeiban](https://github.com/ikenokazuki/zeiban)（税番。Apache-2.0。[Hugging Face](https://huggingface.co/ikeno-ada/zeiban) にも同じものがあります）は、商品の文から米国 HTS の10桁を出す小さなモデルです。文を読む 3 層のエンコーダ、関税率表の約 3.8 万の節のベクトル、語の一致の索引を 1 つにまとめたもので、CPU だけで動き、実行時に LLM も外部の API も使いません。日本語の文は、日本語用の層で読みます。Sora は、これを WebAssembly として同じプロセスの中で動かします（子プロセスなし。外からの取り込みの無いモジュールなので、ファイルにもネットワークにも触れません）。このツールが初めて呼ばれたときに、zeiban のリリースから 3 つのファイル（約 62MB）を取得し、Sora のコードに固定した SHA-256 を確かめて、`SORA_HTS_DIR` の `zeiban/` に保存します。
+2. **USITC 公式 HTS 全件**（説明文・階層・税率を引く）: 初回の呼び出しで HTS 全件（約 12MB）を取得し、SQLite に保存します（`SORA_HTS_DIR`。約 21MB）。「Other:」「Available in specified sets:」のような説明だけの中間行も含む完全な木として持ち、各行に祖先の説明（`path`）と、継承した関税率（`rateFrom`）を付けます。モデルは関税率表の 1 つの版で作ってあるので、モデルが出したコードを、この最新の表の行に直して返します。
+3. **CBP の分類判例（CROSS）**（根拠として添える）: CBP の判例検索の API は 2026 年 11 月からプログラムの要求を断るため（ボット対策。Sora は避けません）、公開データから作った手元の判例の索引（約 10.4 万行、gzip で約 8MB）を、このツールが初めて呼ばれたときに Sora の GitHub のリリースから取得して引きます。最有力の6桁を挙げた判例を `evidence.rulings` に、別の6桁を挙げた判例を `evidence.otherRulings` に出します。判例で答えは変えません。
 
-二つの手がかりが同じ6桁を指し、判例の票が集まっているほど `confidence` が高くなります。6桁の中の行（10桁）は、判例が挙げた行、次に全文検索の順で選びます。本体ではなく部品・付属品の行（見出しが "Parts" で始まる）は、商品の語に部品・付属品を示す語が無いとき減点します。判例が使えないとき（索引の準備中・取得の失敗・該当なし）は、HTS の全文検索だけで答え、`evidence.crossStatus` に理由を残します。判例を使ったときは、`evidence.attribution` に出典を表示します。
+`confidence` は、モデルの「6桁までが正しい確率」から決めます（0.9 以上が `high`、0.5 以上が `medium`、それ未満が `low`）。モデルが出したコードが最新の表に無いとき（関税率表の改訂で行が変わったとき）は、次の候補に落として `low` にします。しくみ・測り方・出典は [docs/engines/hts-prediction.md](docs/engines/hts-prediction.md) にあります。
 
-> **精度（実測）**: 代表的な輸出品150件（`eval/hts_predict_cases.json`。dev 52・test 51・保留 47）で、1位の6桁（HS6）の一致は **72.0%**、候補（上位5つの6桁）の中に正解がある割合は **86.7%** でした（手元の判例の索引、2026-11-14。作り直す前の索引の 2026-11-10 も 72.0%・86.7%、CBP の API を使った 2026-10-15 も 72.0%・89.3%）。保留セットでは 66.0%（候補内 83.0%）です。`confidence` は実績とよく合います: `high` の的中 100%（31/31）、`medium` 83%（59/71）、`low` 38%（18/48）。HTS の全文検索だけ（判例なし）では 37.3% で、確度はいつも `low` です（`/trade/compliance` は先へ進まず聞き返します）。変更前の実装は 18.0%（保留セットでは 6.4%）でした。評価の方法と外れた事例は [docs/evaluations/hts-predict/results.md](docs/evaluations/hts-predict/results.md) にあります。評価は6桁までで、10桁の選択は測っていません。
-
-> **入力は英語**: HTS も判例も英語なので、`productName` と `description` は商品の一般名の英語（宣伝文句・ブランド名は除く）で渡します。日本語の商品は呼び出し側で英訳してください（MCP では LLM が行います）。英語の語が無い入力と、日本語の字が英字より多い入力（日本語の商品ページの英字はブランド名や単位の断片です）は `400 INVALID_INPUT` です（`/trade/compliance` では `needs_more_info` で英訳を促します）。長い出品タイトルは判例に当たらないことがあり、その場合は全文検索だけで答えます。
-
-> **分岐点の質問**: `confidence` が `high` でないとき、候補が公式の階層のどこで分かれるかを調べ、**公式の説明文を選択肢にした質問**（`decisionPoints`）を返します。選択肢には、商品の語を含まない行も載ります（自転車用ヘルメットは "Athletic, recreational and sporting headgear" で、"helmet" の語を含みません）。ユーザーの答えとなる区分の語を `description` に加えて再実行すると、絞り込めます。
-
-> **多層防御・先回り推測の防止**: LLMが素材や対象年齢を一般論ででっち上げてツールを呼び出さないよう、スキーマとプロンプトで「不明な任意項目は省略すること」を徹底しています。CPSC/FDA の判定が実際に必要とした情報だけを `missingInputs`（未指定項目）、`clarifyingQuestions`（LLMがユーザーへ確認すべき質問文）、`impactExplanation`（情報不足による関税率や規制の分岐説明）として返し、キーワードによる推測や質問はしません。
-
-> **REST で使うとき**: 1位の6桁の一致は約7割（保留セットで 68.1%）です。公開データだけで正確に分類できる品目には限りがあり、調整を重ねても上がりませんでした（判例の本文との照合、主たる分類コードへの重み付け、品名の語を優先する採点を試して、1位の一致率は変わりませんでした）。次のように使い分けてください。
+> **精度（実測）**: 代表的な輸出品の評価セット（`eval/hts_predict_cases.json`）で、1位の6桁（HS6）の一致は dev 52 件で **92.3%**、test 51 件で **86.3%** でした（2026-11-17。前の方法 = 全文検索と判例の票の統合は、同じ品で 78.8%・70.6%）。候補（上位 5 件）の中に正解の6桁がある割合は 96% です。`confidence` の実績（dev と test の 103 件）は、`high` 36/38、`medium` 55/60、`low` 1/5 です。
 >
-> - `confidence` が `high` のときだけ自動で採用します（評価で的中 94%）。
-> - `medium`（的中 79%）は、`bestMatch` を暫定値として扱い、`candidates`（正解が入る割合は 89%）と `decisionPoints` を人に見せて選ばせます。
-> - `low`（的中 43%）は採用せず、`candidates` と `decisionPoints` を見せて選ばせるか、商品の説明をより具体的な英語の一般名にして再実行します。
-> - 通関に使う前は、`evidence.rulings` の判例と、CBP の CROSS（rulings.cbp.gov）で確かめてください。このツールは分類の確定ではありません。
->
-> 商品の語が HTS にも判例にも乏しい品目（laptop、toothpaste、webcam など）や、同じ見出しの兄弟（磁器と陶器、靴の底の材質）で外れやすくなります。
+> 品の種類で大きく変わります。モデルの側のテスト用の品（学習にも調整にも使わず、1 回だけ採点）では、**短い通販の商品名（422 品）は 6桁 38.4%・10桁 24.9%**、判例を要約した文（145 品）は 6桁 58.6%・10桁 46.2%、日本語の文（日本の税関の事前教示回答 1,788 品。品名＋概要）は 6桁 76.9% でした。**1位の10桁は、そのまま申告に使える精度ではありません。**
 
-> **運用**: HTS 全件は、この機能（`/trade/hts-predict`・`/trade/hts-verify`・`/trade/compliance`）が初めて呼ばれたときだけ取得します（約 20 秒）。起動時の取得や常駐処理はありません。7 日を過ぎると次の利用時に裏で更新し、失敗したときは古いコピーのまま答えます。最初の取得を待たせたくないときは、先に一度 `POST /trade/hts-verify` を呼んでください。
+> **入力**: `productName` と `description` は、商品の一般名と事実（宣伝文句・ブランド名は除く）を、英語か日本語で渡します。`material`・`productCategory` は、説明の中に書くより、それぞれの引数で渡すほうがよく効きます。`targetAge`・`foodContact`・`hasBattery` は、推測には使わず、CPSC・FDA の判定にだけ使います（年齢・性別・電池で動くことが分類に効く品は、品名か説明に書きます）。"not ceramic" のような否定の語は、モデルに渡す前に外します。
+
+> **分岐点の質問**: モデルの候補が公式の階層のどこで最初に分かれるかを、**公式の説明文を選択肢にした質問**（`decisionPoints`）で返します。選択肢には `htsPrefix` が付いていて、ユーザーが選んだ選択肢の `htsPrefix` を付けて再実行すると、その区分の下の行だけから選び直します。モデルが「聞いたほうがよい」と判断したときと、`confidence` が `low` のときは、`missingInputs` に `classificationDetail` が入り、`clarifyingQuestions` にも同じ質問が入ります。短い通販の商品名では、質問に 1 回正しく答えると、10桁の一致が 24.9% から 36.3% に上がりました（正しく答えられたときの上限）。
+
+> **多層防御・先回り推測の防止**: LLMが素材や対象年齢を一般論ででっち上げてツールを呼び出さないよう、スキーマとプロンプトで「不明な任意項目は省略すること」を徹底しています。CPSC/FDA の判定が実際に必要とした情報だけを `missingInputs`（未指定項目）、`clarifyingQuestions`（LLMがユーザーへ確認すべき質問文）、`impactExplanation`（情報不足による関税率や規制の分岐説明）として返します。
+
+> **REST で使うとき**: 次のように使い分けてください。
+>
+> - `confidence` が `high` のときだけ自動で採用します（モデルの側のテスト用の品では、6桁の的中 95%。短い通販の商品名では `high` になる品は少なく、的中 87%）。
+> - `medium`（同 64%）は、`bestMatch` を暫定値として扱い、`candidates` と `decisionPoints` を人に見せて選ばせます。
+> - `low`（同 29%）は採用せず、`candidates` と `decisionPoints` を見せて選ばせるか、素材・用途を足して再実行します。
+> - 通関に使う前は、`evidence.rulings`・`evidence.otherRulings` の判例と、CBP の CROSS（rulings.cbp.gov）で確かめてください。このツールは分類の確定ではありません。
+>
+> 判例の索引に、その品そのものの判例があるときは、判例の側が当たっていることが多いです（判例を要約した文での比べ。前の方法は、索引に同じ品があると 10桁 71.0%、いまの方法は 46.2%）。`evidence.otherRulings` に、品名のよく合う判例が別のコードで出ていたら、そちらを確かめてください。
+
+> **運用**: HTS 全件と判例の索引、モデルは、この機能（`/trade/hts-predict`・`/trade/compliance`。HTS 全件は `/trade/hts-verify` も）が初めて呼ばれたときだけ取得します。起動時の取得や常駐処理はありません。モデルを読み込むと、プロセスのメモリが約 80MB 増えます。1 件の計算は約 25 ミリ秒（同期）です。モデルの取得に失敗したときは、推測が理由つきのエラーになり、1 時間は取り直しません。外に出られない環境では、3 つのファイルを置いた場所を `SORA_HTS_MODEL_URL`（`file://` も可）で指定します。HTS 全件は、7 日を過ぎると次の利用時に裏で更新し、失敗したときは古いコピーのまま答えます。最初の取得を待たせたくないときは、先に一度呼んでおいてください。
 
 - **リクエスト**:
   ```json
   {
-    "productName": "Bicycle Helmet",
-    "description": "Protective helmet for road cycling"
+    "productName": "Stainless Steel Water Bottle",
+    "description": "Vacuum insulated bottle for drinks, 500 ml"
   }
   ```
-- **レスポンス例 (候補が公式の階層で分かれる場合)**:
+- **レスポンス例 (候補が公式の階層で分かれる場合。2026-11-17 に実行した結果から抜粋)**:
   ```json
   {
-    "detectedSubheading": "6506.10",
-    "category": "Other headgear, whether or not lined or trimmed",
+    "detectedSubheading": "9617.00",
+    "category": "Vacuum flasks and other vacuum vessels, complete; parts thereof other than glass inners",
     "bestMatch": {
-      "htsCode": "6506.10.60.45",
-      "description": "Athletic, recreational and sporting headgear",
-      "parentDescription": "Other headgear, whether or not lined or trimmed › Safety headgear › Other › Other",
-      "generalRate": "Free",
-      "rateFrom": "6506.10.60",
-      "score": 51.1,
+      "htsCode": "9617.00.10.00",
+      "description": "Having a capacity not exceeding 1 liter",
+      "parentDescription": "Vacuum flasks and other vacuum vessels, complete; parts thereof other than glass inners › Vessels",
+      "generalRate": "7.2%",
+      "score": 47.8,
       "confidence": "medium",
-      "reason": "商品名・説明をUSITC公式HTS全件の階層つき全文検索で照合し、判例と合わせて6506.10を最有力としました。CBP分類判例9件のうち6件が同じ6桁です。",
+      "reason": "関税分類モデル（zeiban 0.2.1）が商品名・説明から9617.00を最有力としました（6桁の確度 0.57）。CBP分類判例9件のうち2件が同じ6桁です。",
       "cpsc": { ... },
       "fda": { ... }
     },
     "candidates": [
       {
-        "htsCode": "6506.10.60.45",
-        "description": "Athletic, recreational and sporting headgear",
-        "generalRate": "Free",
-        "score": 51.1,
+        "htsCode": "9617.00.10.00",
+        "description": "Having a capacity not exceeding 1 liter",
+        "generalRate": "7.2%",
+        "score": 59.7,
         "sources": [
-          "hts-text",
+          "model",
           "cbp-ruling"
         ]
       },
       {
-        "htsCode": "8712.00.48.00",
-        "description": "Bicycles and other cycles (including delivery tricycles), not motorized › Other bicycles",
-        "generalRate": "11%",
-        "score": 30,
+        "htsCode": "7323.93.00.80",
+        "description": "Of stainless steel › Other",
+        "generalRate": "2%",
+        "score": 13.8,
         "sources": [
-          "hts-text"
+          "model",
+          "cbp-ruling"
         ]
       },
       { ... }
     ],
     "decisionPoints": [
       {
-        "question": "分類の確認: 公式の区分「Safety headgear」のうち、商品が当たるのはどれですか？ 答えとなる区分の語を description に加えて再実行してください。",
+        "question": "分類の確認: 候補が2桁の段で分かれています。商品が当たる区分はどれですか？ 選んだ選択肢の htsPrefix を付けて再実行すると、その下から選び直します。",
         "options": [
           {
-            "text": "Other › Other › Athletic, recreational and sporting headgear",
-            "htsCode": "6506.10.60.45",
-            "generalRate": "Free"
+            "text": "MISCELLANEOUS MANUFACTURED ARTICLES",
+            "htsCode": "9617.00.10.00",
+            "generalRate": "7.2%",
+            "htsPrefix": "96"
           },
           {
-            "text": "Of reinforced or laminated plastics › Other › Athletic, recreational and sporting headgear",
-            "htsCode": "6506.10.30.45",
-            "generalRate": "Free"
-          },
-          {
-            "text": "Other › Motorcycle helmets",
-            "htsCode": "6506.10.60.30",
-            "generalRate": "Free"
-          },
-          {
-            "text": "Of reinforced or laminated plastics › Motorcycle helmets",
-            "htsCode": "6506.10.30.30",
-            "generalRate": "Free"
-          },
-          {
-            "text": "Of reinforced or laminated plastics › Other › Other",
-            "htsCode": "6506.10.30.75",
-            "generalRate": "Free"
-          },
-          {
-            "text": "Other › Other › Other",
-            "htsCode": "6506.10.60.75",
-            "generalRate": "Free"
+            "text": "ARTICLES OF IRON OR STEEL",
+            "htsCode": "7323.93.00.80",
+            "generalRate": "2%",
+            "htsPrefix": "73"
           }
         ]
       }
     ],
     "evidence": {
-      "dataFetchedAt": "2026-10-15T08:04:13.615Z",
+      "dataFetchedAt": "2026-11-17T03:46:56.854Z",
+      "model": {
+        "name": "zeiban",
+        "version": "0.2.1",
+        "htsRelease": "2026HTSRev22",
+        "url": "https://github.com/ikenokazuki/zeiban"
+      },
       "crossStatus": "ok",
-      "crossQuery": "bicycle helmet",
+      "crossQuery": "stainless steel water bottle",
       "rulings": [
         {
-          "rulingNumber": "N352469",
-          "date": "2025-09-09",
-          "subject": "The tariff classification of a bicycle helmet from China",
+          "rulingNumber": "NY N357245",
+          "date": "2026-07-14",
+          "subject": "stainless-steel water bottle",
           "tariffs": [
-            "6506106045",
-            "99030124",
-            "99030125",
-            "99038815"
+            "9617001000"
           ],
-          "url": "https://rulings.cbp.gov/ruling/N352469"
+          "url": "https://rulings.cbp.gov/ruling/NY%20N357245"
+        },
+        { ... }
+      ],
+      "otherRulings": [
+        {
+          "rulingNumber": "NY N299732",
+          "date": "2018-08-29",
+          "subject": "19-oz Stainless Steel Water Bottle, style",
+          "tariffs": [
+            "7323930080"
+          ],
+          "url": "https://rulings.cbp.gov/ruling/NY%20N299732"
         },
         { ... }
       ]
     },
     "inputCompleteness": "partial",
     "missingInputs": [
-      "classificationDetail",
-      "targetAge",
       "material"
     ],
     "clarifyingQuestions": [
-      "分類の確認: 公式の区分「Safety headgear」のうち、商品が当たるのはどれですか？ …（選択肢は decisionPoints と同じ）",
-      "この製品の対象年齢層は12歳以下の子供向けですか？それとも大人・一般向けですか？",
-      "製品の主要素材は何ですか？（…）"
+      "素材は何ですか？ material に指定して再実行すると、素材を踏まえて推測し直します（…）"
     ],
-    "impactExplanation": "一部の情報（classificationDetail、targetAge、material）が未指定のため、暫定的なHTSコード候補を提示しています。…",
+    "impactExplanation": "一部の情報（material）が未指定のため、暫定的なHTSコード候補を提示しています。…",
     "disclaimer": "本ツールは米国USITC公式データによる実在確認・関税率取得であり、法的な分類判断ではありません。..."
   }
   ```
 
+  `"htsPrefix": "96"` を足して再実行すると、第 96 類の下から選び直します。
+
 ---
 
 ### 3.22 商品統合コンプライアンス一括判定 (`POST /trade/compliance`)
-商品ページのURL、または商品名・説明・素材・カテゴリ（英語）から、HTS推測エンジン（3.21）と連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。
+商品ページのURL、または商品名・説明・素材・カテゴリ（英語でも日本語でもよい）から、HTS推測エンジン（3.21）と連携し、HTS実在検証（関税率取得）、FDA実務PGAフラグ判定（食品・化粧品・食器等）、CPSC適合証明書（GCC/CCC）および2026年7月eFiling完全義務化判定を一連のパイプラインとして一括自動実行し、通関前アクションプランを含む総合診断レポートを返します。
 
 - `htsCode` を省略すると、3.21 の推測で決めたコードを使います。`htsCode` を渡した場合はそれを検証し、商品情報から推測した章（Chapter）と食い違えば `【HTSコード乖離注意】` を付けます。
 - 推測の確度が低い（`low`）、または英語の情報が無いときは、既定のコードで進めず `overallStatus: "needs_more_info"` と確認質問（候補付きの `htsPrediction`）を返します。
@@ -2929,6 +2927,12 @@ robots.txt の本文は 512KiB まで、crawl でたどるリンクの URL は 8
   - リアルタイムな地震情報・震度速報 API の公開に感謝いたします。（※商用利用時は開発元への事前利用申請が必要です）
 - **e-Gov 法令 API（デジタル庁 / 総務省）**: [laws.e-gov.go.jp](https://laws.e-gov.go.jp/)
   - 日本の全現行法令オープンデータおよび e-Gov 法令 API v2 の一般公開に深く感謝いたします。
+- **USITC（米国国際貿易委員会）HTS**: [hts.usitc.gov](https://hts.usitc.gov/)
+  - 米国の関税率表（HTS）の全件の公開に感謝いたします。HTS コードの照合と、推測した行の説明文・関税率に利用しています。
+- **zeiban（関税分類モデル）**: [ikenokazuki/zeiban](https://github.com/ikenokazuki/zeiban)（Apache-2.0。[Hugging Face](https://huggingface.co/ikeno-ada/zeiban)）
+  - 商品の文から米国 HTS の10桁を出す小さなモデルです（CPU だけで動き、実行時に LLM を使いません。英語と日本語の文を読みます）。HTS の推測（3.21）の10桁は、このモデルが決めます。初めて使われたときにリリースから取得し、WebAssembly として同じプロセスの中で動かします。モデルの土台・学習データの出典は、同リポジトリの `NOTICE` にあります。
+- **CBP（米国税関・国境警備局）の分類判例（CROSS）**: [rulings.cbp.gov](https://rulings.cbp.gov/)
+  - HTS の推測の根拠として、公開データから作った判例の索引を利用しています。索引の作り方と出典は [docs/engines/hts-prediction.md](docs/engines/hts-prediction.md) と `NOTICE` にあります。
 - **iTunes Search API** (Apple Inc.):
   - 公式な音楽メタデータ検索 API の提供に感謝いたします。
 - **Shazam Scraper**: [omkarcloud/shazam-scraper](https://github.com/omkarcloud/shazam-scraper)（MIT）
