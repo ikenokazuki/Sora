@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { clearCache } from '../cache.js';
+import { ResourceBusyError } from '../errors.js';
 import { toneBursts } from '../test_fixtures/audio.js';
 import { AudioDecodeError, AudioTooLongError } from './audio_decode.js';
 import { DATA_URI_PREFIX, signatureUri } from './shazam_signature.js';
@@ -280,5 +281,44 @@ describe('downloadAudio', () => {
     expect(await downloadAudio('https://x.example/a', via(new Response('<html>', { headers: { 'content-type': 'text/html' } })))).toMatchObject({ reason: 'not-audio' });
     expect(await downloadAudio('https://x.example/a', via(new Response(new Uint8Array(MAX_URL_BYTES + 1))))).toMatchObject({ reason: 'too-large' });
     expect(await downloadAudio('https://x.example/a', async () => { throw new Error('getaddrinfo ENOTFOUND x.example'); })).toMatchObject({ reason: 'download-failed' });
+  });
+});
+
+describe('recognizeSong: 同じ音を同時に頼んだ別の利用者（single-flight は利用者ごと）', () => {
+  // 同じ音の同時の要求は、1 つにまとめる。ただし、まとめるのは同じ利用者の中だけ。利用者をまたいでまとめると、
+  // 先に頼んだ利用者がブラウザの枠を断られたとき（ResourceBusyError）、枠に余裕のある別の利用者にも、その断りが返る
+  const distinctBytes = () => new Uint8Array(2048).map((_, i) => (i * 7 + Math.floor(Math.random() * 255)) & 255);
+  const decodeThatRefuses = (seen: string[]) => (async (_bytes: Uint8Array, _pick: unknown, tenantId: string) => {
+    seen.push(tenantId);
+    if (tenantId === 'T') {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      throw new ResourceBusyError('ブラウザの枠の待ちが上限です', 'queue_timeout', 9, 'browser');
+    }
+    return { durationSec: 1, windows: [] }; // 枠があれば、短すぎる音として、普通に答えが返る
+  }) as never;
+
+  test('先に頼んだ利用者が断られても、同じ音を頼んだ別の利用者は、自分の枠で取り直して答えを受け取る', async () => {
+    const bytes = distinctBytes();
+    const seen: string[] = [];
+    const decode = decodeThatRefuses(seen);
+    const t = recognizeSong({ audio: { bytes, contentType: 'audio/mpeg' }, tenantId: 'T' }, { decode });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const u = recognizeSong({ audio: { bytes, contentType: 'audio/mpeg' }, tenantId: 'U' }, { decode });
+    const [tr, ur] = await Promise.allSettled([t, u]);
+    expect(tr.status).toBe('rejected');
+    expect(ur.status).toBe('fulfilled');
+    expect(seen.toSorted()).toEqual(['T', 'U']);
+  });
+
+  test('同じ利用者の同時の要求は、これまでどおり、1 つにまとめる（デコードは 1 回）', async () => {
+    const bytes = distinctBytes();
+    const seen: string[] = [];
+    const decode = (async (_bytes: Uint8Array, _pick: unknown, tenantId: string) => {
+      seen.push(tenantId);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return { durationSec: 1, windows: [] };
+    }) as never;
+    await Promise.all([1, 2, 3].map(() => recognizeSong({ audio: { bytes, contentType: 'audio/mpeg' }, tenantId: 'T' }, { decode })));
+    expect(seen).toEqual(['T']);
   });
 });

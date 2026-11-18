@@ -151,3 +151,37 @@ test('verbose（診断つきの応答）も、断られた応答は、キャッ�
   expect(second.cached).toBeFalsy();
   expect(second.results[0].scrapeError).toBeUndefined();
 });
+
+test('動画の検索（Yahoo）が順番・予算で断られた応答は、キャッシュに入れない（動画なしの結果が、別の利用者に返らない）', async () => {
+  stubWebSearch('video-search-busy');
+  const query = 'integrated cache video search busy';
+  const video = spyOn(yahoo, 'searchYahooVideo').mockRejectedValueOnce(new ResourceBusyError('Yahoo への問い合わせの、この利用者の予算を使い切りました', 'tenant_budget', 9, 'yahoo'));
+  const first = await search(query, { tenantId: 'name:A', videos: 2 });
+  video.mockResolvedValue({ items: [] } as never);
+  const second = await search(query, { tenantId: 'name:B', videos: 2 });
+  const calls = video.mock.calls.length;
+  video.mockRestore();
+  expect(first.results.length).toBeGreaterThan(0); // 断られた利用者にも、動画なしの結果は返る
+  expect(second.cached).toBeFalsy();
+  expect(calls).toBe(2); // 別の利用者は、動画を取り直した
+});
+
+test('動画のページの読み取りが、順番・予算で断られた応答も、キャッシュに入れない', async () => {
+  stubWebSearch('video-page-busy');
+  const query = 'integrated cache video page busy';
+  const video = spyOn(yahoo, 'searchYahooVideo').mockResolvedValue({ items: [{ title: 'v', url: 'https://www.youtube.com/watch?v=abcdefghijk' }] } as never);
+  const real = scraper.scrapeUrl;
+  const scrape = spyOn(scraper, 'scrapeUrl').mockImplementation((async (options: Parameters<typeof real>[0]) => {
+    if (options.url.includes('youtube.com')) throw new ResourceBusyError('ブラウザの枠が混み合っています', 'queue_full', 6);
+    return real(options);
+  }) as never);
+  try {
+    await search(query, { tenantId: 'name:A', videos: 1 });
+    scrape.mockImplementation(real as never);
+    const second = await search(query, { tenantId: 'name:B', videos: 1 });
+    expect(second.cached).toBeFalsy();
+  } finally {
+    video.mockRestore();
+    scrape.mockRestore();
+  }
+});
