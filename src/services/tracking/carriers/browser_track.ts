@@ -31,9 +31,9 @@ export async function renderTrackingPage(url: string, options: RenderOptions = {
   if (typeof engine.resolveChromiumPath === 'function' && !engine.resolveChromiumPath()) return undefined;
   // ブラウザの枠の下で開く（利用者ごとの公平な待ち行列。待っている間に中止されたら、待ちから外れる）
   const lease = await engine.browserSemaphore.acquire(tenantId, { signal });
-  engine.recordBrowserUsage();
+  engine.recordBrowserUsage(tenantId);
   try {
-    const { browser } = await engine.getBrowser();
+    const { browser } = await engine.getBrowser(undefined, tenantId);
     const context = await browser.createBrowserContext();
     try {
       const page = await context.newPage();

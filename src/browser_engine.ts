@@ -15,6 +15,8 @@ import {
   withoutNoSandbox,
 } from './browser_launch_plan.js';
 import { type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
+import { BrowserHandle, BrowserPool } from './browser_pool.js';
+import { reapUid } from './browser_reap.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { limits } from './security/limits.js';
@@ -116,16 +118,76 @@ export function readChromiumMajorVersion(executablePath: string): number | undef
   }
 }
 
-let sharedBrowserInstance: Browser | null = null;
-/**
- * 共有ブラウザを起動している最中の Promise。無操作終了の直後などに getBrowser() が同時に呼ばれても、
- * 起動は 1 回だけにして全員が同じブラウザを受け取る。共有しないと、呼び出しの数だけ Chromium が起動し、
- * 最後に代入された 1 つ以外は参照を失って閉じられないまま残る（1 つあたり数百 MB）。
- */
-let sharedBrowserLaunch: Promise<Browser> | null = null;
+/** ブラウザを起動するときに渡す、プロキシの設定（get のたびに、環境から決める） */
+interface LaunchArg {
+  proxy: string | undefined;
+  bypass: string | undefined;
+}
 
-/** 共有または専用 Chromium ブラウザインスタンスの取得 */
-export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
+/** 共有ブラウザの鍵。tenant の ID（名前・key:<ハッシュ>・legacy など）には現れない */
+const SHARED_KEY = '*shared*';
+
+function launchBrowser(slot: number | undefined, arg: LaunchArg): Promise<Browser> {
+  if (!CHROME_EXECUTABLE_PATH) return Promise.reject(new Error('Chromium/Chrome が見つからないためブラウザを起動できません'));
+  return launchStealthChromium(arg.proxy, arg.bypass, slot);
+}
+
+/**
+ * 共有ブラウザ（全員で 1 つ。`standard`）。起動を 1 回だけにして全員が同じブラウザを受け取る・無操作で閉じる・入れ替える、の本体は browser_pool.ts。
+ * 共有しないと、呼び出しの数だけ Chromium が起動し、最後に代入された 1 つ以外は参照を失って閉じられないまま残る（1 つあたり数百 MB）。
+ */
+const sharedBrowser = new BrowserHandle<Browser, LaunchArg>(SHARED_KEY, undefined, {
+  launch: launchBrowser,
+  // 枠を持っている・待っている間は、使用中とみなす
+  inUse: () => browserSemaphore.activeCount > 0 || browserSemaphore.pendingCount > 0,
+  idleTtlMs: browserIdleTtlMs,
+  retireWhenIdle: false,
+});
+
+/** tenant ごとのブラウザが、使われなくなってから閉じるまでの時間（SORA_BROWSER_IDLE_TTL_MS が小さければそちら。0 は、閉じない） */
+function perTenantIdleTtlMs(): number {
+  const ttl = browserIdleTtlMs();
+  return ttl <= 0 ? 0 : Math.min(ttl, limits().browserProcessIdleMs);
+}
+
+/**
+ * tenant ごとのブラウザのプロセス（`strict`。設計 2。段階 6）。tenant ごとに別のプロセス・別の uid（基準の uid + 番号）で動かし、ページの描画が破られても、
+ * ほかの tenant のプロセス（ページ・Cookie・/proc・プロファイル）に届かないようにする。同時に持てる数は browserProcessMax（超えたら、使っていないものを閉じる）。
+ */
+const browserPool = new BrowserPool<Browser, LaunchArg>({
+  max: () => limits().browserProcessMax,
+  makeHandle: (key, slot, onReleased) =>
+    new BrowserHandle<Browser, LaunchArg>(
+      key,
+      slot,
+      {
+        launch: launchBrowser,
+        // その tenant が、枠を持っている間は、使用中
+        inUse: () => browserSemaphore.heldBy(key) > 0,
+        idleTtlMs: perTenantIdleTtlMs,
+        retireWhenIdle: true,
+        // 番号（uid）を別の tenant に渡す前に、その uid のプロセスが残っていないことを確かめて、残っていれば終わらせる（uid を分けているときだけ）
+        reap: async (slot) => {
+          const uid = slotUid(slot);
+          return uid === undefined ? true : launchProbe.reap(uid);
+        },
+      },
+      onReleased,
+    ),
+  // すべて使用中のとき、少し待ってから断る（常に同じ tenant が使い続けても、ほかの tenant が、使われていない合間に入れる）
+  waitMs: () => limits().browserProcessWaitMs,
+});
+
+/** tenant ごとにブラウザのプロセスを分けるか（水準 `strict`）。分けないとき（`standard`）は、全員で 1 つの共有ブラウザ */
+export function perTenantBrowsersEnabled(): boolean {
+  return limits().browserProcessMax > 0;
+}
+
+/**
+ * ブラウザの取得。`standard` は共有ブラウザ。`strict` は、tenantId（省略は legacy）のブラウザ（なければ起動する）。
+ * tenant ごとのときに、プロセスの数の上限に達していて、閉じてよいものが無ければ、ResourceBusyError（process_limit）
+ */
+export async function getBrowser(overrideProxyUrl?: string, tenantId?: string): Promise<{ browser: Browser; isDedicated: boolean }> {
   // ゲートウェイを使うときは、すべての通信が、1 つのゲートウェイ（と、その上流の運用者のプロキシ）を通る。ブラウザごとの別のプロキシは、
   // 黙って無視すると、ゲートウェイを迂回したと思わせるので、エラーにする
   if (overrideProxyUrl && isEgressGatewayEnabled()) {
@@ -134,9 +196,14 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
   const config = getProxyConfig();
   const effectiveProxy = overrideProxyUrl?.trim() || config.proxyServer;
   const effectiveBypass = config.proxyBypassList;
+  const perTenant = perTenantBrowsersEnabled();
 
   // overrideProxyUrl が明示的に指定され、かつ環境変数の設定と異なる場合のみ専用インスタンスを起動
   if (overrideProxyUrl && overrideProxyUrl.trim() !== config.proxyServer) {
+    // 専用のブラウザは、呼び出し側が閉じる。tenant ごとの番号（uid）の管理の外になるので、tenant ごとのときは作らない
+    if (perTenant) {
+      throw new Error('tenant ごとにブラウザのプロセスを分けているとき（SORA_ISOLATION=strict）は、ブラウザごとのプロキシの指定は使えない');
+    }
     if (!CHROME_EXECUTABLE_PATH) {
       throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
     }
@@ -144,34 +211,9 @@ export async function getBrowser(overrideProxyUrl?: string): Promise<{ browser: 
     return { browser: dedicated, isDedicated: true };
   }
 
-  // 共有ブラウザ: 起動済みならそれを、起動中ならその完了を待って受け取る（同時に複数起動しない）。
-  // 待っている間に閉じられた場合に備え、起動の完了後は状態を見直す。
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const existing = sharedBrowserInstance;
-    if (existing?.connected) {
-      try {
-        await existing.version();
-        // 疎通確認の await 中に閉じられた・差し替えられた場合は渡さず、次の周回で取り直す
-        if (sharedBrowserInstance === existing) {
-          markSharedBrowserUsed();
-          return { browser: existing, isDedicated: false };
-        }
-      } catch {
-        if (sharedBrowserInstance === existing) sharedBrowserInstance = null;
-      }
-    }
-
-    if (!CHROME_EXECUTABLE_PATH) {
-      throw new Error('Chromium/Chrome が見つからないためブラウザを起動できません');
-    }
-
-    if (!sharedBrowserLaunch) {
-      sharedBrowserLaunch = launchSharedBrowser(effectiveProxy, effectiveBypass);
-    }
-    // 失敗したときは待っている全員に同じエラーが伝わり、次の呼び出しで起動をやり直せる
-    await sharedBrowserLaunch;
-  }
-  throw new Error('共有ブラウザを起動できませんでした');
+  const arg: LaunchArg = { proxy: effectiveProxy, bypass: effectiveBypass };
+  const browser = perTenant ? await browserPool.get(tenantId ?? 'legacy', arg) : await sharedBrowser.get(arg);
+  return { browser, isDedicated: false };
 }
 
 /** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
@@ -287,8 +329,43 @@ function readSelfStatus(): string | undefined {
   }
 }
 
+/**
+ * 起動の計画の入力（Sora 自身の uid・起動用バイナリの有無・capability・プロファイルの作り方）。本番は実際の環境を読む。
+ * テストが、root・起動用バイナリありの環境を作って、番号（slot）が uid に届くことを確かめるために、差し替えられる
+ */
+export const launchProbe = {
+  currentUid: (): number | undefined => (typeof process.getuid === 'function' ? process.getuid() : undefined),
+  launcherExists: (): boolean => CHROME_EXECUTABLE_PATH !== undefined && existsSync(DEFAULT_LAUNCHER),
+  missingCapabilities: (): string[] => missingDropCapabilities(readSelfStatus()),
+  makeProfileDir: createProfileDir,
+  /** 番号を手放す前の、uid のプロセスの確認（browser_reap.ts） */
+  reap: (uid: number): Promise<boolean> => reapUid(uid),
+};
+
+/** 起動の計画（別の uid に落とすか・サンドボックス）。slot は、tenant ごとのブラウザの番号（基準の uid + 番号に落とす） */
+function planLaunch(slot: number | undefined): ReturnType<typeof planBrowserLaunch> {
+  return planBrowserLaunch({
+    currentUid: launchProbe.currentUid(),
+    launcherExists: launchProbe.launcherExists(),
+    nodeEnv: envStr('NODE_ENV'),
+    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
+    missingCapabilities: launchProbe.missingCapabilities(),
+    // tenant ごとのブラウザは、基準の uid + 番号（別の tenant のプロセスが、同じ uid にならない）
+    slot,
+  });
+}
+
+/** 番号（slot）のプロセスが落とす uid。uid を分けていないとき（落とさない・計画が決まらない）は undefined */
+export function slotUid(slot: number): number | undefined {
+  try {
+    return planLaunch(slot).plan.drop?.uid;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
-async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined): Promise<Browser> {
+async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined, slot?: number): Promise<Browser> {
   const userAgent = await stealthUserAgent();
   const profileMajor = await alignedProfileMajor();
   const args = [
@@ -321,19 +398,16 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
   // root の Sora 本体から、別の uid に落として起動するか・Chromium のサンドボックスを使うか（browser_launch_plan.ts）。
   // 落とすには、起動用バイナリに伝える、本物の Chromium の場所が要る
   const chromePath = CHROME_EXECUTABLE_PATH;
-  const { plan, warnings } = planBrowserLaunch({
-    currentUid: typeof process.getuid === 'function' ? process.getuid() : undefined,
-    launcherExists: chromePath !== undefined && existsSync(DEFAULT_LAUNCHER),
-    nodeEnv: envStr('NODE_ENV'),
-    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
-    missingCapabilities: missingDropCapabilities(readSelfStatus()),
-  });
+  const { plan, warnings } = planLaunch(slot);
   for (const warning of warnings) warnLaunchOnce(warning);
+  if (slot !== undefined && plan.drop === null) {
+    warnLaunchOnce('tenant ごとにブラウザのプロセスを分けているが、uid は分けられない（root で起動用バイナリがあり、uid を落とす capability が足りているときだけ分けられる）。ほかの tenant のプロセスの /proc・プロファイルには、同じ uid から届きうる');
+  }
   const drop = plan.drop && chromePath ? { ...plan.drop, chromePath } : null;
 
   const launchOnce = async (sandbox: boolean): Promise<Browser> => {
     // puppeteer は、userDataDir を渡さないと、起動した側（root）の所有で作るので、落とした Chromium は書けない。自分で作る
-    const profile = drop ? createProfileDir(drop) : undefined;
+    const profile = drop ? launchProbe.makeProfileDir(drop) : undefined;
     try {
       const browser = await puppeteer.launch({
         executablePath: drop ? drop.launcher : chromePath,
@@ -375,106 +449,37 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
   return sandboxFallback.launch(plan.sandbox, launchOnce, warnLaunchOnce);
 }
 
-/** 共有 Chromium を 1 つ起動する。成功したら sharedBrowserInstance に登録し、終わったら起動中の印を外す。 */
-function launchSharedBrowser(effectiveProxy: string | undefined, effectiveBypass: string | undefined): Promise<Browser> {
-  const launched = launchStealthChromium(effectiveProxy, effectiveBypass)
-    .then((browser) => {
-      sharedBrowserInstance = browser;
-      markSharedBrowserUsed();
-      return browser;
-    });
-  const tracked: Promise<Browser> = launched.finally(() => {
-    if (sharedBrowserLaunch === tracked) sharedBrowserLaunch = null;
-  });
-  return tracked;
-}
-
 export function isSharedBrowserConnected(): boolean {
-  return sharedBrowserInstance?.connected === true;
+  return sharedBrowser.connected || browserPool.anyConnected();
 }
 
+/** 共有ブラウザと、tenant ごとのブラウザのすべてを閉じる（起動の最中なら、完了を待ってから閉じる）。閉じたあとも、getBrowser() で起動し直せる */
 export async function closeSharedBrowser(): Promise<void> {
-  if (idleTimer) {
-    clearTimeout(idleTimer);
-    idleTimer = undefined;
-  }
-  // 起動の最中なら、完了を待ってから閉じる（起動途中のまま放置すると、管理されない Chromium が残る）
-  const launching = sharedBrowserLaunch;
-  if (launching) {
-    try {
-      await launching;
-    } catch {}
-  }
-  // 閉じる前に共有インスタンスを外し、閉じかけのブラウザを getBrowser() が渡さないようにする
-  const browser = sharedBrowserInstance;
-  sharedBrowserInstance = null;
-  if (browser) {
-    try {
-      await browser.close();
-    } catch {}
-  }
+  await Promise.all([sharedBrowser.close(), browserPool.closeAll()]);
 }
 
 /**
- * 共有 Chromium の無操作終了。常駐させると約700MB（実測、7プロセス）を占有し続けるため、最後に取得されてから
+ * Chromium の無操作終了。常駐させると約700MB（実測、7プロセス）を占有し続けるため、最後に取得されてから
  * SORA_BROWSER_IDLE_TTL_MS（既定 5 分、0 で無効）使われなければ閉じる。次回の getBrowser() で自動再起動する。
  * 開いているコンテキスト/ページ（ブラウザセッション・追跡・SNS 取得）やセマフォ保持中は使用中とみなす。
+ * tenant ごとのブラウザ（`strict`）は、これより短い browserProcessIdleMs（既定 1 分）で閉じる。
  */
-let lastSharedBrowserUse = 0;
-let idleTimer: ReturnType<typeof setTimeout> | undefined;
-
 /** 呼び出しのたびに読む。不正な値は既定の 5 分（以前は 0 = 閉じない、になっていた）。 */
 export function browserIdleTtlMs(): number {
   return envInt('SORA_BROWSER_IDLE_TTL_MS');
 }
 
-function markSharedBrowserUsed(): void {
-  lastSharedBrowserUse = Date.now();
-  armIdleTimer(browserIdleTtlMs());
+/** 枠を取ったあとに数える（呼んだ tenant。tenant ごとのブラウザのとき、その tenant のブラウザの回数になる）。 */
+export function recordBrowserUsage(tenantId?: string): void {
+  if (perTenantBrowsersEnabled()) browserPool.recordUsage(tenantId ?? 'legacy');
+  else sharedBrowser.recordUsage();
 }
 
-function armIdleTimer(delayMs: number): void {
-  if (idleTimer) clearTimeout(idleTimer);
-  idleTimer = undefined;
-  if (delayMs <= 0) return;
-  idleTimer = setTimeout(() => void closeIfIdle(), delayMs);
-  idleTimer.unref?.();
-}
-
-async function closeIfIdle(): Promise<void> {
-  idleTimer = undefined;
-  const browser = sharedBrowserInstance;
-  const ttl = browserIdleTtlMs();
-  if (!browser || ttl <= 0) return;
-  const remaining = ttl - (Date.now() - lastSharedBrowserUse);
-  if (remaining > 0) return armIdleTimer(remaining);
-  const checkedUse = lastSharedBrowserUse;
-  let busy = browserSemaphore.activeCount > 0 || browserSemaphore.pendingCount > 0;
-  if (!busy) {
-    try {
-      busy = browser.browserContexts().length > 1 || (await browser.pages()).length > 1;
-    } catch {
-      busy = false; // 接続が壊れている場合は閉じてよい
-    }
-  }
-  // 判定の await 中に getBrowser() で渡されていたら閉じない（その呼び出しがタイマーを張り直している）
-  if (lastSharedBrowserUse !== checkedUse) return;
-  if (busy) return armIdleTimer(ttl);
-  if (browser === sharedBrowserInstance) await closeSharedBrowser();
-}
-
-let sharedBrowserUsageCount = 0;
-const MAX_SHARED_BROWSER_USES = 200;
-
-export function recordBrowserUsage(): void {
-  sharedBrowserUsageCount++;
-}
-
+/** 全体が空いたときに、使った回数が多いブラウザを閉じる（長く動かした Chromium のメモリの増えを戻す。次の getBrowser() で起動し直す） */
 export function maybeRotateSharedBrowser(): void {
-  if (browserSemaphore.activeCount === 0 && sharedBrowserUsageCount >= MAX_SHARED_BROWSER_USES) {
-    sharedBrowserUsageCount = 0;
-    void closeSharedBrowser();
-  }
+  if (browserSemaphore.activeCount !== 0) return;
+  sharedBrowser.rotateIfWorn();
+  browserPool.rotateWorn();
 }
 
 /**

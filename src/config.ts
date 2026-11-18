@@ -145,7 +145,7 @@ export const SETTINGS = {
   },
   SORA_ISOLATION: {
     area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard',
-    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。いまの `strict` は、この上限の値を切り替えます（起動時の検査などのほかの要件は、段階的に足します）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
+    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。いまの `strict` は、この上限の値を切り替え、ブラウザを利用者ごとに別のプロセス（別の uid）で動かします（README 4.5。起動時の検査などのほかの要件は、段階的に足します）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',
@@ -231,7 +231,7 @@ export const SETTINGS = {
     area: 'browser', kind: 'str', default: 'auto', pattern: /^\s*(?:auto|off|0*[1-9]\d{0,9})\s*$/i,
     form: '`auto`・`off`・1 以上の整数（uid・gid）',
     defaultDoc: '*(未設定 = auto)*',
-    doc: 'root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。',
+    doc: 'root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。`SORA_ISOLATION=strict` では、これを基準に、利用者ごとに別のプロセスを、1 ずつ大きい uid（基準 + 0〜3）で起動します（README 4.5）。',
   },
   SORA_BROWSER_SANDBOX: {
     area: 'browser', kind: 'enum', values: ['auto', 'on', 'off'],

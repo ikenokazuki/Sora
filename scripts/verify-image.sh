@@ -12,7 +12,7 @@
 #   9. 8 を、7 と同じ硬化した運用（サンドボックス有効）でも確かめる
 #  10. 静的取得（wreq-js。イメージの自前の native）の通信を、出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらない（scripts/static-egress-check.ts）
 #  11. Bun の fetch と、通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築）の通信を、出口のゲートウェイに通すと、内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決し、許す宛先の一覧（SORA_EGRESS_ALLOW_HOSTS）に挙げた宛先だけが内部の IP でも届く（scripts/fetch-egress-check.ts）
-#  12. 本物のアプリ（認証のミドルウェア → MCP・REST）を、本物の Bun.serve に載せると、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）で、ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイル（SORA_AUTH_KEYS_FILE）は鍵ごとに別の tenant で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、共有キャッシュ経由で別の tenant に返らず、ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site は、呼んだ tenant の保存済みのセッションで取り、結果を別の tenant に返さず、POST /cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締める（scripts/auth-check.ts）
+#  12. 本物のアプリ（認証のミドルウェア → MCP・REST）を、本物の Bun.serve に載せると、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）で、ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイル（SORA_AUTH_KEYS_FILE）は鍵ごとに別の tenant で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、共有キャッシュ経由で別の tenant に返らず、ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site は、呼んだ tenant の保存済みのセッションで取り、結果を別の tenant に返さず、POST /cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締め、ブラウザを利用者ごとに別のプロセスで動かす（セッションを持つ利用者は 4 人まで。5 人目は 429）（scripts/auth-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail

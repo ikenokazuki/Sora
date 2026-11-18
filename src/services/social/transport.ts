@@ -48,9 +48,9 @@ export function createProdSessionOpener(tenantId?: string): WeiboSessionOpener {
       const { setupPageSecurity } = await import('../../browser_engine.js');
       // ブラウザの枠の下で開く（呼んだ利用者の枠として数える。待っている間に中止されたら、待ちから外れる）
       const lease = await browserSemaphore.acquire(tenantId, { signal });
-      recordBrowserUsage();
+      recordBrowserUsage(tenantId);
       try {
-        const { browser } = await getBrowser();
+        const { browser } = await getBrowser(undefined, tenantId);
         const context = await browser.createBrowserContext();
         try {
           const page = await context.newPage();
@@ -88,9 +88,9 @@ export function createProdMetaBrowser(tenantId?: string): MetaBrowser {
       const { setupPageSecurity } = await import('../../browser_engine.js');
       // ブラウザの枠の下で開く（呼んだ利用者の枠として数える。待っている間に中止されたら、待ちから外れる）
       const lease = await browserSemaphore.acquire(tenantId, { signal });
-      recordBrowserUsage();
+      recordBrowserUsage(tenantId);
       try {
-        const { browser } = await getBrowser();
+        const { browser } = await getBrowser(undefined, tenantId);
         const context = await browser.createBrowserContext();
         try {
           const page = await context.newPage();

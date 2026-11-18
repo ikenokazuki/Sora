@@ -396,10 +396,10 @@ async function renderWithStealthBrowser(
 
   await throttleDomain(url);
   const lease = await browserSemaphore.acquire(tenantId);
-  recordBrowserUsage();
+  recordBrowserUsage(tenantId);
 
   try {
-    const { browser, isDedicated } = await getBrowser();
+    const { browser, isDedicated } = await getBrowser(undefined, tenantId);
     const context = await browser.createBrowserContext();
 
     try {

@@ -101,6 +101,42 @@ describe('planBrowserLaunch（別 uid で起動するか・サンドボックス
   });
 });
 
+describe('planBrowserLaunch: tenant ごとのブラウザの番号（slot）は、uid を 1 つずつずらす（別の tenant のプロセスが、同じ uid にならない）', () => {
+  test('slot なしは、これまでどおり、基準の uid', () => {
+    expect(planBrowserLaunch(base).plan.drop).toMatchObject({ uid: 65532, gid: 65532 });
+  });
+
+  test('slot n は、基準の uid + n（uid・gid とも）。既定の基準は 65532', () => {
+    for (const slot of [0, 1, 3]) {
+      expect(planBrowserLaunch({ ...base, slot }).plan.drop, String(slot)).toMatchObject({ uid: 65532 + slot, gid: 65532 + slot, launcher: DEFAULT_LAUNCHER });
+    }
+  });
+
+  test('SORA_BROWSER_UID に数を明示したときは、その数が基準', () => {
+    expect(planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: '10001' }, slot: 2 }).plan.drop).toMatchObject({ uid: 10003, gid: 10003 });
+  });
+
+  test('SORA_BROWSER_UID=off なら、slot があっても、落とさない', () => {
+    expect(planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: 'off' }, slot: 2 }).plan.drop).toBeNull();
+  });
+
+  test('root でない・起動用バイナリが無いなら、slot があっても、落とさない', () => {
+    expect(planBrowserLaunch({ ...base, currentUid: 1000, slot: 1 }).plan.drop).toBeNull();
+    expect(planBrowserLaunch({ ...base, launcherExists: false, slot: 1 }).plan.drop).toBeNull();
+  });
+
+  test('基準 + slot が uid の最大（4294967294）を超えるなら、起動を失敗させる（uid_t の -1 に化けない）', () => {
+    expect(() => planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: '4294967294' }, slot: 1 })).toThrow('SORA_BROWSER_UID');
+    expect(planBrowserLaunch({ ...base, env: { SORA_BROWSER_UID: '4294967294' }, slot: 0 }).plan.drop?.uid).toBe(4294967294);
+  });
+
+  test('capability が足りないとき（auto）は、slot があっても、落とさず警告する', () => {
+    const { plan, warnings } = planBrowserLaunch({ ...base, slot: 1, missingCapabilities: ['CAP_SETUID'] });
+    expect(plan.drop).toBeNull();
+    expect(warnings.join('\n')).toContain('CAP_SETUID');
+  });
+});
+
 describe('missingDropCapabilities（/proc/self/status の CapEff から、uid を落とすのに足りない capability）', () => {
   const status = (capEff: string) => `Name:\tbun\nCapInh:\t0000000000000000\nCapPrm:\t${capEff}\nCapEff:\t${capEff}\nCapBnd:\t${capEff}\n`;
 

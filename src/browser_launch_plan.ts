@@ -93,6 +93,8 @@ export function planBrowserLaunch(options: {
   launcher?: string;
   /** uid を落とすのに足りない capability（missingDropCapabilities）。既定は、足りている */
   missingCapabilities?: readonly string[];
+  /** tenant ごとのブラウザの番号（browser_slots.ts）。落とす uid は、基準の uid + この番号（別の tenant のプロセスが、同じ uid にならない）。省略は 0 */
+  slot?: number;
 }): { plan: LaunchPlan; warnings: string[] } {
   const warnings: string[] = [];
   const uid = parseUid(envRaw('SORA_BROWSER_UID', options.env), warnings);
@@ -109,7 +111,12 @@ export function planBrowserLaunch(options: {
       `Chromium を別の uid に落とせない: capability が足りない（${list}。--cap-drop=ALL など）。Sora と同じ uid（root）で起動する。落とすには、${missing.map((name) => `--cap-add=${name.slice(4)}`).join(' ')} を足す。落とさないなら、SORA_BROWSER_UID=off で、この警告を消せる`,
     );
   }
-  const drop = wantsDrop && missing.length === 0 ? { uid: uid.uid, gid: uid.uid, launcher: options.launcher ?? DEFAULT_LAUNCHER } : null;
+  const baseUid = uid === 'off' ? 0 : uid.uid;
+  const dropUid = baseUid + (options.slot ?? 0);
+  if (wantsDrop && missing.length === 0 && dropUid > MAX_UID) {
+    throw new Error(`SORA_BROWSER_UID=${baseUid} に、tenant ごとのブラウザの番号（${options.slot}）を足した uid（${dropUid}）が、uid の最大（${MAX_UID}）を超える。SORA_BROWSER_UID を小さくする`);
+  }
+  const drop = wantsDrop && missing.length === 0 ? { uid: dropUid, gid: dropUid, launcher: options.launcher ?? DEFAULT_LAUNCHER } : null;
   const canUseSandbox = !isRoot || drop !== null;
 
   let sandbox: SandboxPolicy;

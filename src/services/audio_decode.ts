@@ -107,9 +107,9 @@ export async function decodeAudioWindows(
   if (!resolveChromiumPath()) throw new Error('Chromium/Chrome が見つからないため音声を変換できません');
   // 呼んだ利用者の枠として数える（ブラウザの枠は、利用者ごとに公平に渡す）
   const lease = await browserSemaphore.acquire(tenantId);
-  recordBrowserUsage();
+  recordBrowserUsage(tenantId);
   try {
-    const { browser, isDedicated } = await getBrowser();
+    const { browser, isDedicated } = await getBrowser(undefined, tenantId);
     const context = await browser.createBrowserContext();
     try {
       const page = await context.newPage();

@@ -28,8 +28,9 @@ export class ScrapeInputError extends Error {}
  * tenant_queue_full = その利用者が待てる数の上限・queue_full = 全体で待てる数の上限・queue_timeout = 待ち時間の上限・
  * tenant_budget = その利用者の、一定の時間あたりの予算（回数）を使い切った
  * （ブラウザセッションの数。設計 6。穴 22）session_limit = 全体のセッション数の上限（ほかの利用者のセッションは閉じない）
+ * （tenant ごとのブラウザのプロセス。設計 2）process_limit = 同時に持てるプロセスの数の上限（閉じてよい、使っていないプロセスが無い）
  */
-export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'tenant_budget' | 'session_limit';
+export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'tenant_budget' | 'session_limit' | 'process_limit';
 
 /** 混み合った資源: ブラウザの枠・セッション（browser）、地名の検索（geocoding）、Yahoo、国の情報の提供元（country_intel）、住所データの構築（address） */
 export type BusyResource = 'browser' | 'geocoding' | 'yahoo' | 'country_intel' | 'address' | 'pdf';

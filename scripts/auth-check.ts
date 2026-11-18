@@ -13,7 +13,7 @@
  *  (9) REST のモジュール（設計 5。穴 20）: SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求は 401 で、設定を教えない）。文書（/openapi.json）にも載らない
  *  (10) 増幅の上限（設計 6。穴 11・21）: SORA_ISOLATION=strict で、map_site は robots.txt の Sitemap: 行の先頭 5 つだけを取り、crawl のパターンとセレクタは 20 個まで（超えたら 400）。standard（既定）では、緩い値
  *  (11) ブラウザの枠（設計 6。穴 22・25）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant（bob）の待ちを上限（10 件）まで埋めると、bob の次の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき・code: BROWSER_BUSY）。browser_action の入力の上限（21 個のアクション）は、枠の待ちより先に検査され、429 でなく 400（INVALID_INPUT）。別の tenant（alice）は断られず、待つ（以前は、全体で 1 本の列で、上限も時間切れも無く、どの tenant も同じように待たされ続けた）
- *  (12) ブラウザセッション（設計 6。穴 22・23）: 本物のブラウザ（イメージの Chromium）で、SORA_ISOLATION=strict のとき、同じ ID を別の tenant が使え（以前は 403 で、ほかの tenant の ID の存在が分かった）、bob が閉じても alice のセッションは残る。1 人が持てるのは 5 件で、6 件目の作成は、その人の一番使われていないセッションだけを閉じる。全体が 20 件になると、新しい作成は 429（BROWSER_BUSY・Retry-After: 30）で断り、ほかの tenant のセッションは閉じない
+ *  (12) ブラウザセッション（設計 6。穴 22・23）: 本物のブラウザ（イメージの Chromium）で、SORA_ISOLATION=strict のとき、同じ ID を別の tenant が使え（以前は 403 で、ほかの tenant の ID の存在が分かった）、bob が閉じても alice のセッションは残る。1 人が持てるのは 5 件で、6 件目の作成は、その人の一番使われていないセッションだけを閉じる。strict は、利用者ごとに別のブラウザのプロセスで動かし（設計 2。段階 6）、プロセスは 4 つまで。セッションを持つ利用者が 4 人いると、5 人目の新しい作成は、5 秒待ったあと、429（BROWSER_BUSY・Retry-After: 5）で断り、ほかの利用者のセッションは閉じない。持っている人がセッションを全部閉じれば、5 人目が作れる
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
  *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
@@ -500,26 +500,28 @@ await scenario('ブラウザセッション（strict）', { SORA_AUTH_KEYS_FILE:
   const aliceStill = await act('alice', { sessionId: 'shared' });
   check(aliceStill.status === 200 && at(aliceStill, '/a'), `ブラウザセッション: carol の追い出しで、alice のセッションが閉じた: ${note(aliceStill)}`);
 
-  // 全体の数（20 件）: alice 1 + carol 5 + dave 5 + erin 5 + bob 4 = 20。alice の 2 件目の作成は、429 で断り、ほかの tenant のセッションは閉じない
-  for (const [name, count] of [['dave', 5], ['erin', 5], ['bob', 4]] as const) {
-    for (let i = 1; i <= count; i++) {
+  // プロセスの数（strict は 4 つ）: 利用者ごとに別のブラウザのプロセス。セッションを持つプロセスは閉じないので、セッションを持てる利用者は、同時に 4 人まで。
+  // dave と erin が 5 件ずつ作る: erin の作成で、使っていない bob のプロセス（さっきの bob のセッションは閉じている）が閉じて、erin に渡る。alice 1 + carol 5 + dave 5 + erin 5 = 16 件
+  for (const name of ['dave', 'erin'] as const) {
+    for (let i = 1; i <= 5; i++) {
       const created = await act(name, { createSession: true, sessionId: `${name[0]}${i}`, url: `${siteBase}/${name[0]}${i}` });
-      check(created.status === 200, `ブラウザセッション: ${name} の ${name[0]}${i} の作成が失敗した: ${note(created)}`);
+      check(created.status === 200, `ブラウザセッション: ${name} の ${name[0]}${i} の作成が失敗した（使っていない bob のプロセスを閉じて、渡すはず）: ${note(created)}`);
     }
   }
-  const full = await act('alice', { createSession: true, sessionId: 'second' });
-  check(full.status === 429 && full.json?.code === 'BROWSER_BUSY' && full.json?.retryable === true, `ブラウザセッション: 全体が 20 件のとき、alice の 2 件目の作成が 429（BROWSER_BUSY）でない: ${note(full)}`);
-  check(full.headers.get('retry-after') === '30', `ブラウザセッション: 429 に Retry-After: 30 が付いていない（${full.headers.get('retry-after')}）`);
-  check(String(full.json?.error).includes('20'), `ブラウザセッション: 429 の文に全体の上限（20）が無い: ${note(full)}`);
-  for (const [name, id] of [['dave', 'd1'], ['erin', 'e5'], ['carol', 'c6'], ['bob', 'b4']] as const) {
+  // alice・carol・dave・erin がセッションを持っているので、bob の新しい作成は、5 秒まで空くのを待ったあと、429 で断る（ほかの利用者のセッションは閉じない）
+  const full = await act('bob', { createSession: true, sessionId: 'b1', url: `${siteBase}/b1` });
+  check(full.status === 429 && full.json?.code === 'BROWSER_BUSY' && full.json?.retryable === true, `ブラウザセッション: 4 人がセッションを持つとき、bob の新しい作成が 429（BROWSER_BUSY）でない: ${note(full)}`);
+  check(full.headers.get('retry-after') === '5', `ブラウザセッション: 429 に Retry-After: 5 が付いていない（${full.headers.get('retry-after')}）`);
+  check(String(full.json?.error).includes('プロセスの上限（4 個）'), `ブラウザセッション: 429 の文に、プロセスの上限（4 個）が無い: ${note(full)}`);
+  for (const [name, id, path] of [['alice', 'shared', '/a'], ['dave', 'd1', '/d1'], ['erin', 'e5', '/e5'], ['carol', 'c6', '/c6']] as const) {
     const kept = await act(name, { sessionId: id });
-    check(kept.status === 200 && at(kept, `/${id}`), `ブラウザセッション: 断られた作成のせいで、${name} の ${id} が閉じた（url が /${id} でない）: ${note(kept)}`);
+    check(kept.status === 200 && at(kept, path), `ブラウザセッション: 断られた作成のせいで、${name} の ${id} が閉じた（url が ${path} でない）: ${note(kept)}`);
   }
-  // 空きができれば、作れる（断った予約が残らない）
-  const erinClosed = await act('erin', { sessionId: 'e1', closeSession: true });
-  check(erinClosed.status === 200 && erinClosed.json?.sessionClosed === true, `ブラウザセッション: erin の e1 を閉じられない: ${note(erinClosed)}`);
-  const second = await act('alice', { createSession: true, sessionId: 'second', url: `${siteBase}/second` });
-  check(second.status === 200 && at(second, '/second'), `ブラウザセッション: 空きができたあとも、alice の 2 件目の作成が通らない: ${note(second)}`);
+  // 持っている人が、セッションを全部閉じれば（alice は 1 件）、そのプロセスが使われなくなり、bob が作れる（断った作成が、何も残していない）
+  const aliceClosed = await act('alice', { sessionId: 'shared', closeSession: true });
+  check(aliceClosed.status === 200 && aliceClosed.json?.sessionClosed === true, `ブラウザセッション: alice が自分のセッションを閉じられない: ${note(aliceClosed)}`);
+  const second = await act('bob', { createSession: true, sessionId: 'b1', url: `${siteBase}/b1` });
+  check(second.status === 200 && at(second, '/b1'), `ブラウザセッション: alice のセッションが閉じたあとも、bob の作成が通らない: ${note(second)}`);
   await closeAllBrowserSessions();
 });
 // (11) ブラウザの枠。枠は手放さない（確認の終わりまで）。alice の待っている要求が、枠を得てブラウザを起動しないように、確認はプロセスの終了で終える
