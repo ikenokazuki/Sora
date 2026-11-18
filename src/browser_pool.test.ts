@@ -357,6 +357,33 @@ describe('BrowserPool: tenant ごとのブラウザのプロセス（別の番�
     expect(again.connected).toBe(true);
   });
 
+  test('役目を終える最中（プロセスがまだ動いている）の tenant が、また取りに来たら、終わるのを待ってから起動する（同じ番号で、2 つ目のプロセスを並べない）', async () => {
+    const r = rig();
+    r.hold.value = true;
+    const a = await r.pool.get('A', undefined);
+    const retiring = r.pool.handleOf('A')!.retire();
+    const next = r.pool.get('A', undefined);
+    await sleep(20);
+    expect(r.launched).toHaveLength(1); // 古いプロセスが終わるまで、起動しない
+    a.child.exit();
+    await retiring;
+    const again = await next;
+    expect(r.launched).toHaveLength(2);
+    expect(again).not.toBe(a);
+    expect(again.slot).toBe(a.slot);
+  });
+
+  test('役目を終えたプロセスが、強制終了しても終わらないときは、同じ番号で起動せず、断る（番号は手放さない）', async () => {
+    const r = rig();
+    r.hold.value = true;
+    await r.pool.get('A', undefined);
+    void r.pool.handleOf('A')!.retire();
+    const error = await r.pool.get('A', undefined).then(() => undefined, (e: unknown) => e);
+    expect(error).toBeInstanceOf(ResourceBusyError);
+    expect(error).toMatchObject({ reason: 'process_limit' });
+    expect(r.launched).toHaveLength(1);
+  });
+
   test('closeAll: すべてのプロセスを閉じて、番号を手放す。閉じたあとも使える', async () => {
     const r = rig();
     const browsers = await Promise.all(['A', 'B', 'C'].map((key) => r.pool.get(key, undefined)));
@@ -379,6 +406,20 @@ describe('BrowserPool: tenant ごとのブラウザのプロセス（別の番�
     await sleep(50);
     expect(a.closed).toBe(true);
     expect(b.closed).toBe(false);
+  });
+
+  test('rotateWorn: 使っているプロセスは、回数が上限でも閉じない（セッションを壊さない）。使っていないときの、次の機会に閉じる', async () => {
+    const r = rig();
+    const a = await r.pool.get('A', undefined);
+    for (let i = 0; i < 200; i++) r.pool.recordUsage('A');
+    r.inUse.add('A');
+    r.pool.rotateWorn();
+    await sleep(50);
+    expect(a.closed).toBe(false);
+    r.inUse.delete('A');
+    r.pool.rotateWorn();
+    await sleep(50);
+    expect(a.closed).toBe(true);
   });
 
   test('番号の数の上限（max）が、呼ぶたびに読まれる（水準の切り替え）', async () => {

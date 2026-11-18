@@ -323,6 +323,12 @@ export class BrowserPool<B extends BrowserLike, A> {
         existing.markUsed();
         return existing;
       }
+      if (existing?.retired) {
+        // 役目を終える最中（プロセスがまだ動いているかもしれない）。終わるのを待つ。番号は、終わってから手放される。
+        // 終わらなければ（強制終了しても）、番号は残るので、同じ番号に 2 つ目のプロセスを並べず、断る
+        await existing.retire();
+        if (this.handles.get(key) === existing) throw this.busyError();
+      }
       let slot = this.slots.allocate(key);
       if (slot === undefined) {
         // 使っていないプロセスのうち、最も長く使われていないものを閉じて、その番号をもらう
@@ -334,20 +340,22 @@ export class BrowserPool<B extends BrowserLike, A> {
         }
         slot = this.slots.allocate(key);
       }
-      if (slot === undefined) {
-        incrementSecurityCounter('sora_browser_busy_process_limit_total');
-        throw new ResourceBusyError(
-          `ブラウザのプロセスの上限（${this.options.max()} 個）に達していて、閉じてよいプロセス（使っていないもの）がありません。しばらくしてから、もう一度試してください`,
-          'process_limit',
-          5,
-          'browser',
-        );
-      }
+      if (slot === undefined) throw this.busyError();
       const handle = this.options.makeHandle(key, slot, (released) => this.release(released));
       this.handles.set(key, handle);
       handle.markUsed();
       return handle;
     });
+  }
+
+  private busyError(): ResourceBusyError {
+    incrementSecurityCounter('sora_browser_busy_process_limit_total');
+    return new ResourceBusyError(
+      `ブラウザのプロセスの上限（${this.options.max()} 個）に達していて、閉じてよいプロセス（使っていないもの）がありません。しばらくしてから、もう一度試してください`,
+      'process_limit',
+      5,
+      'browser',
+    );
   }
 
   /** 役目を終えて、子プロセスも終わった handle の番号を手放す */

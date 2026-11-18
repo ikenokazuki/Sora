@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { closeSharedBrowser, getBrowser, isSharedBrowserConnected, perTenantBrowsersEnabled, resolveChromiumPath } from './browser_engine.js';
+import { browserSemaphore, closeSharedBrowser, getBrowser, isSharedBrowserConnected, maybeRotateSharedBrowser, perTenantBrowsersEnabled, recordBrowserUsage, resolveChromiumPath } from './browser_engine.js';
 import { ResourceBusyError } from './errors.js';
 import { STRICT_LIMITS } from './security/limits.js';
 import { withEnv } from './test_fixtures/env.js';
@@ -108,6 +108,37 @@ describe.skipIf(!resolveChromiumPath())('tenant ごとのブラウザのプロ�
       for (const entry of entries.slice(1)) await entry.context.close();
     });
   }, 180000);
+
+  test('ブラウザの枠を持っている tenant のプロセスは、開いたコンテキストが無くても、閉じない（枠を取ってから、ページを開くまでの間に、閉じない）', async () => {
+    await strict(async () => {
+      const tenants = Array.from({ length: STRICT_LIMITS.browserProcessMax }, (_, i) => `name:H${i}`);
+      const entries = [];
+      for (const tenant of tenants) entries.push({ browser: (await getBrowser(undefined, tenant)).browser });
+      const lease = await browserSemaphore.acquire(tenants[0]); // コンテキストは開いていないが、枠を持っている
+      const others = [];
+      try {
+        for (const entry of entries.slice(1)) others.push(await entry.browser.createBrowserContext());
+        const error = await getBrowser(undefined, 'name:extra').then(() => undefined, (e: unknown) => e);
+        expect(error).toBeInstanceOf(ResourceBusyError);
+        expect(entries[0].browser.connected).toBe(true);
+      } finally {
+        lease();
+        for (const context of others) await context.close();
+      }
+    });
+  }, 180000);
+
+  test('使った回数が上限（200）に達した tenant のプロセスは、全体が空いたとき（maybeRotateSharedBrowser）に閉じる。ほかの tenant のプロセスは閉じない', async () => {
+    await strict(async () => {
+      const a = (await getBrowser(undefined, 'name:A')).browser;
+      const b = (await getBrowser(undefined, 'name:B')).browser;
+      for (let i = 0; i < 200; i++) recordBrowserUsage('name:A');
+      recordBrowserUsage('name:B');
+      maybeRotateSharedBrowser();
+      expect(await waitUntilDead([a.process()?.pid])).toBe(true);
+      expect(b.connected).toBe(true);
+    });
+  }, 90000);
 
   test('ブラウザごとのプロキシの指定は、番号（uid）の管理の外になるので、使えない', async () => {
     await strict(async () => {
