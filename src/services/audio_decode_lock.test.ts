@@ -2,7 +2,7 @@ import { afterAll, describe, expect, spyOn, test } from 'bun:test';
 import dgram from 'node:dgram';
 import net from 'node:net';
 import { closeSharedBrowser, getBrowser, resolveChromiumPath } from '../browser_engine.js';
-import { isEgressGatewayEnabled } from '../net/egress.js';
+import { isEgressGatewayEnabled, isEgressGatewayStarted, stopEgressGateway } from '../net/egress.js';
 import { wavBytes } from '../test_fixtures/audio.js';
 import { withEnv } from '../test_fixtures/env.js';
 import { AudioDecodeError, createOfflineContext, decodeAudioWindows, lockPageOffline } from './audio_decode.js';
@@ -273,6 +273,8 @@ describe.skipIf(!resolveChromiumPath())('デコード用のコンテキストと
 describe.skipIf(!resolveChromiumPath())('decodeAudioWindows は、閉じたコンテキストとページで、バイト列を処理する', () => {
   afterAll(async () => {
     await closeSharedBrowser();
+    // 出口のゲートウェイは、プロセスで 1 つ。起動したままにすると、あとに走る別のテストファイルが、古い設定のゲートウェイに当たる（CI で、egress_fetch.test.ts が 403 になった）
+    expect(isEgressGatewayStarted()).toBe(false);
   });
 
   test('ページへの最初の操作（バイト列を渡す前）の時点で、外へ出る道が全部閉じている。デコード自体は、これまでどおり動く', async () => {
@@ -332,6 +334,8 @@ describe.skipIf(!resolveChromiumPath())('decodeAudioWindows は、閉じたコ�
       } finally {
         server.stop();
         await closeSharedBrowser();
+        // ゲートウェイは、プロセスで 1 つを使い回す。起動したままにすると、あとに走る別のテスト（既定の設定で起動し直す前提のもの）が、この設定のゲートウェイに当たる
+        await stopEgressGateway();
       }
     });
   }, 120000);
