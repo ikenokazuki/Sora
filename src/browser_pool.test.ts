@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { ResourceBusyError } from './errors.js';
 import { BrowserHandle, BrowserPool, type BrowserLike, type ChildLike, HandleRetiredError } from './browser_pool.js';
@@ -586,15 +587,32 @@ describe('BrowserPool: tenant ごとのブラウザのプロセス（別の番�
       expect(b.slot).toBe(a.slot);
     });
 
-    test('強制終了は、プロセスグループ（-pid）にも送る（子孫のプロセスも終わらせる）', async () => {
-      const r = rig(40);
-      r.max.value = 1;
-      r.hold.value = true;
-      const a = await r.pool.get('A', undefined);
-      (a.child as { pid?: number }).pid = 2_000_000_000; // 存在しない pid（実際の process.kill は ESRCH で、握られる）
-      a.child.killExits = true;
-      await r.pool.handleOf('A')!.retire();
-      expect(a.child.killed).toContain('SIGKILL');
+    test('強制終了は、プロセスグループ（-pid）に送る（主プロセスだけでなく、子孫のプロセスも終わらせる）', async () => {
+      // 実際のプロセスグループ: sh（グループの先頭）が、子の sleep を持つ。偽の child.kill は、何も終わらせない（主プロセスは、偽物）
+      const group = spawn('sh', ['-c', 'sleep 60 & wait'], { detached: true, stdio: 'ignore' });
+      const alive = (pid: number) => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+      try {
+        const r = rig(40);
+        r.max.value = 1;
+        r.hold.value = true;
+        const a = await r.pool.get('A', undefined);
+        (a.child as { pid?: number }).pid = group.pid;
+        await sleep(100); // 子（sleep）が起動する
+        await r.pool.handleOf('A')!.retire();
+        await until(() => !alive(group.pid!));
+        expect(alive(group.pid!)).toBe(false);
+      } finally {
+        try {
+          process.kill(-group.pid!, 'SIGKILL');
+        } catch {}
+      }
     });
   });
 
@@ -664,6 +682,30 @@ describe('BrowserPool: tenant ごとのブラウザのプロセス（別の番�
     expect(new Set(slots).size).toBe(2);
   });
 
+  test('回転: 判定の最中に、別の呼び出しが受け取って（枠は、もう手放した）いても、閉じない（受け取った直後の browser を閉じない）', async () => {
+    const r = rig();
+    const a = await r.pool.get('A', undefined);
+    for (let i = 0; i < 200; i++) r.pool.recordUsage('A');
+    a.pagesDelay = 60;
+    r.pool.rotateWorn();
+    await sleep(10);
+    expect(await r.pool.get('A', undefined)).toBe(a); // 使用中の印（inUse）は、立っていない。受け取った時刻だけが新しい
+    await sleep(120);
+    expect(a.closed).toBe(false);
+  });
+
+  test('回転: 判定の最中に、枠を取られて（受け取りはまだ）も、閉じない（使用中の印を、判定のあとに確かめ直す）', async () => {
+    const r = rig();
+    const a = await r.pool.get('A', undefined);
+    for (let i = 0; i < 200; i++) r.pool.recordUsage('A');
+    a.pagesDelay = 60;
+    r.pool.rotateWorn();
+    await sleep(10);
+    r.inUse.add('A'); // 枠を取った（getBrowser は、まだ呼んでいない）
+    await sleep(120);
+    expect(a.closed).toBe(false);
+  });
+
   test('回転: 使っていないかの判定の最中（pages() の待ち）に、使われ始めたら、閉じない', async () => {
     const r = rig();
     const a = await r.pool.get('A', undefined);
@@ -675,6 +717,38 @@ describe('BrowserPool: tenant ごとのブラウザのプロセス（別の番�
     await r.pool.get('A', undefined);
     await sleep(120);
     expect(a.closed).toBe(false);
+  });
+
+  test('番号の手放しは、1 回だけ（子プロセスの終わりと、役目を終える処理が、同時に確かめても）', async () => {
+    let releases = 0;
+    const browsers: FakeBrowser[] = [];
+    const handle = new BrowserHandle<FakeBrowser, undefined>(
+      'A',
+      0,
+      {
+        launch: async (slot) => {
+          const browser = new FakeBrowser(slot);
+          browsers.push(browser);
+          return browser;
+        },
+        inUse: () => false,
+        idleTtlMs: () => 0,
+        retireWhenIdle: true,
+        exitGraceMs: 60,
+        reap: async () => {
+          await sleep(30); // 確かめている間に、もう一方の確かめが走る
+          return true;
+        },
+      },
+      () => {
+        releases++;
+      },
+    );
+    await handle.get(undefined);
+    await handle.retire();
+    await sleep(100);
+    expect(browsers[0].closed).toBe(true);
+    expect(releases).toBe(1);
   });
 
   test('closeAll: すべてのプロセスを閉じて、番号を手放す。閉じたあとも使える', async () => {

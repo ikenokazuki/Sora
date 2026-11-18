@@ -95,9 +95,12 @@ describe.skipIf(!resolveChromiumPath())('tenant ごとのブラウザのプロ�
         const { browser } = await getBrowser(undefined, tenant);
         entries.push({ browser, context: await browser.createBrowserContext(), pid: browser.process()?.pid });
       }
+      const startedAt = Date.now();
       const error = await getBrowser(undefined, 'name:extra').then(() => undefined, (e: unknown) => e);
       expect(error).toBeInstanceOf(ResourceBusyError);
       expect(error).toMatchObject({ reason: 'process_limit', resource: 'browser' });
+      // すぐ断らず、strict の待ち（browserProcessWaitMs = 5 秒）まで、空くのを待った
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(STRICT_LIMITS.browserProcessWaitMs - 500);
       // 1 つのコンテキストを閉じると、そのプロセスは使用中でなくなり、閉じて、新しい tenant に渡す
       const freed = entries[0];
       await freed.context.close();
