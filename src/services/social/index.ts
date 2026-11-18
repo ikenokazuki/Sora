@@ -1,3 +1,4 @@
+import { ResourceBusyError } from '../../errors.js';
 import { detectMetaPlatform, isOembedPlaceholder, META_OEMBED_ENDPOINTS, parseInstagramDescription, parseMetaPage, selectPostTime, type MetaBrowser, type MetaHttp } from './meta.js';
 import { discoverMetaPosts, type DiscoveryWebSearch } from './discovery.js';
 import { extractWeiboBid, fetchWeiboExtend, fetchWeiboHotComments, fetchWeiboStatus, parseWeiboTime, searchWeibo, stripWeiboHtml, WeiboAuthError, WeiboRateLimitedError, type WeiboHttp } from './weibo.js';
@@ -18,6 +19,17 @@ export interface SocialDeps {
 export interface SocialContext {
   signal: AbortSignal;
   deadlineAt: number;
+  /**
+   * 呼んだ側が渡すと、取得が順番・予算で断られた（ResourceBusyError）とき、hit が true になる。
+   * 結果には、断られた取得も「取得に失敗した」としか書かれず（failures の文字列）、呼んだ側は、断りと、サイトの失敗を見分けられない。
+   * 見分けたいのは、断られた結果を、共有のキャッシュに入れないため（国の情報の social_posts）。
+   */
+  busy?: { hit: boolean };
+}
+
+/** 取得の失敗が、順番・予算の断りなら、呼んだ側へ知らせる（失敗の扱いは変えない。呼び出しの側で握ったあとに呼ぶ） */
+function noteBusy(ctx: SocialContext, error: unknown): void {
+  if (error instanceof ResourceBusyError && ctx.busy) ctx.busy.hit = true;
 }
 
 const MAX_TEXT_CHARS = 6000;
@@ -206,6 +218,7 @@ async function fetchMetaPost(deps: SocialDeps, platform: SocialPlatform, url: st
       if (post) warnings.push('body from anonymous browser render');
       else failures.push('browser render had no readable body');
     } catch (e) {
+      noteBusy(ctx, e);
       failures.push('browser: ' + String((e as Error)?.message ?? e).slice(0, 140));
     }
   }
@@ -224,6 +237,7 @@ export function createSocialService(deps: SocialDeps) {
     try {
       session = await sessionStore.get(ctx.signal);
     } catch (e) {
+      noteBusy(ctx, e);
       return { status: 'unavailable', platform: 'weibo', query: input.query, searchMode: 'native_latest', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: ['session: ' + String((e as Error)?.message ?? e).slice(0, 160)], warnings };
     }
     const unavailable = (reason: string): SocialSearchResult => ({ status: 'unavailable', platform: 'weibo', query: input.query, searchMode: 'native_latest', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: [reason], warnings });
@@ -248,6 +262,7 @@ export function createSocialService(deps: SocialDeps) {
             session = await sessionStore.get(ctx.signal);
             continue;
           } catch (e2) {
+            noteBusy(ctx, e2);
             return unavailable('session renewal: ' + String((e2 as Error)?.message ?? e2).slice(0, 160));
           }
         }
@@ -276,7 +291,13 @@ export function createSocialService(deps: SocialDeps) {
   async function searchMetaPlatform(input: SocialSearchInput, ctx: SocialContext): Promise<SocialSearchResult> {
     const failures: string[] = [];
     const warnings: string[] = ['meta discovery depends on the web index; not a realtime in-app search'];
-    const disco = await discoverMetaPosts(deps.webSearch, input.platform, input.query, input.limit, input.lookbackHours, ctx.signal);
+    // Yahoo の検索（候補の URL を探す）も、順番・予算で断られうる。discoverMetaPosts は失敗を握るので、ここで断りを記録する
+    const webSearch: DiscoveryWebSearch = {
+      search: async (query, maxItems, opts, signal) => {
+        try { return await deps.webSearch.search(query, maxItems, opts, signal); } catch (e) { noteBusy(ctx, e); throw e; }
+      },
+    };
+    const disco = await discoverMetaPosts(webSearch, input.platform, input.query, input.limit, input.lookbackHours, ctx.signal);
     const urls = disco.urls;
     failures.push(...disco.failures);
     const items: SocialPost[] = [];

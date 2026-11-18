@@ -1,5 +1,6 @@
 import { normalizeEvidence } from '../evidence.js';
 import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../provider_registry.js';
+import { ResourceBusyError } from '../../../errors.js';
 import { rethrowIfBusy } from '../provider_http.js';
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import type { EvidenceDetail } from '../detail.js';
@@ -97,14 +98,23 @@ export function createOfficialWebProvider(deps: OfficialWebDeps): CountryIntelPr
         if (signal.aborted) throw e;
         throw new ProviderNetworkError(String(e));
       }
-      if (scrape) await upgradeWithArticles(all, scrape, maxArticles, signal, deps.scrapeBudgetMs ?? 4000);
+      const busyHit = scrape ? await upgradeWithArticles(all, scrape, maxArticles, signal, deps.scrapeBudgetMs ?? 4000) : false;
+      // 記事本文の取得が、順番・予算で断られた。見出しと概要だけの結果は、断られた利用者には返してよいが、共有のキャッシュには入れない
+      // （入れると、余裕のある別の利用者にも、1 時間、本文なしの結果が返る）
+      if (busyHit) {
+        return {
+          items: all, coverage: ['official'], status: 'partial' as const, errorCode: 'PROVIDER_BUSY', cacheable: false,
+          gaps: [{ area: 'official', reason: '記事本文の取得が、順番・予算で断られました（見出しと概要だけの項目があります。この結果は共有のキャッシュに入れません）' }],
+        };
+      }
       return { items: all, coverage: ['official'] };
     },
   };
 }
-async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>, maxArticles: number, parent: AbortSignal, budgetMs: number): Promise<void> {
+async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: string, signal: AbortSignal) => Promise<ScrapedArticle>, maxArticles: number, parent: AbortSignal, budgetMs: number): Promise<boolean> {
   const targets = items.filter((item) => item.evidence && item.detail).slice(0, Math.max(0, maxArticles));
   let cursor = 0;
+  let busyHit = false;
   const workers = [0, 1].map(async () => {
     while (cursor < targets.length) {
       if (parent.aborted) return;
@@ -121,8 +131,12 @@ async function upgradeWithArticles(items: AcquisitionItem[], scrape: (url: strin
         if (split.blocks.length === 0) continue;
         item.detail = { ...item.detail!, contentKind: 'extracted_text', blocks: split.blocks, contentTruncated: split.truncated };
         if (scraped.title && !item.evidence!.title) item.evidence!.title = scraped.title;
-      } catch { /* per-URL scrape failure keeps the snippet detail */ }
+      } catch (e) {
+        // 1 件の取得の失敗は、概要を残して続ける。順番・予算の断りだけは、呼んだ側に知らせる（結果をキャッシュに入れないため）
+        if (e instanceof ResourceBusyError) busyHit = true;
+      }
     }
   });
   await Promise.all(workers);
+  return busyHit;
 }

@@ -1000,7 +1000,11 @@ export async function scrapeUrl(options: {
         // 本文は静的な取得で足りる。画像のためだけにブラウザを使うときも、本文と HTTP の状態は静的な取得のまま、ブラウザからは画像だけを取る
         // （ボット対策のページでは、ブラウザだけが 403 の画面に飛ばされ、取れた本文が「Access Denied」に替わる）。撮れなければ警告が付く
         if (screenshotNeedsBrowser) {
-          staticResult.screenshot = (await renderInBrowser('Taking a screenshot via Stealth Chromium').catch(() => undefined))?.screenshot;
+          staticResult.screenshot = (await renderInBrowser('Taking a screenshot via Stealth Chromium').catch((e: unknown) => {
+            // ブラウザの枠の断り（ResourceBusyError）は、握って「画像なしの結果」にしない（キャッシュのキーに利用者は含まれず、枠に余裕のある別の利用者にも、画像なしの結果が返る）
+            if (e instanceof ResourceBusyError) throw e;
+            return undefined;
+          }))?.screenshot;
         }
         onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
         result = markHttpError(await finalizeScrapeResult(staticResult, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
@@ -1024,6 +1028,9 @@ export async function scrapeUrl(options: {
     try {
       browserRes = await renderInBrowser('Rendering SPA via Stealth Chromium');
     } catch (browserErr) {
+      // ブラウザの枠の断り（ResourceBusyError）は、救済しない。静的な殻だけの結果を作って共有のキャッシュに入れると（キャッシュのキーに利用者は含まれない）、
+      // 枠に余裕のある別の利用者にも、描画されていない殻が返る（ウォッチは、描画済みの基準との違いを、変更と誤る）
+      if (browserErr instanceof ResourceBusyError) throw browserErr;
       // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
       if (initialHttpResult) {
         onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
@@ -1994,6 +2001,17 @@ async function integratedSearchTracked(options: {
     if (cached) return cached;
   }
 
+  // 結果のページ・動画の検索・動画のページの読み取りが、順番・予算で断られたとき（ResourceBusyError）。断った利用者の欠けた結果（scrapeError つき・動画なし）は、共有のキャッシュに入れない。
+  // 動画の検索は、Web 検索と並行して先に始まるので、ここ（動画の検索より前）で宣言する
+  let busyHit = false;
+  const scrapeTracked: typeof scrapeUrl = async (...scrapeArgs) => {
+    try {
+      return await scrapeUrl(...scrapeArgs);
+    } catch (e) {
+      if (e instanceof ResourceBusyError) busyHit = true;
+      throw e;
+    }
+  };
   const webSearchPromise = readQueryUrls
     ? Promise.resolve({ items: queryUrls.slice(0, limit).map((url) => ({ title: url, url, source: 'web' })) })
     : searchYahooWeb({ query, includeDomains, excludeDomains, updated, noCache });
@@ -2010,7 +2028,7 @@ async function integratedSearchTracked(options: {
             return true;
           }).slice(0, videos);
           const read = await Promise.all(picked.map(async (item: any) => {
-            const scrape = await scrapeUrl({
+            const scrape = await scrapeTracked({
               url: item.url, tenantId: requestTenantId, contextTitle: item.title, snippet: item.summary, maxChars, timeoutMs: 12000,
               query, extractHighlights, onlyMainContent, formats, annotateTemporal,
               highlightMaxCount, noCache,
@@ -2027,7 +2045,11 @@ async function integratedSearchTracked(options: {
           }));
           return read.filter((r): r is NonNullable<typeof r> => r !== null);
         })
-        .catch(() => [])
+        .catch((e: unknown) => {
+          // 動画の検索（Yahoo）の順番・予算の断りは、動画なしの結果にして握るが、共有のキャッシュには入れない（busyHit）
+          if (e instanceof ResourceBusyError) busyHit = true;
+          return [];
+        })
     : Promise.resolve([]);
   // 公式アカウントの投稿は、公式枠（先頭5件）と X 検索の別名検出（20件）で1回の取得を共有する
   const officialPostsByHandle = new Map<string, Promise<any[]>>();
@@ -2096,16 +2118,6 @@ async function integratedSearchTracked(options: {
   // ponytail: 低速だが本文のあるページ（SPA 等は 9〜10s かかる）を落とすため opt-in。有効化の根拠は「修正後の」本文取得時間の実測が揃ってから決める。
   const scrapeDeadlineMs = options.scrapeDeadlineMs ?? envInt('SORA_SEARCH_SCRAPE_DEADLINE_MS');
   let scrapeDeadlineHit = false;
-  // 結果のページの読み取りが、順番・予算で断られたとき（ResourceBusyError）。断った利用者の欠けた結果（scrapeError つき）は、共有のキャッシュに入れない
-  let busyHit = false;
-  const scrapeTracked: typeof scrapeUrl = async (...scrapeArgs) => {
-    try {
-      return await scrapeUrl(...scrapeArgs);
-    } catch (e) {
-      if (e instanceof ResourceBusyError) busyHit = true;
-      throw e;
-    }
-  };
   const videoDeadlineAt = Date.now() + scrapeDeadlineMs;
   let enrichedResults = topItems;
   if (scrapeContent) {
