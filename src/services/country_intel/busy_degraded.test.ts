@@ -95,18 +95,43 @@ describe('social_posts: ブラウザの枠・Yahoo の断りを握って、欠�
     expect(cache.sets).toEqual([]);
   });
 
-  test('サービスが断りを直接投げても（検索・URL の取得）、同じに扱う', async () => {
-    const service = {
-      search: async () => { throw busy(); },
-      fetch: async () => { throw busy(); },
-      enrichWeiboTop: async (items: never[]) => items,
-    };
-    const provider = createSocialPostsProvider({ service: service as never });
-    const plan = planFor({ region: 'Japan', query: 'starbucks', includeSocial: true, social: { platforms: ['threads'], urls: [threads('XYZ')] } }, [provider]);
+  test('Weibo のセッションが期限切れで、更新（開き直し）が断られたときも、rate_limited / PROVIDER_BUSY', async () => {
+    let opens = 0;
+    const { run: r, cache } = await run(deps({
+      sessionOpener: { openWeiboSession: async () => { opens++; if (opens > 1) throw busy(); return [{ name: 'SUB', value: 's', domain: 'm.weibo.cn' }]; } },
+      weiboHttp: { getJson: async () => ({ status: 200, data: { ok: -100 } }) },
+    }), ['weibo']);
+    expect(opens).toBe(2);
+    expect(r).toMatchObject({ status: 'rate_limited', errorCode: 'PROVIDER_BUSY', itemCount: 0 });
+    expect(cache.sets).toEqual([]);
+  });
+
+  /** サービスそのものが断りを直接投げる（テスト用の偽のサービス）。検索と URL の取得は、別々に確かめる */
+  async function runWithService(service: { search: () => Promise<unknown>; fetch: () => Promise<unknown> }, social: Record<string, unknown>) {
+    const provider = createSocialPostsProvider({ service: { ...service, enrichWeiboTop: async (items: never[]) => items } as never });
+    const plan = planFor({ region: 'Japan', query: 'starbucks', includeSocial: true, social }, [provider]);
     const cache = recordingCache();
     const result = await runProviderPass(plan, 1, [provider], { cache });
-    expect(result.runs[0]).toMatchObject({ status: 'rate_limited', errorCode: 'PROVIDER_BUSY', itemCount: 0 });
+    return { run: result.runs[0], cache };
+  }
+  const nothing = async () => ({ status: 'empty', platform: 'threads', query: 'q', searchMode: 'test', items: [], matchedInWindow: 0, unknownTime: 0, excluded: 0, failures: [], warnings: [] });
+  const noPost = async () => ({ status: 'unavailable', failures: ['no post'], warnings: [] });
+
+  test('サービスが、検索で断りを直接投げたとき（URL の取得は断られない）も、PROVIDER_BUSY で、キャッシュに入れない', async () => {
+    const { run: r, cache } = await runWithService({ search: async () => { throw busy(); }, fetch: noPost }, { platforms: ['threads'], urls: [threads('XYZ')] });
+    expect(r).toMatchObject({ status: 'rate_limited', errorCode: 'PROVIDER_BUSY', itemCount: 0 });
     expect(cache.sets).toEqual([]);
+  });
+
+  test('サービスが、URL の取得で断りを直接投げたとき（検索は断られない）も、PROVIDER_BUSY で、キャッシュに入れない', async () => {
+    const { run: r, cache } = await runWithService({ search: nothing, fetch: async () => { throw busy(); } }, { platforms: ['threads'], urls: [threads('XYZ')] });
+    expect(r).toMatchObject({ status: 'rate_limited', errorCode: 'PROVIDER_BUSY', itemCount: 0 });
+    expect(cache.sets).toEqual([]);
+  });
+
+  test('断りでない失敗（URL の取得）は、これまでどおり、PROVIDER_BUSY にしない', async () => {
+    const { run: r } = await runWithService({ search: nothing, fetch: noPost }, { platforms: ['threads'], urls: [threads('XYZ')] });
+    expect(r.errorCode).not.toBe('PROVIDER_BUSY');
   });
 });
 
