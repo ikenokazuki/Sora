@@ -194,3 +194,22 @@ describe('待てるかの事前の確認（assertCanWait）', () => {
   });
 });
 
+
+describe('heldBy（利用者ごとの、いま持っている枠の数）', () => {
+  test('枠を取ると増え、手放すと減る。持っていない利用者は 0。省略は legacy', async () => {
+    const sem = new SimpleSemaphore(4, { policy: policy({ perTenant: 10, total: 10 }) });
+    expect(sem.heldBy('A')).toBe(0);
+    const a1 = await sem.acquire('A');
+    const a2 = await sem.acquire('A');
+    const b = await sem.acquire('B');
+    const legacy = await sem.acquire();
+    expect(sem.heldBy('A')).toBe(2);
+    expect(sem.heldBy('B')).toBe(1);
+    expect(sem.heldBy()).toBe(1);
+    a1();
+    a1(); // 2 回手放しても、1 回だけ減る
+    expect(sem.heldBy('A')).toBe(1);
+    a2(); b(); legacy();
+    expect([sem.heldBy('A'), sem.heldBy('B'), sem.heldBy()]).toEqual([0, 0, 0]);
+  });
+});

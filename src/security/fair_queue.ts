@@ -42,7 +42,7 @@ const UNBOUNDED: QueuePolicy = { perTenant: Infinity, total: Infinity, waitMs: I
 const RETRY_AFTER_SEC = 5;
 
 /** 枠の待ち行列が断る理由（session_limit は、セッションの登録簿の理由。tenant_budget は、利用者ごとの予算 tenant_budget.ts の理由） */
-type QueueBusyReason = Exclude<BusyReason, 'session_limit' | 'tenant_budget'>;
+type QueueBusyReason = Exclude<BusyReason, 'session_limit' | 'tenant_budget' | 'process_limit'>;
 
 /** 資源ごとの、断る文の言葉。subject は「〜を待つ要求が」、waiting は「〜を N 秒待ちましたが、空きませんでした」の前半 */
 export const RESOURCE_WORDS: Record<BusyResource, { subject: string; waiting: string }> = {
@@ -155,6 +155,11 @@ export class SimpleSemaphore {
 
   get activeCount(): number {
     return this.current;
+  }
+
+  /** 1 つの tenant が、いま持っている枠の数（ブラウザを tenant ごとのプロセスで動かすとき、使っているプロセスを閉じない判断に使う） */
+  heldBy(tenantId = 'legacy'): number {
+    return this.held.get(tenantId) ?? 0;
   }
 
   get pendingCount(): number {

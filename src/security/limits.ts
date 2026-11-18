@@ -60,6 +60,13 @@ export interface Limits {
   watchMinIntervalMs: number;
   /** ブラウザセッションの最長の時間（ミリ秒）。作成からの時間で、使い続けても延びない。過ぎたら、使っていないときに閉じる */
   browserSessionMaxMs: number;
+  /**
+   * tenant ごとに別のブラウザのプロセス（と、別の uid）で動かすときの、同時に持てるプロセスの数（設計 2。穴 4・I5）。0 は、全員で 1 つの共有プロセス（今までどおり）。
+   * 超えるとき、使っていない（開いているページ・セッション・枠が無い）プロセスのうち、いちばん長く使われていないものを閉じて渡す。閉じられるものが無ければ、断る（429）
+   */
+  browserProcessMax: number;
+  /** tenant ごとのブラウザのプロセスを、使われなくなってから閉じるまでの時間（ミリ秒）。環境変数 SORA_BROWSER_IDLE_TTL_MS が、これより小さければそちら（0 は、閉じない） */
+  browserProcessIdleMs: number;
   /** DB のキャッシュ（cache_entries）の行数の上限。超えたら、期限の近い（期限切れが先の）行から消す */
   cacheDbMaxRows: number;
   /** DB のキャッシュの容量（JSON の UTF-8 のバイト数の合計）の上限。超えたら、期限の近い行から消す。1 件がこれより大きいときは、その 1 件を入れない */
@@ -147,6 +154,8 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsPerTenant: 20,
   browserSessionsTotal: 20,
   browserSessionMaxMs: 86_400_000,
+  browserProcessMax: 0,
+  browserProcessIdleMs: 300_000,
   watchTargetsPerTenant: 1000,
   watchMinIntervalMs: 0,
   cacheDbMaxRows: 20_000,
@@ -205,6 +214,8 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsPerTenant: 5,
   browserSessionsTotal: 20,
   browserSessionMaxMs: 3_600_000,
+  browserProcessMax: 4,
+  browserProcessIdleMs: 60_000,
   watchTargetsPerTenant: 50,
   watchMinIntervalMs: 900_000,
   cacheDbMaxRows: 5_000,

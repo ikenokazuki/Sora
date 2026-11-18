@@ -235,7 +235,7 @@ async function createBrowserSession(options: BrowserSessionOptions, tenantId: st
       console.log(`[Sora] Evicting least recently used browser session ${evicted.id} of ${tenantId} due to its session limit (${lim.browserSessionsPerTenant})`);
       await disposeSession(evicted);
     }
-    const browserRes = await getBrowser();
+    const browserRes = await getBrowser(undefined, tenantId);
     browserInstance = browserRes.browser;
     isDedicated = browserRes.isDedicated;
     // 共有ブラウザは全ページでCookieJarを共有するため、セッションごとに独立した
@@ -661,7 +661,7 @@ export async function handleBrowserSessionAction(
       }
       // 作成済みでも新規でも、枠の下で動く（ワンショットと同じ。呼び出しの終わりまで持つ）。枠を断られたら、ここで例外
       statefulLease = await browserSemaphore.acquire(tenantId);
-      recordBrowserUsage();
+      recordBrowserUsage(tenantId);
       if (existing && sessionRegistry.get(tenantId, existing.id) !== existing) {
         // 枠を待つ間に、持ち主の closeSession で閉じられた。見つからないときと同じに、新しく作る
         existing.inUse--;
@@ -691,9 +691,9 @@ export async function handleBrowserSessionAction(
   } else {
     // ワンショット実行（セッション管理なし・即破棄）
     oneShotLease = await browserSemaphore.acquire(options.tenantId);
-    recordBrowserUsage();
+    recordBrowserUsage(options.tenantId);
     try {
-      const browserRes = await getBrowser();
+      const browserRes = await getBrowser(undefined, options.tenantId);
       browserInstance = browserRes.browser;
       isDedicated = browserRes.isDedicated;
       context = await browserInstance.createBrowserContext();
