@@ -65,6 +65,8 @@ export interface Limits {
    * 超えるとき、使っていない（開いているページ・セッション・枠が無い）プロセスのうち、いちばん長く使われていないものを閉じて渡す。閉じられるものが無ければ、断る（429）
    */
   browserProcessMax: number;
+  /** tenant ごとのブラウザのプロセスが、すべて使用中のとき、新しい利用者が、空くのを待つ時間の上限（ミリ秒）。0 は、待たずに断る。超えたら断る（429） */
+  browserProcessWaitMs: number;
   /** tenant ごとのブラウザのプロセスを、使われなくなってから閉じるまでの時間（ミリ秒）。環境変数 SORA_BROWSER_IDLE_TTL_MS が、これより小さければそちら（0 は、閉じない） */
   browserProcessIdleMs: number;
   /** DB のキャッシュ（cache_entries）の行数の上限。超えたら、期限の近い（期限切れが先の）行から消す */
@@ -155,6 +157,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsTotal: 20,
   browserSessionMaxMs: 86_400_000,
   browserProcessMax: 0,
+  browserProcessWaitMs: 0,
   browserProcessIdleMs: 300_000,
   watchTargetsPerTenant: 1000,
   watchMinIntervalMs: 0,
@@ -215,6 +218,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   browserSessionsTotal: 20,
   browserSessionMaxMs: 3_600_000,
   browserProcessMax: 4,
+  browserProcessWaitMs: 5_000,
   browserProcessIdleMs: 60_000,
   watchTargetsPerTenant: 50,
   watchMinIntervalMs: 900_000,

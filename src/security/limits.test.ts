@@ -105,9 +105,9 @@ describe('limits', () => {
     expect(STANDARD_LIMITS.browserSessionMaxMs).toBe(86_400_000);
   });
 
-  test('tenant ごとのブラウザのプロセス: strict は最大 4 つで、使われない 1 分で閉じる。standard は 0（全員で 1 つの共有プロセス。今までどおり）', () => {
-    expect(STRICT_LIMITS).toMatchObject({ browserProcessMax: 4, browserProcessIdleMs: 60_000 });
-    expect(STANDARD_LIMITS).toMatchObject({ browserProcessMax: 0, browserProcessIdleMs: 300_000 });
+  test('tenant ごとのブラウザのプロセス: strict は最大 4 つで、全部が使用中なら 5 秒まで空くのを待ち、使われない 1 分で閉じる。standard は 0（全員で 1 つの共有プロセス。今までどおり）', () => {
+    expect(STRICT_LIMITS).toMatchObject({ browserProcessMax: 4, browserProcessWaitMs: 5_000, browserProcessIdleMs: 60_000 });
+    expect(STANDARD_LIMITS).toMatchObject({ browserProcessMax: 0, browserProcessWaitMs: 0, browserProcessIdleMs: 300_000 });
   });
 
   test('ウォッチ: 1 人の登録数は strict が 50 件、standard が 1000 件。同じウォッチの確認の最小の間隔は strict が 15 分、standard は無し（0）', () => {
@@ -164,7 +164,7 @@ describe('limits', () => {
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
   const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute', 'addressBudgetPerMinute'];
   // 0 が「切り替えない」（tenant ごとのブラウザのプロセス。standard は 0 = 全員で 1 つの共有プロセス）。strict は正の数
-  const ZERO_IS_OFF = ['browserProcessMax'];
+  const ZERO_IS_OFF = ['browserProcessMax', 'browserProcessWaitMs'];
 
   test('すべての値は正の整数（下限の値は standard が 0 でもよい）。standard は strict より緩い（上限は同じか大きい、下限は同じか小さい）', () => {
     const keys = Object.keys(STRICT_LIMITS) as Array<keyof typeof STRICT_LIMITS>;

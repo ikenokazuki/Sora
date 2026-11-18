@@ -16,6 +16,7 @@ import {
 } from './browser_launch_plan.js';
 import { type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
 import { BrowserHandle, BrowserPool } from './browser_pool.js';
+import { reapUid } from './browser_reap.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { limits } from './security/limits.js';
@@ -165,9 +166,16 @@ const browserPool = new BrowserPool<Browser, LaunchArg>({
         inUse: () => browserSemaphore.heldBy(key) > 0,
         idleTtlMs: perTenantIdleTtlMs,
         retireWhenIdle: true,
+        // 番号（uid）を別の tenant に渡す前に、その uid のプロセスが残っていないことを確かめて、残っていれば終わらせる（uid を分けているときだけ）
+        reap: async (slot) => {
+          const uid = slotUid(slot);
+          return uid === undefined ? true : launchProbe.reap(uid);
+        },
       },
       onReleased,
     ),
+  // すべて使用中のとき、少し待ってから断る（常に同じ tenant が使い続けても、ほかの tenant が、使われていない合間に入れる）
+  waitMs: () => limits().browserProcessWaitMs,
 });
 
 /** tenant ごとにブラウザのプロセスを分けるか（水準 `strict`）。分けないとき（`standard`）は、全員で 1 つの共有ブラウザ */
@@ -208,6 +216,7 @@ export async function getBrowser(overrideProxyUrl?: string, tenantId?: string): 
   return { browser, isDedicated: false };
 }
 
+/** ブラウザが名乗るタイムゾーン。ロケール（ja-JP）と、日本の IP に合わせる。 */
 export const STEALTH_TIMEZONE = 'Asia/Tokyo';
 
 /** Bun の版（`1.4.4` など。canary の接尾辞は無視）が、最小の版以上か。読めなければ false。 */
@@ -320,6 +329,41 @@ function readSelfStatus(): string | undefined {
   }
 }
 
+/**
+ * 起動の計画の入力（Sora 自身の uid・起動用バイナリの有無・capability・プロファイルの作り方）。本番は実際の環境を読む。
+ * テストが、root・起動用バイナリありの環境を作って、番号（slot）が uid に届くことを確かめるために、差し替えられる
+ */
+export const launchProbe = {
+  currentUid: (): number | undefined => (typeof process.getuid === 'function' ? process.getuid() : undefined),
+  launcherExists: (): boolean => CHROME_EXECUTABLE_PATH !== undefined && existsSync(DEFAULT_LAUNCHER),
+  missingCapabilities: (): string[] => missingDropCapabilities(readSelfStatus()),
+  makeProfileDir: createProfileDir,
+  /** 番号を手放す前の、uid のプロセスの確認（browser_reap.ts） */
+  reap: (uid: number): Promise<boolean> => reapUid(uid),
+};
+
+/** 起動の計画（別の uid に落とすか・サンドボックス）。slot は、tenant ごとのブラウザの番号（基準の uid + 番号に落とす） */
+function planLaunch(slot: number | undefined): ReturnType<typeof planBrowserLaunch> {
+  return planBrowserLaunch({
+    currentUid: launchProbe.currentUid(),
+    launcherExists: launchProbe.launcherExists(),
+    nodeEnv: envStr('NODE_ENV'),
+    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
+    missingCapabilities: launchProbe.missingCapabilities(),
+    // tenant ごとのブラウザは、基準の uid + 番号（別の tenant のプロセスが、同じ uid にならない）
+    slot,
+  });
+}
+
+/** 番号（slot）のプロセスが落とす uid。uid を分けていないとき（落とさない・計画が決まらない）は undefined */
+export function slotUid(slot: number): number | undefined {
+  try {
+    return planLaunch(slot).plan.drop?.uid;
+  } catch {
+    return undefined;
+  }
+}
+
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
 async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined, slot?: number): Promise<Browser> {
   const userAgent = await stealthUserAgent();
@@ -354,15 +398,7 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
   // root の Sora 本体から、別の uid に落として起動するか・Chromium のサンドボックスを使うか（browser_launch_plan.ts）。
   // 落とすには、起動用バイナリに伝える、本物の Chromium の場所が要る
   const chromePath = CHROME_EXECUTABLE_PATH;
-  const { plan, warnings } = planBrowserLaunch({
-    currentUid: typeof process.getuid === 'function' ? process.getuid() : undefined,
-    launcherExists: chromePath !== undefined && existsSync(DEFAULT_LAUNCHER),
-    nodeEnv: envStr('NODE_ENV'),
-    // --cap-drop=ALL のコンテナでは、uid を落とせない（chown・setuid が EPERM）。落とせないときは、従来どおり起動する
-    missingCapabilities: missingDropCapabilities(readSelfStatus()),
-    // tenant ごとのブラウザは、基準の uid + 番号（別の tenant のプロセスが、同じ uid にならない）
-    slot,
-  });
+  const { plan, warnings } = planLaunch(slot);
   for (const warning of warnings) warnLaunchOnce(warning);
   if (slot !== undefined && plan.drop === null) {
     warnLaunchOnce('tenant ごとにブラウザのプロセスを分けているが、uid は分けられない（root で起動用バイナリがあり、uid を落とす capability が足りているときだけ分けられる）。ほかの tenant のプロセスの /proc・プロファイルには、同じ uid から届きうる');
@@ -371,7 +407,7 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
 
   const launchOnce = async (sandbox: boolean): Promise<Browser> => {
     // puppeteer は、userDataDir を渡さないと、起動した側（root）の所有で作るので、落とした Chromium は書けない。自分で作る
-    const profile = drop ? createProfileDir(drop) : undefined;
+    const profile = drop ? launchProbe.makeProfileDir(drop) : undefined;
     try {
       const browser = await puppeteer.launch({
         executablePath: drop ? drop.launcher : chromePath,
