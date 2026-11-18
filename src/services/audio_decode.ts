@@ -1,3 +1,4 @@
+import type { Browser, Page } from 'puppeteer-core';
 import { browserSemaphore, getBrowser, recordBrowserUsage, resolveChromiumPath } from '../browser_engine.js';
 import { limits } from '../security/limits.js';
 import { SAMPLE_RATE, WINDOW_SECONDS } from './shazam_signature.js';
@@ -22,6 +23,39 @@ export const UNPROBED_MAX_BYTES = 4 * 1024 * 1024;
 export interface DecodedWindows {
   durationSec: number;
   windows: Array<{ offsetSec: number; pcm: Int16Array }>;
+}
+
+/** コンテキストの通信を向ける、行き先の無いプロキシ（ループバックの discard ポート 9。何も待ち受けない前提）。すべての要求が、ここで失敗する */
+const DEAD_PROXY = 'http://127.0.0.1:9';
+
+/**
+ * デコード用の、通信のできないブラウザコンテキスト（設計 2。段階 6b）。
+ * ページの要求の割り込み・オフライン（lockPageOffline）は、ページの要求しか見えない。prerender・投機的な取得（Speculation Rules）・
+ * WebRTC の TCP・ページの移動を試みたときの TCP 接続・ポップアップ（割り込みもオフラインもない別のページ）は、ブラウザ本体が通信するので、止まらない
+ * （レビューの実測）。そこで、コンテキストの通信そのものを、行き先の無いプロキシに向ける（ループバックも、プロキシへ向ける）。
+ * ブラウザ全体のプロキシ・出口のゲートウェイの設定より、コンテキストの設定が優先されるので、ゲートウェイの有無によらず、どこへもつながらない。
+ */
+export function createOfflineContext(browser: Browser) {
+  return browser.createBrowserContext({ proxyServer: DEAD_PROXY, proxyBypassList: ['<-loopback>'] });
+}
+
+/**
+ * デコード用のページを、通信できず、移動もしない状態にする（設計 2。段階 6b。穴 28）。
+ * デコードは、バイト列をページに置き、blob: の <audio> と decodeAudioData で処理するだけで、ネットワークは要らない。
+ * 利用者（や、利用者が指した先）の作ったバイト列が、メディアのデコーダーで何かを起こしても、そのページから、fetch・Worker・画像・iframe・
+ * ページの移動で、外（内部のネットワーク・メタデータ・ほかの利用者のページ）へ出られないようにする。
+ * ページの層は 2 重にする: 要求の割り込み（ページの要求を、ページの中で完結するもの以外、すべて断る。ページの移動は、完結するものも断る）と、
+ * オフライン（割り込みの届かない Worker・WebSocket・WebRTC の UDP も止める）。どちらかが失敗したら、閉じられていないので、デコードしない（黙って通さない）。
+ * ブラウザ本体の通信（prerender・投機的な取得など）は、この層では止まらないので、コンテキストの層（createOfflineContext）と組にして使う。
+ */
+export async function lockPageOffline(page: Page): Promise<void> {
+  await page.setRequestInterception(true);
+  page.on('request', (request) => {
+    const local = !request.isNavigationRequest() && /^(blob|data|about):/.test(request.url());
+    // 返答が失敗しても（ページが閉じたあとなど）、未処理の拒否にしない
+    (local ? request.continue() : request.abort('blockedbyclient')).catch(() => undefined);
+  });
+  await page.setOfflineMode(true);
 }
 
 type PageGlobal = { __soraAudio?: AudioBuffer; __soraBytes?: Uint8Array };
@@ -110,9 +144,11 @@ export async function decodeAudioWindows(
   recordBrowserUsage(tenantId);
   try {
     const { browser, isDedicated } = await getBrowser(undefined, tenantId);
-    const context = await browser.createBrowserContext();
+    const context = await createOfflineContext(browser);
     try {
       const page = await context.newPage();
+      // バイト列を渡す前に、ページを閉じる（通信も移動もできない）
+      await lockPageOffline(page);
       // デコードの前に、長さを調べる（デコードはファイル全体を PCM にするので、長い音は、メモリを使い切る）
       const probe = await page.evaluate(probeInPage, Buffer.from(bytes).toString('base64'));
       const limitSec = limits().audioMaxDurationSec;
