@@ -330,7 +330,10 @@ export async function recognizeSong(options: SongRecognitionOptions, deps: SongR
   const key = `song-recognition:${cacheKeyDigest<{ audio: string; offsetSec?: number; country: string }>({ audio: digest, offsetSec: options.offsetSec, country })}`;
   const hit = options.noCache ? null : getFromCache<SongRecognitionResult>(key);
   if (hit) return hit;
-  const { result, ttlMs } = await runWithSingleFlight(key, () => identify(audio, options.offsetSec, country, deps, options.tenantId ?? 'legacy'));
+  const tenantId = options.tenantId ?? 'legacy';
+  // 同じ音の同時の要求は、同じ利用者の中でだけ 1 つにまとめる（結果のキャッシュは、これまでどおり利用者をまたいで共有）。
+  // 利用者をまたぐと、先に頼んだ利用者がブラウザの枠を断られたとき（ResourceBusyError）、枠に余裕のある別の利用者にも、その断りが返る
+  const { result, ttlMs } = await runWithSingleFlight(`${key}:${tenantId}`, () => identify(audio, options.offsetSec, country, deps, tenantId));
   if (!options.noCache && ttlMs > 0) setToCache(key, result, ttlMs);
   return result;
 }

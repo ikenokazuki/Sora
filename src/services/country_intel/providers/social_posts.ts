@@ -3,6 +3,7 @@ import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../pr
 import type { EvidenceDetail } from '../detail.js';
 import type { IntelSocialPlatform } from '../types.js';
 import type { SocialPost, SocialService } from '../../social/index.js';
+import { ResourceBusyError } from '../../../errors.js';
 import { PUBLIC_TENANT_ID } from '../../../security/tenant_context.js';
 
 export const SOCIAL_PLATFORMS: readonly IntelSocialPlatform[] = ['weibo', 'threads', 'instagram', 'facebook'];
@@ -124,7 +125,9 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
       const service = deps.service ?? await loadProdService();
       const now = new Date();
       const deadlineAt = Date.now() + 45000;
-      const ctx = { signal, deadlineAt };
+      // 取得が順番・予算で断られたかを、サービスから受け取る（サービスは、断りも取得の失敗として握り、結果の failures に書くだけ）
+      const busy = { hit: false };
+      const ctx = { signal, deadlineAt, busy };
       const lookbackHours = input.request.social?.lookbackHours ?? SOCIAL_DEFAULT_LOOKBACK_HOURS;
       const queries = planQueries(input);
       const items: AcquisitionItem[] = [];
@@ -148,6 +151,7 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
           }
         } catch (e) {
           if (signal.aborted) break;
+          if (e instanceof ResourceBusyError) busy.hit = true;
           gaps.push({ area: 'social_observations', reason: q.platform + ' ' + q.query + ': ' + String((e as Error)?.message ?? e).slice(0, 140) });
         }
       }
@@ -166,6 +170,7 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
           else gaps.push({ area: 'social_observations', reason: url + ': ' + (r.failures[0] ?? 'no post').slice(0, 120) });
         } catch (e) {
           if (signal.aborted) break;
+          if (e instanceof ResourceBusyError) busy.hit = true;
           gaps.push({ area: 'social_observations', reason: url + ': ' + String((e as Error)?.message ?? e).slice(0, 140) });
         }
       }
@@ -173,6 +178,14 @@ export function createSocialPostsProvider(deps: SocialPostsDeps = {}): CountryIn
         gaps.push({ area: 'social_observations', reason: 'deadline: ' + (urls.length - executedUrls) + ' planned urls unfetched' });
       }
       if (signal.aborted) throw signal.reason;
+      if (busy.hit) {
+        // 順番・予算で断られた取得がある。結果は、断られた利用者の欠けた結果なので、返しても、共有のキャッシュには入れない
+        // （入れると、余裕のある別の利用者にも、60 秒、欠けた結果が返る）。何も取れなかったなら、提供元ごと断られた扱い（PROVIDER_BUSY）
+        gaps.push({ area: 'social_observations', reason: '順番・予算で断られた取得があります（この結果は共有のキャッシュに入れません。少し待って、もう一度試してください）' });
+        return items.length > 0
+          ? { items, coverage: ['social_observations'], gaps, status: 'partial' as const, errorCode: 'PROVIDER_BUSY', cacheable: false }
+          : { items, coverage: ['social_observations'], gaps, status: 'rate_limited' as const, errorCode: 'PROVIDER_BUSY', cacheable: false };
+      }
       if (items.length > 0) {
         return gaps.length > 0
           ? { items, coverage: ['social_observations'], gaps, status: 'partial' as const }

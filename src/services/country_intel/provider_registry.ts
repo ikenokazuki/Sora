@@ -45,6 +45,12 @@ export interface ProviderResult {
   gaps?: { area: string; reason: string }[];
   status?: ProviderRunStatus;
   errorCode?: string;
+  /**
+   * false なら、この結果を共有のキャッシュに入れない（既定は入れる）。キャッシュのキーに利用者は含まれないので、
+   * 呼んだ利用者の順番・予算の断りで欠けた結果を入れると、余裕のある別の利用者にも、その欠けた結果が返る。
+   * 欠けた結果そのものは、呼んだ利用者には返してよい（status は partial、errorCode は PROVIDER_BUSY にする）。
+   */
+  cacheable?: boolean;
 }
 
 export interface CountryIntelProvider {
@@ -262,7 +268,7 @@ async function runOne(
         region: plan.region,
         queries: [...plan.pass1, ...plan.pass2].filter((query) => query.providerId === provider.id),
       }, signal, options);
-      if (cache && (result.status === undefined || result.status === 'success' || result.status === 'partial')) {
+      if (cache && result.cacheable !== false && (result.status === undefined || result.status === 'success' || result.status === 'partial')) {
         try { cache.set(key, result, provider.defaultTtlSeconds); } catch {}
       }
     }
