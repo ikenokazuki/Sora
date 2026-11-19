@@ -9,6 +9,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { envPath, type Env } from '../config.js';
+import { incrementSecurityCounter } from './metrics.js';
 
 export interface ApiKeyEntry {
   /** tenant の名前（tenant の ID は `name:<name>`） */
@@ -33,7 +34,8 @@ export function digestOf(token: string): string {
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /** 項目の名前を文に入れる。名前の形をしたものだけ（ファイルの中身を、そのまま標準エラーに出さない） */
-const shown = (field: string) => (/^[A-Za-z0-9_.-]{1,40}$/.test(field) ? field : '（読めない名前）');
+// 項目の名前を、誤りの文に出すのは、名前の形で、15 字までのとき。鍵は 16 字以上なので、鍵が項目の名前に書かれても(name と key の取り違え)、文に出ない
+const shown = (field: string) => (/^[A-Za-z0-9_.-]{1,15}$/.test(field) ? field : '（読めない名前）');
 
 /** 鍵ファイルの文字列を読む。誤りが 1 つでもあれば、entries は空 */
 export function parseApiKeyFile(text: string): { entries: ApiKeyEntry[]; errors: string[] } {
@@ -141,58 +143,269 @@ export class ApiKeyStore {
 }
 
 export interface LoadedApiKeys {
-  /** 誤りが無いときだけ */
+  /**
+   * 鍵の表。最初の 1 回は、誤りが無いときだけ。2 回目以降は、最後に読めた表(いまのファイルが誤りでも、前の表を使い続けるので、errors には、いまの誤りが出ない)
+   */
   store?: ApiKeyStore;
   errors: string[];
   warnings: string[];
 }
 
-const loaded = new Map<string, LoadedApiKeys>();
+/** ファイルの読み方。テストで、読む前後の置き換えや、読み取りの失敗を再現するために、差し替えられる */
+export interface KeyFileFs {
+  stat(path: string): { mtimeMs: number; ctimeMs: number; size: number; ino: number; mode: number };
+  read(path: string): string;
+}
 
-function readApiKeyFile(path: string): LoadedApiKeys {
-  let text: string;
-  let mode: number;
+const realFs: KeyFileFs = { stat: (path) => statSync(path), read: (path) => readFileSync(path, 'utf8') };
+
+/** 変わったかを見分ける署名と、権限。見つからない・調べられないときは、そのコード */
+type KeyFileStat = { ok: true; signature: string; mode: number } | { ok: false; code: string; missing: boolean };
+
+/** ファイルを調べる。署名は、読む前に取る(読む間に置き換わっても、古い内容に新しい署名を付けて、永久に見逃さないため) */
+function statKeyFile(path: string, fs: KeyFileFs): KeyFileStat {
   try {
-    text = readFileSync(path, 'utf8');
-    mode = statSync(path).mode;
+    const stat = fs.stat(path);
+    return { ok: true, signature: `${stat.mtimeMs}:${stat.ctimeMs}:${stat.size}:${stat.ino}`, mode: stat.mode };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code ?? 'エラー';
-    return { errors: [`鍵ファイル（${JSON.stringify(path)}）を読めません（${code}）。パスと権限を確かめてください`], warnings: [] };
+    return { ok: false, code, missing: code === 'ENOENT' || code === 'ENOTDIR' };
+  }
+}
+
+const unreadableMessage = (path: string, code: string) => `鍵ファイル（${JSON.stringify(path)}）を読めません（${code}）。パスと権限を確かめてください`;
+
+/**
+ * 中身を読んで、鍵の表を作る(調べたあとに呼ぶ)。unreadable は、読み取りそのものの失敗(EMFILE・EIO など。一時的かもしれない)。
+ * 中身の誤りは unreadable ではない(同じファイルを読み直しても、同じ誤りになるので、署名を覚えてよい)。
+ */
+function readKeyFile(path: string, fs: KeyFileFs, mode: number): { loaded: LoadedApiKeys; unreadable: boolean } {
+  let text: string;
+  try {
+    text = fs.read(path);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code ?? 'エラー';
+    return { loaded: { errors: [unreadableMessage(path, code)], warnings: [] }, unreadable: true };
   }
   const { entries, errors } = parseApiKeyFile(text);
-  if (errors.length > 0) return { errors, warnings: [] };
+  if (errors.length > 0) return { loaded: { errors, warnings: [] }, unreadable: false };
   const warnings: string[] = [];
   if (entries.some((entry) => entry.plain) && (mode & 0o077) !== 0) {
     warnings.push(`鍵ファイル（${JSON.stringify(path)}）に平文の鍵があり、所有者以外も読めます（権限 ${(mode & 0o777).toString(8)}）。chmod 600 にするか、keyHash で書いてください`);
   }
-  return { store: new ApiKeyStore(entries), errors: [], warnings };
+  // 読み直しで、鍵ファイルに書ける人は、管理者の鍵を足せる。だれでも書けるファイルは、警告する
+  if ((mode & 0o002) !== 0) {
+    warnings.push(`鍵ファイル（${JSON.stringify(path)}）を、だれでも書けます（権限 ${(mode & 0o777).toString(8)}）。書ける人は、管理者の鍵を足せます。chmod 600 にして、書ける人を限ってください`);
+  }
+  return { loaded: { store: new ApiKeyStore(entries), errors: [], warnings }, unreadable: false };
 }
 
 /**
- * 鍵ファイルを読んで、鍵の表を作る。同じパスは 1 回だけ読んで覚える（起動の検査が読んだ表を、要求のたびに引き直さない。鍵を変えたら再起動する）。
+ * 鍵ファイルの変更を調べる間隔(ミリ秒)。要求のたびには調べない(stat を 1 秒に 1 回まで)。
+ * 鍵の追加・削除は、再起動なしで、この間隔のうちに効く。
  */
-export function loadApiKeyStore(path: string): LoadedApiKeys {
-  const known = loaded.get(path);
-  if (known) return known;
-  const result = readApiKeyFile(path);
-  loaded.set(path, result);
-  return result;
+const RECHECK_MS = 1000;
+
+/** 古い表で動いている間、知らせ直す間隔(ミリ秒) */
+const STALE_REMINDER_MS = 60_000;
+
+/** ログに出す、失敗の理由の長さの上限(巨大なファイルの誤りで、ログを埋めない) */
+const NOTICE_LIMIT = 1500;
+
+/** 1 つの鍵ファイルの、読んだ結果と、見張りの状態 */
+interface WatchedKeyFile {
+  /** 使っている結果。読み直しに失敗しても、前の(読めた)表のまま。表がまだ無いときは、いちばん新しい誤り */
+  current: LoadedApiKeys;
+  /** 最後に「中身を読んだ」結果(表が無いとき、一時的な失敗が解けたら、ファイルの中身の誤りに戻すため) */
+  lastRead: LoadedApiKeys;
+  /**
+   * 最後に「中身を読んだ」ファイルの署名(読む前に取ったもの。誤りの中身も覚える)。undefined は、まだ読めていない
+   * (読み取りそのものが失敗したときは、覚えない。次の確認で、読み直す)
+   */
+  signature: string | undefined;
+  /** いま使っている表の元になった、ファイルの署名(最初の読み込みが誤りなら undefined)。ファイルがこの署名に戻れば、古い表ではなくなる */
+  appliedSignature: string | undefined;
+  checkedAt: number;
+  /**
+   * 直近に知らせた、使えない状態の種類('missing' か、理由の文)。同じ状態を繰り返し知らせず、種類が変われば知らせる。
+   * 使える状態に戻れば undefined(戻ったあとの同じ失敗は、もう一度知らせる)
+   */
+  reportedFailure: string | undefined;
+  /** 古い表で動き始めた時刻(いまのファイルを、使えていない間)。使えていれば undefined */
+  staleSince: number | undefined;
+  lastReminderAt: number;
+  /** すでに出した警告(読み直しのたびに、同じ警告を繰り返さない) */
+  shownWarnings: Set<string>;
 }
 
-/** 覚えた鍵の表を捨てる（テスト用） */
+const watched = new Map<string, WatchedKeyFile>();
+
+/** 運用者への知らせは標準エラー(stdio では標準出力が JSON-RPC の流れ)。鍵の値は出さない */
+function notice(message: string): void {
+  console.warn(`[Sora/Auth] ${message}`);
+}
+
+const clip = (text: string): string => (text.length > NOTICE_LIMIT ? `${text.slice(0, NOTICE_LIMIT)}…(長いので、ここまで)` : text);
+
+/** いまのファイルを、使えていない(前の表で動いている)ことを覚える。1 分ごとに、知らせ直す */
+function markStale(entry: WatchedKeyFile, now: number): void {
+  if (entry.staleSince === undefined) {
+    entry.staleSince = now;
+    entry.lastReminderAt = now;
+  }
+}
+
+/** 知らせ直しは、認証が要る要求が来たとき(確認が走るとき)に出す。タイマーは持たない */
+function remindIfStale(entry: WatchedKeyFile, now: number): void {
+  if (entry.staleSince === undefined || !entry.current.store || now - entry.lastReminderAt < STALE_REMINDER_MS) return;
+  entry.lastReminderAt = now;
+  const minutes = Math.max(1, Math.round((now - entry.staleSince) / 60_000));
+  notice(`鍵ファイルを、${minutes} 分前から使えていません。前の鍵を使い続けています(消した鍵・管理者から外した鍵も、まだ有効です)。ファイルを直してください`);
+}
+
+/**
+ * ファイルを使えない状態(見つからない・調べられない・読み取りに失敗)を、知らせる。署名は覚えず、次の確認で、読み直す。
+ * 同じ状態は、繰り返し知らせない(種類が変われば、知らせる)。前の表が無いときは、知らせず、いちばん新しい誤りに替える
+ * (最初の読み込みが誤りの経路は、認証の側が、理由を 1 回ずつログに出す。「前の鍵を使い続けます」とは言わない)。
+ */
+function reportFailure(entry: WatchedKeyFile, failure: { key: string; notice: string; error: string; counter: string }, now: number): void {
+  markStale(entry, now);
+  if (!entry.current.store) {
+    entry.current = { errors: [failure.error], warnings: [] };
+    entry.reportedFailure = failure.key;
+    return;
+  }
+  if (entry.reportedFailure === failure.key) return;
+  entry.reportedFailure = failure.key;
+  incrementSecurityCounter(failure.counter);
+  notice(clip(failure.notice));
+}
+
+/**
+ * 変わっていれば読み直す。読み直しに失敗したら、前の表を使い続ける(匿名にも、全部を断る状態にもしない)。
+ * 中身の誤りは、署名を覚えるので、同じファイルを何度も読み直さず、同じ理由を繰り返し出さない。読み取りそのものの失敗は、覚えない(再試行する)。
+ */
+function recheck(path: string, entry: WatchedKeyFile, now: number, fs: KeyFileFs): void {
+  const stat = statKeyFile(path, fs);
+  if (!stat.ok) {
+    // 消えた(置き換えの途中かもしれない)・調べられない。前の表を使い続ける。署名は変えない(戻ったら、読み直す)
+    if (stat.missing) {
+      reportFailure(
+        entry,
+        {
+          key: 'missing',
+          notice: `鍵ファイル(${JSON.stringify(path)})が見つかりません。置き換えの途中なら、まもなく戻ります。前の鍵を使い続けます`,
+          error: unreadableMessage(path, stat.code),
+          counter: 'sora_auth_keys_missing_total',
+        },
+        now,
+      );
+    } else {
+      const error = `鍵ファイル(${JSON.stringify(path)})を調べられません(${stat.code})。権限(親のディレクトリを含む)を確かめてください`;
+      reportFailure(entry, { key: error, notice: `鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${error}`, error, counter: 'sora_auth_keys_reload_failed_total' }, now);
+    }
+    remindIfStale(entry, now);
+    return;
+  }
+  if (stat.signature === entry.signature) {
+    // 変わっていない。直前に、使えない状態を知らせていたなら、それは解けた
+    entry.reportedFailure = undefined;
+    // 表が無いときは、一時的な失敗の理由でなく、ファイルの中身の誤りに戻す
+    if (!entry.current.store) entry.current = entry.lastRead;
+    // 使っている表の元のファイルに戻った(消えたあとに、同じファイルが戻った、など)なら、古い表ではない
+    if (stat.signature === entry.appliedSignature) entry.staleSince = undefined;
+    remindIfStale(entry, now);
+    return;
+  }
+  const result = readKeyFile(path, fs, stat.mode);
+  if (result.unreadable) {
+    const error = result.loaded.errors.join(' / ');
+    reportFailure(entry, { key: error, notice: `鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${error}`, error, counter: 'sora_auth_keys_reload_failed_total' }, now);
+    remindIfStale(entry, now);
+    return;
+  }
+  entry.reportedFailure = undefined;
+  entry.signature = stat.signature;
+  if (!result.loaded.store) {
+    // 中身の誤り。前の表が無いときは、いちばん新しい誤りに替えるだけ(認証の側が、理由を出す)
+    entry.lastRead = result.loaded;
+    if (!entry.current.store) {
+      entry.current = result.loaded;
+      return;
+    }
+    markStale(entry, now);
+    incrementSecurityCounter('sora_auth_keys_reload_failed_total');
+    notice(`鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${clip(result.loaded.errors.join(' / '))}`);
+    return;
+  }
+  const before = entry.current.store;
+  entry.current = result.loaded;
+  entry.lastRead = result.loaded;
+  entry.appliedSignature = stat.signature;
+  entry.staleSince = undefined;
+  incrementSecurityCounter('sora_auth_keys_reload_total');
+  notice(
+    `鍵ファイルを読み直しました(鍵 ${result.loaded.store.size} 件・利用者 ${result.loaded.store.names().length} 人${before ? `。前は 鍵 ${before.size} 件・利用者 ${before.names().length} 人` : ''})`,
+  );
+  for (const warning of result.loaded.warnings) {
+    if (!entry.shownWarnings.has(warning)) notice(warning);
+  }
+  entry.shownWarnings = new Set(result.loaded.warnings);
+}
+
+/**
+ * 鍵ファイルを読んで、鍵の表を作る。同じパスは覚えて、ファイルが変わったかを、1 秒に 1 回まで調べる(起動の検査が読んだ表を、
+ * 要求のたびに引き直さない)。鍵の追加・削除は、再起動が要らない。now は、確認の間隔の判定用(テストで渡す。有限の数でなければ、いまの時刻)。
+ * fs は、テストで、読み方を差し替える(既定は、実際のファイル)。
+ */
+export function loadApiKeyStore(path: string, now: number = Date.now(), fs: KeyFileFs = realFs): LoadedApiKeys {
+  const at = Number.isFinite(now) ? now : Date.now();
+  const entry = watched.get(path);
+  if (!entry) {
+    const stat = statKeyFile(path, fs);
+    const read = stat.ok ? readKeyFile(path, fs, stat.mode) : undefined;
+    const loaded: LoadedApiKeys = read ? read.loaded : { errors: [unreadableMessage(path, stat.ok ? 'エラー' : stat.code)], warnings: [] };
+    const created: WatchedKeyFile = {
+      current: loaded,
+      lastRead: loaded,
+      // 読めたときだけ、署名を覚える(読み取りの失敗は、覚えない。次の確認で、読み直す)。署名は、読む前に取ったもの
+      signature: stat.ok && read && !read.unreadable ? stat.signature : undefined,
+      appliedSignature: stat.ok && read?.loaded.store ? stat.signature : undefined,
+      checkedAt: at,
+      reportedFailure: undefined,
+      staleSince: undefined,
+      lastReminderAt: at,
+      shownWarnings: new Set(loaded.warnings),
+    };
+    watched.set(path, created);
+    return created.current;
+  }
+  // 時計が戻ったとき: 知らせ直しの時刻も、戻す(戻った分だけ、知らせが止まらないように)。確認も、すぐ行う
+  if (at < entry.checkedAt) {
+    entry.lastReminderAt = Math.min(entry.lastReminderAt, at);
+    if (entry.staleSince !== undefined) entry.staleSince = Math.min(entry.staleSince, at);
+  }
+  if (at - entry.checkedAt >= RECHECK_MS || at < entry.checkedAt) {
+    entry.checkedAt = at;
+    recheck(path, entry, at, fs);
+  }
+  return entry.current;
+}
+
+/** 覚えた鍵の表を捨てる(テスト用) */
 export function resetApiKeyStoreCache(): void {
-  loaded.clear();
+  watched.clear();
 }
 
 /**
  * 認証が使う鍵の表。SORA_AUTH_KEYS_FILE が無ければ undefined（従来どおり SORA_API_KEY か、認証なし）。
  * 誤りがあれば例外（読めない鍵ファイルを、匿名にしない）。起動の検査（startup_check.ts）が先に読んで検査するので、
- * ここで失敗するのは、起動の検査を通さずに使うときだけ。
+ * ここで失敗するのは、起動の検査を通さずに使うときだけ。ファイルが変わっていれば（1 秒に 1 回まで調べる）読み直す。読み直しに失敗したら、前の表を返す。
  */
-export function getApiKeyStore(env?: Env): ApiKeyStore | undefined {
+export function getApiKeyStore(env?: Env, now: number = Date.now()): ApiKeyStore | undefined {
   const path = envPath('SORA_AUTH_KEYS_FILE', env);
   if (!path) return undefined;
-  const { store, errors } = loadApiKeyStore(path);
+  const { store, errors } = loadApiKeyStore(path, now);
   if (!store) throw new Error(errors.join(' / '));
   return store;
 }

@@ -148,12 +148,16 @@ describe('parseApiKeyFile: 誤り（すべてを一度に知らせ、1 つでも
     ]);
   });
 
-  test('未対応の項目の名前が、名前の形でない（空白・記号・41 字以上）ときは、文に入れない。名前の形（40 字まで）は、そのまま出す', () => {
+  test('未対応の項目の名前が、名前の形でない（空白・記号・16 字以上）ときは、文に入れない。名前の形（15 字まで）は、そのまま出す（鍵は 16 字以上なので、項目の名前に書かれても出ない）', () => {
     const odd = 'SECRET value with space';
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, [odd]: 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 （読めない名前） があります（対応しているのは name・key・keyHash・admin）']);
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], [odd]: 1 })).errors).toEqual(['最上位に、未対応の項目 （読めない名前） があります（対応しているのは keys だけ）']);
-    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(41)]: 1 })).errors).toEqual(['最上位に、未対応の項目 （読めない名前） があります（対応しているのは keys だけ）']);
-    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(40)]: 1 })).errors).toEqual([`最上位に、未対応の項目 ${'x'.repeat(40)} があります（対応しているのは keys だけ）`]);
+    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(16)]: 1 })).errors).toEqual(['最上位に、未対応の項目 （読めない名前） があります（対応しているのは keys だけ）']);
+    expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A }], ['x'.repeat(15)]: 1 })).errors).toEqual([`最上位に、未対応の項目 ${'x'.repeat(15)} があります（対応しているのは keys だけ）`]);
+    // name と key の取り違え: 鍵(16 字以上)が項目の名前になっても、誤りの文に出ない
+    const swapped = parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', [KEY_A]: 'alice' }] }));
+    expect(swapped.errors.join('\n')).not.toContain(KEY_A);
+    expect(swapped.errors.join('\n')).toContain('（読めない名前）');
     expect(parseApiKeyFile(JSON.stringify({ keys: [{ name: 'alice', key: KEY_A, 'a.b-c_9': 1 }] })).errors).toEqual(['keys[0] に、未対応の項目 a.b-c_9 があります（対応しているのは name・key・keyHash・admin）']);
   });
 
@@ -281,7 +285,7 @@ describe('loadApiKeyStore・getApiKeyStore: ファイルから', () => {
     expect(owner.warnings).toEqual([]);
   });
 
-  test('同じパスは、1 回だけ読んで覚える（起動の検査が読んだ表を、要求のたびに引き直さない）', () => {
+  test('同じパスは、覚える(起動の検査が読んだ表を、要求のたびに引き直さない。ファイルが変わったかは、1 秒に 1 回まで調べる。再読み込みは api_keys_reload.test.ts)', () => {
     const path = write('cached.json', file([{ name: 'alice', key: KEY_A }]));
     const first = loadApiKeyStore(path);
     writeFileSync(path, file([{ name: 'bob', key: KEY_B }]));
