@@ -29,18 +29,20 @@
 - 起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージに入っています）と、Chromium。
 - **stdio では使えません。** `strict` は共有のサービス（HTTP）用で、stdio には、利用者を分ける鍵がありません。
 
-起動の例（鍵ファイルの作り方は README 4.6）:
+起動の例（鍵ファイルの作り方は README 4.6。鍵ファイルは、**ディレクトリごと**マウントします。鍵を足すときに、ファイルを置き換えても、コンテナの中に見えるようにするためです）:
 
 ```bash
 docker run -d --name sora -p 3016:8000 \
   --security-opt seccomp=$PWD/seccomp-sora.json \
-  -v "$PWD/sora-keys.json:/run/secrets/sora-keys.json:ro" \
+  -v "$PWD/sora-keys:/run/secrets/sora-keys:ro" \
   -e SORA_ISOLATION=strict \
-  -e SORA_AUTH_KEYS_FILE=/run/secrets/sora-keys.json \
+  -e SORA_AUTH_KEYS_FILE=/run/secrets/sora-keys/keys.json \
   -e SORA_BROWSER_SANDBOX=on \
   -e SORA_EGRESS_GATEWAY=on \
   ghcr.io/ikenokazuki/sora:latest
 ```
+
+**鍵の追加・削除に、再起動は要りません。** 鍵ファイルを書き換える(同じディレクトリに一時ファイルを書いてから置き換える)と、次の要求から最大約 1 秒で効きます。登録のたびに鍵を足す運用ができます。**注意**: 読み直しに失敗(書き換えが壊れていた)したあいだは、前の鍵を使い続けるので、**消した鍵も、管理者から外した鍵も、有効のままです。** 失敗の理由と、「N 分前から使えていません」を、ログに出します(1 分ごと)。ログ(`[Sora/Auth]`)と `/metrics` の `sora_auth_keys_reload_failed_total` を、監視してください。鍵ファイルへの書き込み権は、全利用者と管理者の権限そのものです。詳しくは README 4.6。
 
 メモリは、利用者ごとのプロセスのぶん増えます（空のページ 1 つで、1 プロセスあたり約 120〜160 MB。README 4.5）。同時に持てるプロセスは 4 つまでです。
 

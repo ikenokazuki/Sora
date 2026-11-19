@@ -66,7 +66,7 @@ function unauthorized(c: any, token: string | undefined) {
 
 const loggedAuthUnavailable = new Set<string>();
 /**
- * 鍵ファイルを読めない（起動のあとに壊れた）。匿名にも、鍵なしの通過にもせず、すべての要求を断る。理由は、同じものを 1 回だけログに出す（クライアントには出さない）。
+ * 鍵ファイルを、最初から読めない（起動の検査を通さない経路）。匿名にも、鍵なしの通過にもせず、すべての要求を断る。起動のあとに壊れても、前の表を使い続けるので、ここには来ない。理由は、同じものを 1 回だけログに出す（クライアントには出さない）。
  * 起動の検査（startup_check.ts）が先に鍵ファイルを読んで検査するので、起動した Sora では、ふつう起きない。
  */
 function authUnavailable(c: any, error: unknown) {

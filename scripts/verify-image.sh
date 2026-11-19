@@ -93,7 +93,7 @@ docker run --rm \
 # 12. 認証の入口（設計 4。E20・E22〜E24）。本物のアプリを、src/index.ts と同じ待ち受けの本物の Bun.serve に載せて、HTTP で叩く。
 #     MCP の tenant は認証が決めたものだけ（同じ鍵は X-API-Key でも Bearer の大文字小文字違いでも同じ tenant。誤った Bearer と正しい X-API-Key は 401。匿名は鍵を持つ利用者と別の scope）。
 #     ループバックは特別ではない（127.0.0.1・::1 から、X-Forwarded-For・X-Real-IP つきでも、廃止した鍵なしの通過の設定を置いたままでも、鍵が要る）。
-#     鍵ファイル（SORA_AUTH_KEYS_FILE）は鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名は SORA_ALLOW_ANONYMOUS=true でも 401、読めないときは 503
+#     鍵ファイル（SORA_AUTH_KEYS_FILE）は鍵ごとに別の tenant（MCP のセッションも、サイトごとの Cookie も）で、匿名は SORA_ALLOW_ANONYMOUS=true でも 401、最初から読めないときは 503
 #     共有キャッシュ（設計 5。E25）: ある tenant が、保存済みのセッション（Cookie）で得た個人向けのページを、別の tenant に返さない（ログインしていない tenant どうしは共有する）
 #     ウォッチ（設計 5。E26）: ある tenant が登録したウォッチは、別の tenant の一覧に出ず（通知先・取得した内容も）、確認も削除もできない。id を省いた確認は、呼んだ tenant の分だけ
 #     map_site（設計 5。E27）: robots.txt・サイトマップを、呼んだ tenant の保存済みのセッションで取り、保存済みのセッションで見えた map を、別の tenant に返さない（ログインしていない tenant どうしは共有する）

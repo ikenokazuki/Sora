@@ -15,7 +15,7 @@
  *  (11) ブラウザの枠（設計 6。穴 22・25）: SORA_ISOLATION=strict で、枠を全部埋め、ある tenant（bob）の待ちを上限（10 件）まで埋めると、bob の次の /browser/action・荷物追跡（UPS）・楽曲認識（アップロード）は、待たされず 429（Retry-After つき・code: BROWSER_BUSY）。browser_action の入力の上限（21 個のアクション）は、枠の待ちより先に検査され、429 でなく 400（INVALID_INPUT）。別の tenant（alice）は断られず、待つ（以前は、全体で 1 本の列で、上限も時間切れも無く、どの tenant も同じように待たされ続けた）
  *  (12) ブラウザセッション（設計 6。穴 22・23）: 本物のブラウザ（イメージの Chromium）で、SORA_ISOLATION=strict のとき、同じ ID を別の tenant が使え（以前は 403 で、ほかの tenant の ID の存在が分かった）、bob が閉じても alice のセッションは残る。1 人が持てるのは 5 件で、6 件目の作成は、その人の一番使われていないセッションだけを閉じる。strict は、利用者ごとに別のブラウザのプロセスで動かし（設計 2。段階 6）、プロセスは 4 つまで。セッションを持つ利用者が 4 人いると、5 人目の新しい作成は、5 秒待ったあと、429（BROWSER_BUSY・Retry-After: 5）で断り、ほかの利用者のセッションは閉じない。持っている人がセッションを全部閉じれば、5 人目が作れる
  *  (4) 鍵ファイル（SORA_AUTH_KEYS_FILE）: 鍵ごとに別の tenant（name:<name>）。同じ name の 2 つの鍵は同じ tenant（MCP のセッションも、サイトごとの Cookie も引き継ぐ）で、
- *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを読めないときは 503（匿名にしない）
+ *      別の name には見せない。匿名は SORA_ALLOW_ANONYMOUS=true でも 401。鍵ファイルを最初から読めないときは 503（匿名にしない。起動のあとに壊れたときは、前の鍵のまま）
  * 使い方: docker run --rm -e NODE_ENV=test -e SORA_DB_PATH=:memory: -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" -v "$PWD/packages:/app/packages:ro" \
  *           --entrypoint /usr/local/bin/bun <イメージ> /app/scripts/auth-check.ts
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md（設計 4。E20・E22〜E24）
@@ -451,7 +451,7 @@ await scenario('管理者の鍵と /cache/clear', { SORA_AUTH_KEYS_FILE: keyPath
   check(JSON.stringify(clearAlive()) === JSON.stringify({ alice: false, bob: false, ops: false, shared: false }), `cache/clear: 鍵が 1 つの運用で、全員分が消えていない: ${JSON.stringify(clearAlive())}`);
 });
 
-// 鍵ファイルを読めない（起動のあとに壊れた）: すべての要求を 503 で断る。匿名にしない
+// 鍵ファイルを最初から読めない（起動の検査を通さない経路。起動のあとに壊れても、前の鍵を使い続けるので、ここには来ない）: すべての要求を 503 で断る。匿名にしない
 await scenario('鍵ファイルを読めない', { SORA_AUTH_KEYS_FILE: join(keyDir, 'missing.json'), SORA_ALLOW_ANONYMOUS: 'true' }, async () => {
   const originalError = console.error;
   console.error = () => {}; // 理由のログ（1 回）は、この確認の出力に混ぜない
