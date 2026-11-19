@@ -210,6 +210,11 @@ export const SETTINGS = {
     defaultDoc: '*(メモリから自動: 1〜5)*',
     doc: '同時に起動・実行を許可する Chromium ブラウザセッションの上限数（1 以上。50 を超える値は 50 にします）。未設定なら cgroup のメモリ上限（無ければ搭載メモリ）から `(メモリMB − 700) ÷ 300` を 1〜5 に丸めて決めます（1GB→1、2GB→4、4GB以上→5）。起動のときに読みます',
   },
+  SORA_BROWSER_MAX_PROCESSES: {
+    area: 'browser', kind: 'int', min: 1, cap: 64,
+    defaultDoc: '*(未設定 = 4)*',
+    doc: '`SORA_ISOLATION=strict` のとき、利用者ごとに別のプロセス(別の uid)で動かす Chromium を、同時に持てる数の上限です(1 以上。64 を超える値は 64 にします。未設定は 4)。uid は `SORA_BROWSER_UID` の基準 + 0〜この数 − 1 です。上限に達したら、使っていない(開いているページ・セッション・枠が無い)プロセスのうち、いちばん長く使われていないものを閉じて渡し、使っていないものが無ければ、5 秒まで空くのを待ってから 429(`BROWSER_BUSY`)で断ります。ブラウザセッション(`browser_action`)を同時に持てる利用者の数は、この数に制約されます。1 つのプロセスは、空のページ 1 つで約 120〜160 MB 増えます(同時に開くページの数が、メモリを決めます。`SORA_BROWSER_MAX_CONCURRENCY` もあわせて見直してください)。`standard` では効きません(警告)。起動のときに読みます',
+  },
   SORA_BROWSER_IDLE_TTL_MS: {
     area: 'browser', kind: 'int', min: 0, default: 300_000, legacy: ['BROWSER_IDLE_TTL_MS'], legacyOnly: 'warn',
     doc: '共有 Chromium が無操作のまま経過したら閉じるまでの時間（ms）。`0` で無効。次回のブラウザ利用時に自動で再起動します（実測: 常駐時 約925MB → 終了後 約197MB）。開いているブラウザセッションがある間は閉じません',

@@ -112,6 +112,25 @@ describe.skipIf(!resolveChromiumPath())('tenant ごとのブラウザのプロ�
     });
   }, 180000);
 
+  test('SORA_BROWSER_MAX_PROCESSES で上限を変えられる(2 にすると、3 人目が ResourceBusyError(process_limit)で断られる。表の値は変わらない)', async () => {
+    await withEnv({ SORA_ISOLATION: 'strict', SORA_BROWSER_IDLE_TTL_MS: '0', SORA_BROWSER_MAX_PROCESSES: '2' }, async () => {
+      expect(STRICT_LIMITS.browserProcessMax).toBe(4);
+      const held = [];
+      for (const tenant of ['name:M0', 'name:M1']) {
+        const { browser } = await getBrowser(undefined, tenant);
+        held.push({ browser, context: await browser.createBrowserContext() });
+      }
+      expect(held[0].browser.process()?.pid).not.toBe(held[1].browser.process()?.pid);
+      const error = await getBrowser(undefined, 'name:M2').then(() => undefined, (e: unknown) => e);
+      expect(error).toBeInstanceOf(ResourceBusyError);
+      expect(error).toMatchObject({ reason: 'process_limit', resource: 'browser' });
+      for (const entry of held) await entry.context.close();
+      // 空けば、渡る(使っていないものを閉じて)
+      const third = await getBrowser(undefined, 'name:M2');
+      expect(third.browser.connected).toBe(true);
+    });
+  }, 120000);
+
   test('ブラウザの枠を持っている tenant のプロセスは、開いたコンテキストが無くても、閉じない（枠を取ってから、ページを開くまでの間に、閉じない）', async () => {
     await strict(async () => {
       const tenants = Array.from({ length: STRICT_LIMITS.browserProcessMax }, (_, i) => `name:H${i}`);
