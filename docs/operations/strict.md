@@ -4,6 +4,8 @@
 
 `strict` は、弱い側に黙って戻りません。必要な設定と実行環境がそろっていなければ、**起動しません**。この手引は、そろえるもの、起動のときに起きること、起動を断られたときの直し方、そして、`strict` でもまだ足りないものを書きます。
 
+**対象とする実行環境は、単一ホストの Docker・Podman（VPS など）です。** Kubernetes・Cloud Run は、未検証です（7 章）。
+
 `strict` が切り替えるものの全体は、README の 4.5（ブラウザの隔離）と 4.6（複数のユーザー）、設計は [`docs/superpowers/specs/2026-11-12-isolation-design.md`](../superpowers/specs/2026-11-12-isolation-design.md) にあります。
 
 ## 1. 起動に必要なもの
@@ -113,3 +115,32 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 - PDF の解析が動く 1 つのスレッドは、全員で共有です。
 
 これらが済むまでは、公開する範囲を、運用者が把握できる利用者に限ってください。
+
+## 7. 実行環境（確かめてあるもの・未検証のもの）
+
+`strict` の公式の対象は、**単一ホストの Docker・Podman**（VPS など）です。運用者が、コンテナの起動の設定（root・capability・seccomp・外向きの制限）を決められることが、前提です。
+
+**確かめてあるもの**
+- rootless Podman: 公開イメージを、README 4.5 の強化した設定（`deploy/seccomp-sora.json`・`no-new-privileges`・`--cap-drop=ALL` に 5 つの capability を足す）で動かして、`strict` の起動、2 人の利用者のページの描画、利用者ごとに別の uid（65532・65533。Sora 本体は 0）、内部のアドレス 9 種（メタデータ・ループバック・プライベート・16 進と 10 進のループバック）への取得の拒否、`--read-only`（`/tmp` と `/data` は tmpfs）を、確かめました（2026-11-19。1 回ずつの実測です）。
+- Docker: Chromium のサンドボックスと、seccomp のプロファイル（段階 1d の CI）。root の Docker で、`strict` の全体を通した確認は、まだありません。足りないものは、起動の検査が教えます。
+- `standard`（信頼できる範囲の利用）の動作確認も、Docker・Podman だけです。
+
+**未検証（保留）**
+- **Kubernetes**
+  - Pod Security Standards の **Restricted は満たせません。** Restricted は、非 root で動かし、capability を全部落とし（足せるのは `NET_BIND_SERVICE` だけ）、特権昇格を禁じます。`strict` は root で起動し、`CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` が要ります。
+  - **Baseline** は、この 5 つの capability を足すことも、seccomp の `RuntimeDefault`・`Localhost` も許します。Baseline の名前空間で、レプリカ 1 つなら、動く可能性があります。試していません。
+  - 確かめていないこと: `RuntimeDefault` が、Chromium のサンドボックスに要るユーザー名前空間を止めるか（止めるなら、`strict` は、起動の検査で断ります）。`deploy/seccomp-sora.json`（Docker 形式）が、`Localhost` のプロファイルとして読めるか（README 4.5 も、未確認と書いています）。
+- **Cloud Run**
+  - capability と seccomp を、利用者が設定する手段がありません。公式は「インスタンスの root の capability は与えない」と書き、どの capability が残るかは書いていません。`strict` の起動の検査が通るかは、未確認です。
+  - 既定の外向きの IP は、「地域の、すべてのサーバーレスで共有される動的な IP のプール」です。固定にするには、VPC・Cloud NAT・予約した IP が要ります。
+  - ファイルシステムはメモリ上で、インスタンスが止まると消えます。メタデータサーバーが、サービスのアイデンティティの token を出すので、権限の無いサービスアカウントと、外向きの制限が要ります。
+- **複数インスタンス（水平スケール）**: 対象外です。ブラウザセッション・順番・予算はプロセスの中、日次のクォータ・キャッシュ・ウォッチは手元の SQLite にあります。インスタンスが複数だと、利用者ごとの上限が台数ぶんに増え、セッションは、同じインスタンスに届かないと使えません。**1 台で動かす前提**です。
+
+**保留の理由**
+1. Sora は、外向きの IP に敏感で（過去の測定で、Yahoo の 429 や、特定のサイトの 403 が、IP に起因していました）、取得の間隔の守りも、プロセスごとです（`SORA_YAHOO_MIN_INTERVAL_MS`・地名の検索の 1.1 秒）。サーバーレスの、共有で動的な IP と、台数による増減は、この作りに合いません。
+2. 状態が、プロセスの中と、手元の SQLite にあります。
+3. 1 つのコンテナ・1 つのイメージで動くことが、Sora の売りです。
+
+台数を増やすなら、**利用者を決まったインスタンスに振り分ける**（各インスタンスは、独立した Sora）形が、この作りに合います（未検証です）。
+
+公式の資料: [Kubernetes の Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)・[Cloud Run のコンテナの規約](https://docs.cloud.google.com/run/docs/container-contract)・[Cloud Run の外向きの IP](https://docs.cloud.google.com/run/docs/configuring/static-outbound-ip)。
