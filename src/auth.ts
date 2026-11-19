@@ -142,6 +142,35 @@ function authenticateWithKeyFile(c: any, store: ApiKeyStore): string | Response 
 }
 
 /**
+ * 公開の経路（認証の中間層を通らない）のうち、strict のときだけ管理者の鍵を求める要求の関所（/health?detailed=true。設計 5・穴 14。段階 8）。
+ * 通すときは undefined、断るときは応答: 鍵なし・知らない鍵は 401、管理者でない鍵は 403、鍵ファイルを読めなければ 503。
+ * 鍵ファイルを使わない組み立て（strict では、起動の検査が許さない）も、管理者と証明できないので、閉じる側（401）に倒す。
+ */
+export function requireAdminKey(c: any): Response | undefined {
+  let store: ApiKeyStore | undefined;
+  try {
+    store = getApiKeyStore();
+  } catch (error) {
+    return authUnavailable(c, error);
+  }
+  const token = extractAuthToken(c);
+  const entry = token && store ? store.lookupEntry(token) : undefined;
+  if (!entry) return unauthorized(c, token);
+  if (entry.admin) return undefined;
+  incrementSecurityCounter('sora_auth_rejected_not_admin_total');
+  return c.json(
+    {
+      error: 'Forbidden: this endpoint requires an administrator key',
+      code: 'FORBIDDEN',
+      status: 403,
+      retryable: false,
+      message: 'This request needs a key with "admin": true in the key file.',
+    },
+    403,
+  );
+}
+
+/**
  * 認証のミドルウェア。鍵の決め方は 3 通り:
  *  - 鍵ファイル（SORA_AUTH_KEYS_FILE。または引数の keyStore）: 鍵ごとに別の tenant。匿名は認めない
  *  - 単一の鍵（SORA_API_KEY。または引数の expectedApiKey。引数が先）: tenant は鍵のハッシュ。匿名は SORA_ALLOW_ANONYMOUS で認める

@@ -2445,7 +2445,7 @@ export function generateOpenApiDocument() {
         get: {
           summary: 'ヘルスチェック & コンポーネント稼働状態',
           parameters: [
-            { name: 'detailed', in: 'query', schema: { type: 'string', enum: ['true', '1'] }, description: '外部依存先（SQLite・Chromium・Yahoo・気象庁・P2P地震情報・e-Gov）の疎通も確かめる。SQLite 障害時は 503 と status: "degraded"' },
+            { name: 'detailed', in: 'query', schema: { type: 'string', enum: ['true', '1'] }, description: '外部依存先（SQLite・Chromium・Yahoo・気象庁・P2P地震情報・e-Gov）の疎通も確かめる。SQLite 障害時は 503 と status: "degraded"。SORA_ISOLATION=strict では、管理者の鍵（鍵ファイルの admin: true）が要る（無い・誤りは 401、管理者でない鍵は 403）' },
           ],
           responses: {
             '200': {
@@ -2456,6 +2456,8 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '401': { description: 'detailed=true を strict で呼ぶとき、管理者の鍵が無い・誤り' },
+            '403': { description: 'detailed=true を strict で呼ぶとき、管理者でない鍵' },
           },
         },
       },

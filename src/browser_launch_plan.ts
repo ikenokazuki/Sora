@@ -131,6 +131,56 @@ export function planBrowserLaunch(options: {
 }
 
 /**
+ * strict の起動のとき、tenant ごとの Chromium を別の uid に落とせない理由（設計 2。段階 8）。落とせるなら空。
+ * 入力は planBrowserLaunch と同じ。理由ごとに 1 つずつ返す（root でなければ、バイナリ・capability は重ねない。root にすれば、そのとき分かる）。
+ * SORA_BROWSER_UID=off は、設定の検査（security/strict_config.ts）が言うので、ここでは扱わない。
+ */
+export function strictLaunchProblems(options: {
+  /** 読む環境。必須（呼ぶ側が渡す。browser_engine.ts の strictBrowserLaunchProblems が、プロセスの環境を既定にする） */
+  env: Env;
+  currentUid: number | undefined;
+  launcherExists: boolean;
+  nodeEnv: string | undefined;
+  missingCapabilities?: readonly string[];
+  /** 同時に持てるプロセスの数（番号 0〜processMax-1） */
+  processMax: number;
+}): string[] {
+  const strict = (need: string) => `SORA_ISOLATION=strict では、${need}`;
+  if (options.currentUid !== 0) {
+    const who = options.currentUid === undefined ? '不明' : `uid ${options.currentUid}`;
+    return [
+      strict(
+        `Sora を root で起動する必要があります（いまは ${who}）。tenant ごとの Chromium を、別の uid に落として動かすためです。コンテナの user:・runAsUser・USER で root 以外を指定していないか確かめてください（公開イメージの既定は root で、Chromium だけが別の uid に落ちます）`,
+      ),
+    ];
+  }
+  const problems: string[] = [];
+  if (!options.launcherExists) {
+    problems.push(
+      strict(`Chromium を別の uid に落とす起動用バイナリ（${DEFAULT_LAUNCHER}）がありません。公開イメージには入っています。自分でイメージを作るなら、Containerfile の chromium-launcher の段階で作るファイルを、この場所に置いてください`),
+    );
+  }
+  const missing = options.missingCapabilities ?? [];
+  if (missing.length > 0) {
+    problems.push(
+      strict(
+        `Chromium を別の uid に落とすのに要る capability が足りません（${missing.join(', ')}）。${missing.map((name) => `--cap-add=${name.slice(4)}`).join(' ')} を足してください（--cap-drop=ALL の運用は、CHOWN・DAC_OVERRIDE・KILL・SETGID・SETUID の 5 つを足します）`,
+      ),
+    );
+  }
+  if (problems.length === 0) {
+    try {
+      // いちばん大きい番号の uid が、uid の最大を超えないか（番号が増えるほど、基準の uid に足される）。サンドボックスの設定は外して計画を組む:
+      // SORA_BROWSER_UID=off のとき、on の計画は「root のまま起動するので、サンドボックスを有効にできない」と投げるが、それは設定の検査が言うこと（同じ原因を 2 回言わない）
+      planBrowserLaunch({ ...options, env: { ...options.env, SORA_BROWSER_SANDBOX: 'off' }, slot: Math.max(options.processMax - 1, 0) });
+    } catch (error) {
+      problems.push(strict(error instanceof Error ? error.message : String(error)));
+    }
+  }
+  return problems;
+}
+
+/**
  * Chromium の、プロキシまわりの起動引数。
  * ゲートウェイを使うときは、すべての通信をゲートウェイに通す（--proxy-server。ループバックも、--proxy-bypass-list=<-loopback> で通す）。
  * ブラウザ自身の名前解決は、ゲートウェイ以外を全部失敗させ（直接の接続の抜け道を塞ぐ）、UDP（QUIC）の直接の通信も止める。

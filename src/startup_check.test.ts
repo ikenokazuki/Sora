@@ -211,6 +211,37 @@ describe('the entry points run the start-up check', () => {
   }, 30_000);
 });
 
+describe('strict の起動の確認（runStrictStartup）は、待ち受ける前に走る', () => {
+  test('HTTP の入口は、checkStartupEnv のあと・Bun.serve の前に、runStrictStartup を待つ（待ち受けたあとに動かすと、確認の前に要求を受ける）', async () => {
+    const source = await Bun.file(`${import.meta.dir}/index.ts`).text();
+    const check = source.indexOf('checkStartupEnv();');
+    const strict = source.indexOf('await runStrictStartup();');
+    const serve = source.indexOf('Bun.serve({');
+    expect(check).toBeGreaterThan(-1);
+    expect(strict).toBeGreaterThan(check);
+    expect(serve).toBeGreaterThan(strict);
+  });
+
+  test('実際の起動: strict で設定が足りなければ、待ち受けずに exit 1（HTTP の入口）', async () => {
+    const { code, stdout, stderr } = await start(['src/index.ts'], { SORA_ISOLATION: 'strict' });
+    // 設定の 3 件は、環境によらず出る。実行環境の検査（root・Chromium の接続）は、子プロセスが Chromium を見つけたときだけ足される（見つかるかは環境による）ので、件数は固定しない
+    expect(stderr).toContain(`${PREFIX} エラー: SORA_ISOLATION=strict では、SORA_AUTH_KEYS_FILE`);
+    expect(stderr).toContain('SORA_ISOLATION=strict では、SORA_BROWSER_SANDBOX=on が必要です');
+    expect(stderr).toContain('SORA_ISOLATION=strict では、SORA_EGRESS_GATEWAY=on が必要です');
+    expect(stderr).toMatch(/環境変数の誤りが [3-9] 件あるので、起動しません/);
+    expect(code).toBe(1);
+    expect(stdout).not.toContain('Starting Sora service');
+  }, 30_000);
+
+  test('実際の起動: strict は stdio では使えない（標準出力には何も書かない）', async () => {
+    const { code, stdout, stderr } = await start(['src/stdio.ts'], { SORA_ISOLATION: 'strict' });
+    expect(stderr).toContain('SORA_ISOLATION=strict では、stdio は使えません');
+    expect(stderr).not.toContain('Stdio server connected');
+    expect(code).toBe(1);
+    expect(stdout).toBe('');
+  }, 30_000);
+});
+
 describe('出口のゲートウェイを使うとき（SORA_EGRESS_GATEWAY=on）、ほかの設定との食い違いは、起動のときに止める', () => {
   // 食い違いは、ゲートウェイを作るとき（最初の通信）にも分かるが、そのときは、すべての外向きの通信（Bun の fetch・子プロセスを含む）が失敗する。起動で分かるようにする
   test('SORA_PROXY_LIST（リクエストごとに替える一覧）とは、一緒に使えない', () => {
