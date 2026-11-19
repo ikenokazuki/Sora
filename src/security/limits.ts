@@ -3,7 +3,7 @@
 //
 //   standard（既定）: ユーザーが 1 人か、互いに信頼できる少数。今までの使い方を止めない緩い値で、異常な入力（無制限の本文・星だらけのパターンなど）だけを止める
 //   strict: 互いに信頼できない利用者に公開する共有のサービス。設計書の値（未決 7）
-import { type Env, envEnum, envError } from '../config.js';
+import { type Env, envEnum, envError, envInt } from '../config.js';
 
 export type IsolationLevel = 'standard' | 'strict';
 
@@ -264,6 +264,25 @@ export function isolationLevel(env?: Env): IsolationLevel {
   return envEnum('SORA_ISOLATION', env);
 }
 
+/**
+ * strict での、同時に持てるブラウザのプロセスの数。SORA_BROWSER_MAX_PROCESSES があればそれ(1〜64)、なければ表の値(4)。
+ * 読めない値は、表の値のまま(起動の検査 checkEnv が、誤りとして止める)。水準によらず返す(起動の検査が、uid の範囲を調べるのに使う)
+ */
+export function strictBrowserProcessMax(env?: Env): number {
+  return envInt('SORA_BROWSER_MAX_PROCESSES', env) ?? STRICT_LIMITS.browserProcessMax;
+}
+
+/** プロセスの数を替えた strict の値。同じ数なら同じ物を返す(呼ぶたびに作らない) */
+const strictWithProcessMax = new Map<number, Readonly<Limits>>();
+
 export function limits(env?: Env): Readonly<Limits> {
-  return isolationLevel(env) === 'strict' ? STRICT_LIMITS : STANDARD_LIMITS;
+  if (isolationLevel(env) !== 'strict') return STANDARD_LIMITS;
+  const processMax = strictBrowserProcessMax(env);
+  if (processMax === STRICT_LIMITS.browserProcessMax) return STRICT_LIMITS;
+  let derived = strictWithProcessMax.get(processMax);
+  if (!derived) {
+    derived = Object.freeze({ ...STRICT_LIMITS, browserProcessMax: processMax });
+    strictWithProcessMax.set(processMax, derived);
+  }
+  return derived;
 }

@@ -4,7 +4,7 @@
  */
 import { existsSync } from 'node:fs';
 import { strictBrowserLaunchProblems } from './browser_engine.js';
-import { checkEnv, envError, envList, envPath, LEGACY, type Env } from './config.js';
+import { checkEnv, envError, envInt, envList, envPath, LEGACY, type Env } from './config.js';
 import { errorMessage } from './errors.js';
 import { egressGatewayOptionsFromEnv, isEgressGatewayEnabled } from './net/egress.js';
 import { loadApiKeyStore } from './security/api_keys.js';
@@ -52,8 +52,12 @@ export function checkStartupEnv({
   const { errors, warnings } = checkEnv(env);
   // 共有のサービス（SORA_ISOLATION=strict）が求めるものを満たさなければ、弱い側に黙って戻らず、起動を断る（設計 0。段階 8）。
   // 水準の書き方の誤りは、checkEnv が数えているので、重ねない。実際の試し起動（Chromium の起動・前回の残りの掃除）は、待ち受ける前に、browser_startup.ts が行う
-  if (envError('SORA_ISOLATION', env) === undefined && isolationLevel(env) === 'strict') {
-    errors.push(...strictConfigProblems(env, transport), ...strictLaunch(env));
+  if (envError('SORA_ISOLATION', env) === undefined) {
+    if (isolationLevel(env) === 'strict') errors.push(...strictConfigProblems(env, transport), ...strictLaunch(env));
+    // 効かない設定を、黙って抱えさせない: ブラウザのプロセスの数は、strict(利用者ごとに別のプロセス)のときだけ効く
+    else if (envInt('SORA_BROWSER_MAX_PROCESSES', env) !== undefined) {
+      warnings.push('SORA_BROWSER_MAX_PROCESSES は、SORA_ISOLATION=strict のときだけ効きます。いまは standard なので、効きません(全員で 1 つの共有ブラウザです)');
+    }
   }
   // 鍵ファイル（名前つきの複数の鍵）。読めない・誤りがあるときは、匿名にせず、起動を止める（鍵が 1 つも無い状態は、認証なしと同じになる）。
   // 読んだ表は覚えるので、認証は要求のたびに読み直さない。stdio は認証を通らないので、読まない

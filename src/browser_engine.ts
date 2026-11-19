@@ -20,7 +20,7 @@ import { BrowserHandle, BrowserPool } from './browser_pool.js';
 import { reapUid } from './browser_reap.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
-import { limits, STRICT_LIMITS } from './security/limits.js';
+import { limits, strictBrowserProcessMax } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
@@ -373,7 +373,7 @@ export function strictBrowserLaunchProblems(
     launcherExists: launchProbe.launcherExists(),
     nodeEnv: envStr('NODE_ENV'),
     missingCapabilities: launchProbe.missingCapabilities(),
-    processMax: STRICT_LIMITS.browserProcessMax,
+    processMax: strictBrowserProcessMax(env),
   });
   if (browserCdpMode(env, bunVersion) !== 'pipe') {
     problems.push(
