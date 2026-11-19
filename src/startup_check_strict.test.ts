@@ -93,6 +93,21 @@ describe('checkStartupEnv（strict）', () => {
     expect(launchCalls).toEqual([]);
   });
 
+  test('SORA_BROWSER_MAX_PROCESSES は strict のときだけ効く。strict では警告しない。standard で設定していたら、効かないと警告する(止めない)', () => {
+    const strictRun = run({ ...compliant(), SORA_BROWSER_MAX_PROCESSES: '8' });
+    expect(strictRun.lines).toEqual([]);
+    expect(strictRun.exits).toEqual([]);
+    for (const env of [{ SORA_BROWSER_MAX_PROCESSES: '8' }, { SORA_ISOLATION: 'standard', SORA_BROWSER_MAX_PROCESSES: '8' }]) {
+      const { lines, exits } = run(env);
+      expect(exits, JSON.stringify(env)).toEqual([]);
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toStartWith(`${PREFIX} 警告: SORA_BROWSER_MAX_PROCESSES は`);
+      expect(lines[0]).toContain('strict');
+    }
+    // 設定していなければ、何も言わない
+    expect(run({ SORA_ISOLATION: 'standard' }).lines).toEqual([]);
+  });
+
   test('stdio では使えない', () => {
     const { lines, exits } = run(compliant(), { transport: 'stdio' });
     expect(exits).toEqual([1]);
@@ -155,6 +170,24 @@ describe('strictBrowserLaunchProblems（実環境を読む。launchProbe を差�
     expect(old[0]).toContain('1.4.4');
     // Chromium が無ければ、接続を使わないので検査しない
     expect(strictBrowserLaunchProblems({ SORA_BROWSER_PIPE: 'false' }, false, '1.3.3')).toEqual([]);
+  });
+
+  test('設定したプロセス数(SORA_BROWSER_MAX_PROCESSES)で、uid の範囲を調べる(最後の番号を足した uid が、最大を超えないか)', () => {
+    launchProbe.currentUid = () => 0;
+    launchProbe.launcherExists = () => true;
+    launchProbe.missingCapabilities = () => [];
+    const MAX_UID = 4_294_967_294;
+    for (const processes of [1, 4, 10, 64]) {
+      const ok = String(MAX_UID - (processes - 1)); // 最後の番号(processes - 1)を足して、ちょうど最大
+      const over = String(MAX_UID - (processes - 1) + 1);
+      expect(strictBrowserLaunchProblems({ SORA_BROWSER_MAX_PROCESSES: String(processes), SORA_BROWSER_UID: ok }, true, '1.4.4'), `${processes} 個・基準 ${ok}`).toEqual([]);
+      if (processes === 1) continue; // 1 個のときは、基準そのものが最大を超える値になり、uid として読めない(自動に戻る)
+      const problems = strictBrowserLaunchProblems({ SORA_BROWSER_MAX_PROCESSES: String(processes), SORA_BROWSER_UID: over }, true, '1.4.4');
+      expect(problems, `${processes} 個・基準 ${over}`).toHaveLength(1);
+    }
+    // 設定が無ければ、表の値(4)で調べる
+    expect(strictBrowserLaunchProblems({ SORA_BROWSER_UID: String(MAX_UID - 3) }, true, '1.4.4')).toEqual([]);
+    expect(strictBrowserLaunchProblems({ SORA_BROWSER_UID: String(MAX_UID - 2) }, true, '1.4.4')).toHaveLength(1);
   });
 
   test('SORA_BROWSER_UID=off と SORA_BROWSER_SANDBOX=on の組は、実行環境の検査では何も言わない（設定の検査が 1 件だけ言う。同じ原因を 2 回言わない）', async () => {
