@@ -4,7 +4,7 @@
 
 `strict` は、弱い側に黙って戻りません。必要な設定と実行環境がそろっていなければ、**起動しません**。この手引は、そろえるもの、起動のときに起きること、起動を断られたときの直し方、そして、`strict` でもまだ足りないものを書きます。
 
-**対象とする実行環境は、単一ホストの Docker・Podman（VPS など）です。** Kubernetes・Cloud Run は、未検証です（7 章）。
+**対象とする実行環境は、単一ホストの Docker・Podman（VPS など）です。** Kubernetes・Cloud Run は、未検証です（7 章）。インターネットに出すときの手前の構成（リバースプロキシ・TLS・鍵の発行・日々の運用）は、[`vps.md`](vps.md) にあります。
 
 `strict` が切り替えるものの全体は、README の 4.5（ブラウザの隔離）と 4.6（複数のユーザー）、設計は [`docs/superpowers/specs/2026-11-12-isolation-design.md`](../superpowers/specs/2026-11-12-isolation-design.md) にあります。
 
