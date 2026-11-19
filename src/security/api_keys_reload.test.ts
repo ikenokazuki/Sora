@@ -453,4 +453,150 @@ describe('読む間の置き換え・一時的な失敗・古い表で動く間(
     utimesSync(path, before.atime, before.mtime);
     expect(loadApiKeyStore(path, T0 + 1000).store?.lookup(KEY_B)).toBe('alice');
   });
+
+  // ---- 2 回目のレビューの指摘: 失敗の状態の持ち方(挙動が変わるのに、見逃していたもの) ----
+  const flakyRead: KeyFileFs = { stat: realFs.stat, read: () => { throw errno('EMFILE'); } };
+  const deniedStat: KeyFileFs = { stat: () => { throw errno('EACCES'); }, read: realFs.read };
+  const goneStat: KeyFileFs = { stat: () => { throw errno('ENOENT'); }, read: realFs.read };
+
+  test('読み取りの失敗 → 復旧 → 同じ失敗がもう一度、のときは、2 回目も知らせる(復旧したら、既出の印を戻す)', () => {
+    loadApiKeyStore(path, T0);
+    replace([row('bob', KEY_B)]);
+    loadApiKeyStore(path, T0 + 1000, flakyRead);
+    expect(logs).toHaveLength(1);
+    expect(loadApiKeyStore(path, T0 + 2000).store?.lookup(KEY_B)).toBe('bob'); // 復旧(読み直しに成功)
+    const afterRecovery = logs.length;
+    replace([row('carol', KEY_C)]);
+    loadApiKeyStore(path, T0 + 3000, flakyRead);
+    expect(logs.length).toBe(afterRecovery + 1);
+    expect(logs.at(-1)).toContain('EMFILE');
+    expect(getSecurityMetrics().sora_auth_keys_reload_failed_total).toBe(2);
+  });
+
+  test('調べる失敗 → 解消(署名が同じ) → また同じ失敗、のときも、2 回目を知らせる', () => {
+    loadApiKeyStore(path, T0);
+    loadApiKeyStore(path, T0 + 1000, deniedStat);
+    expect(logs.filter((line) => line.includes('EACCES'))).toHaveLength(1);
+    loadApiKeyStore(path, T0 + 2000); // 解消
+    loadApiKeyStore(path, T0 + 3000, deniedStat);
+    expect(logs.filter((line) => line.includes('EACCES'))).toHaveLength(2);
+  });
+
+  test('失敗の種類が変わったら(調べられない → 消えた → また調べられない)、そのたびに知らせる(最後の文が、実際の原因と食い違わない)', () => {
+    loadApiKeyStore(path, T0);
+    loadApiKeyStore(path, T0 + 1000, deniedStat);
+    loadApiKeyStore(path, T0 + 2000, goneStat);
+    loadApiKeyStore(path, T0 + 3000, deniedStat);
+    expect(logs).toHaveLength(3);
+    expect(logs[0]).toContain('調べられません');
+    expect(logs[1]).toContain('見つかりません');
+    expect(logs[2]).toContain('調べられません');
+  });
+
+  test('読み取りの失敗・調べる失敗が続くあいだも、1 分ごとに知らせる(古い表で動いている)', () => {
+    for (const [label, failing] of [['読み取り', flakyRead], ['調べる', deniedStat]] as const) {
+      resetApiKeyStoreCache();
+      logs.length = 0;
+      loadApiKeyStore(path, T0);
+      if (failing === flakyRead) replace([row('bob', KEY_B)]); // 読み取りの失敗は、ファイルが変わって、読みに行くとき
+      loadApiKeyStore(path, T0 + 1000, failing);
+      loadApiKeyStore(path, T0 + 30_000, failing);
+      expect(logs, label).toHaveLength(1);
+      loadApiKeyStore(path, T0 + 61_000, failing);
+      expect(logs, label).toHaveLength(2);
+      expect(logs[1], label).toContain('1 分前から使えていません');
+    }
+  });
+
+  test('成功した読み直しの署名を、使っている表の元として覚える(あとで消えて、同じファイルが戻れば、古い表ではなくなる)', () => {
+    loadApiKeyStore(path, T0);
+    replace([row('bob', KEY_B)]);
+    loadApiKeyStore(path, T0 + 1000); // 成功。この署名が、使っている表の元
+    loadApiKeyStore(path, T0 + 2000, goneStat);
+    loadApiKeyStore(path, T0 + 62_000, goneStat);
+    expect(logs.filter((line) => line.includes('分前から使えていません'))).toHaveLength(1);
+    loadApiKeyStore(path, T0 + 63_000); // 同じファイルが戻った
+    const count = logs.length;
+    loadApiKeyStore(path, T0 + 200_000);
+    expect(logs).toHaveLength(count);
+  });
+
+  test('最初の読み込みが読み取りの失敗だったら、署名を覚えない(ファイルは正常なので、次の確認で、読めるようになる)', () => {
+    const first = loadApiKeyStore(path, T0, flakyRead);
+    expect(first.store).toBeUndefined();
+    expect(first.errors.join('\n')).toContain('EMFILE');
+    expect(loadApiKeyStore(path, T0 + 1000).store?.lookup(KEY_A)).toBe('alice');
+  });
+
+  test('最初の読み込みで出た警告は、既出として覚える(起動の検査が出す。読み直しで、同じ警告を繰り返さない)', () => {
+    const plain = (name: string, key: string) => {
+      const tmp = join(dir, 'pw.tmp');
+      writeFileSync(tmp, JSON.stringify({ keys: [{ name, key }] }), { mode: 0o644 });
+      chmodSync(tmp, 0o644);
+      renameSync(tmp, path);
+    };
+    plain('alice', KEY_A);
+    resetApiKeyStoreCache();
+    expect(loadApiKeyStore(path, T0).warnings.join('\n')).toContain('平文の鍵があり'); // 起動の検査が、これを出す
+    plain('bob', KEY_B);
+    loadApiKeyStore(path, T0 + 1000);
+    expect(logs.filter((line) => line.includes('平文の鍵があり'))).toHaveLength(0);
+  });
+
+  test('前の表が無いときは(最初の読み込みが誤り)、失敗を知らせない。「前の鍵を使い続けます」とは言わず、いちばん新しい誤りを返す', () => {
+    writeFileSync(path, '{ broken', { mode: 0o600 });
+    resetApiKeyStoreCache();
+    expect(() => getApiKeyStore(env(), T0)).toThrow('JSON として読めません');
+    replace(file([{ name: 'Bad Name', keyHash: 'x' }])); // 別の誤りに替わる
+    expect(() => getApiKeyStore(env(), T0 + 1000)).toThrow('keys[0].name');
+    loadApiKeyStore(path, T0 + 2000, deniedStat); // 調べられない(一時的)
+    expect(() => getApiKeyStore(env(), T0 + 2500)).toThrow('調べられません'); // 確認の間隔のうち: いまの理由
+    expect(() => getApiKeyStore(env(), T0 + 3000)).toThrow('keys[0].name'); // 解けたら、ファイルの中身の誤りに戻る
+    expect(logs).toEqual([]);
+    expect(getSecurityMetrics().sora_auth_keys_reload_failed_total).toBeUndefined();
+  });
+
+  test('ファイルが無いところから、誤りの内容が現れても、「前の鍵を使い続けます」とは言わない', () => {
+    unlinkSync(path);
+    resetApiKeyStoreCache();
+    expect(() => getApiKeyStore(env(), T0)).toThrow('ENOENT');
+    writeFileSync(path, '{ broken', { mode: 0o600 });
+    expect(() => getApiKeyStore(env(), T0 + 1000)).toThrow('JSON として読めません');
+    expect(logs).toEqual([]);
+  });
+
+  test('ENOTDIR(途中がディレクトリでない)も、見つからない扱い(「調べられません」ではない)', () => {
+    loadApiKeyStore(path, T0);
+    const notDir: KeyFileFs = { stat: () => { throw errno('ENOTDIR'); }, read: realFs.read };
+    loadApiKeyStore(path, T0 + 1000, notDir);
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toContain('見つかりません');
+    expect(getSecurityMetrics().sora_auth_keys_missing_total).toBe(1);
+  });
+
+  test('グループだけが書ける鍵ファイルは、警告しない(だれでも書ける場合だけ)', () => {
+    chmodSync(path, 0o660);
+    expect(loadApiKeyStore(path, T0).warnings).toEqual([]);
+  });
+
+  test('時計が戻っても、知らせ直しが、戻った分だけ止まらない(1 分ごとに出る)', () => {
+    const base = T0 + 7_200_000;
+    loadApiKeyStore(path, base);
+    replace('{ broken');
+    loadApiKeyStore(path, base + 1000);
+    loadApiKeyStore(path, base + 61_000);
+    expect(logs.filter((line) => line.includes('分前から使えていません'))).toHaveLength(1);
+    const back = base - 3_600_000; // 時計が 1 時間戻った
+    loadApiKeyStore(path, back);
+    loadApiKeyStore(path, back + 60_000);
+    let reminders = logs.filter((line) => line.includes('分前から使えていません'));
+    expect(reminders).toHaveLength(2);
+    expect(reminders[1]).toContain('1 分前から');
+    // 戻った時刻から数える(戻る前の時刻から数えると、負の長さになり、「1 分前から」のままになる)
+    loadApiKeyStore(path, back + 120_000);
+    loadApiKeyStore(path, back + 180_000);
+    reminders = logs.filter((line) => line.includes('分前から使えていません'));
+    expect(reminders).toHaveLength(4);
+    expect(reminders[3]).toContain('3 分前から');
+  });
 });

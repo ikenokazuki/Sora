@@ -214,8 +214,10 @@ const NOTICE_LIMIT = 1500;
 
 /** 1 つの鍵ファイルの、読んだ結果と、見張りの状態 */
 interface WatchedKeyFile {
-  /** 使っている結果。読み直しに失敗しても、前の(読めた)表のまま。最初の読み込みが誤りなら、その誤り */
+  /** 使っている結果。読み直しに失敗しても、前の(読めた)表のまま。表がまだ無いときは、いちばん新しい誤り */
   current: LoadedApiKeys;
+  /** 最後に「中身を読んだ」結果(表が無いとき、一時的な失敗が解けたら、ファイルの中身の誤りに戻すため) */
+  lastRead: LoadedApiKeys;
   /**
    * 最後に「中身を読んだ」ファイルの署名(読む前に取ったもの。誤りの中身も覚える)。undefined は、まだ読めていない
    * (読み取りそのものが失敗したときは、覚えない。次の確認で、読み直す)
@@ -224,10 +226,11 @@ interface WatchedKeyFile {
   /** いま使っている表の元になった、ファイルの署名(最初の読み込みが誤りなら undefined)。ファイルがこの署名に戻れば、古い表ではなくなる */
   appliedSignature: string | undefined;
   checkedAt: number;
-  /** ファイルが見つからないことを、すでに知らせたか(戻るまで、繰り返さない) */
-  missingReported: boolean;
-  /** 読み取り・調べるのに失敗した理由を、すでに知らせたか(同じ理由を、繰り返さない) */
-  unreadableReported: string | undefined;
+  /**
+   * 直近に知らせた、使えない状態の種類('missing' か、理由の文)。同じ状態を繰り返し知らせず、種類が変われば知らせる。
+   * 使える状態に戻れば undefined(戻ったあとの同じ失敗は、もう一度知らせる)
+   */
+  reportedFailure: string | undefined;
   /** 古い表で動き始めた時刻(いまのファイルを、使えていない間)。使えていれば undefined */
   staleSince: number | undefined;
   lastReminderAt: number;
@@ -244,7 +247,7 @@ function notice(message: string): void {
 
 const clip = (text: string): string => (text.length > NOTICE_LIMIT ? `${text.slice(0, NOTICE_LIMIT)}…(長いので、ここまで)` : text);
 
-/** いまのファイルを使えていない(前の表で動いている)ことを覚える。1 分ごとに、知らせ直す */
+/** いまのファイルを、使えていない(前の表で動いている)ことを覚える。1 分ごとに、知らせ直す */
 function markStale(entry: WatchedKeyFile, now: number): void {
   if (entry.staleSince === undefined) {
     entry.staleSince = now;
@@ -252,6 +255,7 @@ function markStale(entry: WatchedKeyFile, now: number): void {
   }
 }
 
+/** 知らせ直しは、認証が要る要求が来たとき(確認が走るとき)に出す。タイマーは持たない */
 function remindIfStale(entry: WatchedKeyFile, now: number): void {
   if (entry.staleSince === undefined || !entry.current.store || now - entry.lastReminderAt < STALE_REMINDER_MS) return;
   entry.lastReminderAt = now;
@@ -259,13 +263,22 @@ function remindIfStale(entry: WatchedKeyFile, now: number): void {
   notice(`鍵ファイルを、${minutes} 分前から使えていません。前の鍵を使い続けています(消した鍵・管理者から外した鍵も、まだ有効です)。ファイルを直してください`);
 }
 
-/** 読み取り・調べるのに失敗した(一時的かもしれない)。署名は覚えず、次の確認で、読み直す。同じ理由は、繰り返し知らせない */
-function reportUnreadable(entry: WatchedKeyFile, message: string, now: number): void {
+/**
+ * ファイルを使えない状態(見つからない・調べられない・読み取りに失敗)を、知らせる。署名は覚えず、次の確認で、読み直す。
+ * 同じ状態は、繰り返し知らせない(種類が変われば、知らせる)。前の表が無いときは、知らせず、いちばん新しい誤りに替える
+ * (最初の読み込みが誤りの経路は、認証の側が、理由を 1 回ずつログに出す。「前の鍵を使い続けます」とは言わない)。
+ */
+function reportFailure(entry: WatchedKeyFile, failure: { key: string; notice: string; error: string; counter: string }, now: number): void {
   markStale(entry, now);
-  if (entry.unreadableReported === message || !entry.current.store) return;
-  entry.unreadableReported = message;
-  incrementSecurityCounter('sora_auth_keys_reload_failed_total');
-  notice(`鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${clip(message)}`);
+  if (!entry.current.store) {
+    entry.current = { errors: [failure.error], warnings: [] };
+    entry.reportedFailure = failure.key;
+    return;
+  }
+  if (entry.reportedFailure === failure.key) return;
+  entry.reportedFailure = failure.key;
+  incrementSecurityCounter(failure.counter);
+  notice(clip(failure.notice));
 }
 
 /**
@@ -275,25 +288,30 @@ function reportUnreadable(entry: WatchedKeyFile, message: string, now: number): 
 function recheck(path: string, entry: WatchedKeyFile, now: number, fs: KeyFileFs): void {
   const stat = statKeyFile(path, fs);
   if (!stat.ok) {
+    // 消えた(置き換えの途中かもしれない)・調べられない。前の表を使い続ける。署名は変えない(戻ったら、読み直す)
     if (stat.missing) {
-      // 消えた。置き換えの途中かもしれないので、前の表を使い続ける。署名は変えない(戻ったら、読み直す)
-      markStale(entry, now);
-      if (!entry.missingReported && entry.current.store) {
-        entry.missingReported = true;
-        incrementSecurityCounter('sora_auth_keys_missing_total');
-        notice(`鍵ファイル(${JSON.stringify(path)})が見つかりません。置き換えの途中なら、まもなく戻ります。前の鍵を使い続けます`);
-      }
+      reportFailure(
+        entry,
+        {
+          key: 'missing',
+          notice: `鍵ファイル(${JSON.stringify(path)})が見つかりません。置き換えの途中なら、まもなく戻ります。前の鍵を使い続けます`,
+          error: unreadableMessage(path, stat.code),
+          counter: 'sora_auth_keys_missing_total',
+        },
+        now,
+      );
     } else {
-      reportUnreadable(entry, `鍵ファイル(${JSON.stringify(path)})を調べられません(${stat.code})。権限(親のディレクトリを含む)を確かめてください`, now);
+      const error = `鍵ファイル(${JSON.stringify(path)})を調べられません(${stat.code})。権限(親のディレクトリを含む)を確かめてください`;
+      reportFailure(entry, { key: error, notice: `鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${error}`, error, counter: 'sora_auth_keys_reload_failed_total' }, now);
     }
     remindIfStale(entry, now);
     return;
   }
-  // あった。署名が前と同じでも(同じ大きさのファイルを、同じ時刻の刻みで作り直したとき)、戻ったことは覚える(また消えたら、知らせ直す)
-  entry.missingReported = false;
   if (stat.signature === entry.signature) {
-    // 変わっていない。直前に、調べるのに失敗していたなら、それは解けた
-    entry.unreadableReported = undefined;
+    // 変わっていない。直前に、使えない状態を知らせていたなら、それは解けた
+    entry.reportedFailure = undefined;
+    // 表が無いときは、一時的な失敗の理由でなく、ファイルの中身の誤りに戻す
+    if (!entry.current.store) entry.current = entry.lastRead;
     // 使っている表の元のファイルに戻った(消えたあとに、同じファイルが戻った、など)なら、古い表ではない
     if (stat.signature === entry.appliedSignature) entry.staleSince = undefined;
     remindIfStale(entry, now);
@@ -301,13 +319,20 @@ function recheck(path: string, entry: WatchedKeyFile, now: number, fs: KeyFileFs
   }
   const result = readKeyFile(path, fs, stat.mode);
   if (result.unreadable) {
-    reportUnreadable(entry, result.loaded.errors.join(' / '), now);
+    const error = result.loaded.errors.join(' / ');
+    reportFailure(entry, { key: error, notice: `鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${error}`, error, counter: 'sora_auth_keys_reload_failed_total' }, now);
     remindIfStale(entry, now);
     return;
   }
-  entry.unreadableReported = undefined;
+  entry.reportedFailure = undefined;
   entry.signature = stat.signature;
   if (!result.loaded.store) {
+    // 中身の誤り。前の表が無いときは、いちばん新しい誤りに替えるだけ(認証の側が、理由を出す)
+    entry.lastRead = result.loaded;
+    if (!entry.current.store) {
+      entry.current = result.loaded;
+      return;
+    }
     markStale(entry, now);
     incrementSecurityCounter('sora_auth_keys_reload_failed_total');
     notice(`鍵ファイルを読み直せませんでした。前の鍵を使い続けます: ${clip(result.loaded.errors.join(' / '))}`);
@@ -315,6 +340,7 @@ function recheck(path: string, entry: WatchedKeyFile, now: number, fs: KeyFileFs
   }
   const before = entry.current.store;
   entry.current = result.loaded;
+  entry.lastRead = result.loaded;
   entry.appliedSignature = stat.signature;
   entry.staleSince = undefined;
   incrementSecurityCounter('sora_auth_keys_reload_total');
@@ -341,12 +367,12 @@ export function loadApiKeyStore(path: string, now: number = Date.now(), fs: KeyF
     const loaded: LoadedApiKeys = read ? read.loaded : { errors: [unreadableMessage(path, stat.ok ? 'エラー' : stat.code)], warnings: [] };
     const created: WatchedKeyFile = {
       current: loaded,
+      lastRead: loaded,
       // 読めたときだけ、署名を覚える(読み取りの失敗は、覚えない。次の確認で、読み直す)。署名は、読む前に取ったもの
       signature: stat.ok && read && !read.unreadable ? stat.signature : undefined,
       appliedSignature: stat.ok && read?.loaded.store ? stat.signature : undefined,
       checkedAt: at,
-      missingReported: false,
-      unreadableReported: undefined,
+      reportedFailure: undefined,
       staleSince: undefined,
       lastReminderAt: at,
       shownWarnings: new Set(loaded.warnings),
@@ -354,7 +380,11 @@ export function loadApiKeyStore(path: string, now: number = Date.now(), fs: KeyF
     watched.set(path, created);
     return created.current;
   }
-  // 時計が戻ったときも、調べる
+  // 時計が戻ったとき: 知らせ直しの時刻も、戻す(戻った分だけ、知らせが止まらないように)。確認も、すぐ行う
+  if (at < entry.checkedAt) {
+    entry.lastReminderAt = Math.min(entry.lastReminderAt, at);
+    if (entry.staleSince !== undefined) entry.staleSince = Math.min(entry.staleSince, at);
+  }
   if (at - entry.checkedAt >= RECHECK_MS || at < entry.checkedAt) {
     entry.checkedAt = at;
     recheck(path, entry, at, fs);

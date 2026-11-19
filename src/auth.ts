@@ -143,7 +143,7 @@ function authenticateWithKeyFile(c: any, store: ApiKeyStore): string | Response 
 
 /**
  * 公開の経路（認証の中間層を通らない）のうち、strict のときだけ管理者の鍵を求める要求の関所（/health?detailed=true。設計 5・穴 14。段階 8）。
- * 通すときは undefined、断るときは応答: 鍵なし・知らない鍵は 401、管理者でない鍵は 403、鍵ファイルを読めなければ 503。
+ * 通すときは undefined、断るときは応答: 鍵なし・知らない鍵は 401、管理者でない鍵は 403、鍵ファイルを読めなければ 503(最初の読み込みが誤りだった経路だけ。起動のあとに壊れても、前の表を使い続ける)。
  * 鍵ファイルを使わない組み立て（strict では、起動の検査が許さない）も、管理者と証明できないので、閉じる側（401）に倒す。
  */
 export function requireAdminKey(c: any): Response | undefined {
