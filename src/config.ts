@@ -145,7 +145,7 @@ export const SETTINGS = {
   },
   SORA_ISOLATION: {
     area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard',
-    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。いまの `strict` は、この上限の値を切り替え、ブラウザを利用者ごとに別のプロセス（別の uid）で動かします（README 4.5。起動時の検査などのほかの要件は、段階的に足します）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
+    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。`strict` は、この上限の値を切り替え、ブラウザを利用者ごとに別のプロセス（別の uid）で動かし（README 4.5）、`/health?detailed=true` を管理者の鍵だけにします。さらに、起動のときに、`SORA_AUTH_KEYS_FILE`（名前つきの鍵）・`SORA_BROWSER_SANDBOX=on`・`SORA_EGRESS_GATEWAY=on` の設定と、ブラウザとの接続がパイプであること、root で起動して Chromium を別の uid に落とせること（`SORA_BROWSER_UID=off` は不可）を求め、満たさなければ起動しません。待ち受ける前に、前回の異常終了が残した Chromium のプロファイル（`/tmp/sora-chromium-*`。消せなければ起動しません）を消し、Chromium を 1 回起動して確かめます（`docs/operations/strict.md`）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',
@@ -225,24 +225,24 @@ export const SETTINGS = {
   SORA_BROWSER_PIPE: {
     area: 'browser', kind: 'bool',
     defaultDoc: '*(未設定 = Bun 1.4.4 以上ならパイプ、それ未満はポート)*',
-    doc: 'Chromium を操作する口（CDP）の繋ぎ方です。パイプなら、TCP のデバッグポートを開きません（127.0.0.1 で待ち受けず、同じコンテナのほかのプロセスから届きません）。`false`（`0`・`off`・`no` も可）でポートに戻し、`true`（`1`・`on`・`yes` も可）でパイプにします。大文字小文字・前後の空白は問いません。Bun 1.3.x は、起動と終了を繰り返したあとに、パイプの接続が閉じる・応答が返らなくなることがあるため、既定はポートです（1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで確かめました）。',
+    doc: 'Chromium を操作する口（CDP）の繋ぎ方です。パイプなら、TCP のデバッグポートを開きません（127.0.0.1 で待ち受けず、同じコンテナのほかのプロセスから届きません）。`false`（`0`・`off`・`no` も可）でポートに戻し、`true`（`1`・`on`・`yes` も可）でパイプにします。大文字小文字・前後の空白は問いません。Bun 1.3.x は、起動と終了を繰り返したあとに、パイプの接続が閉じる・応答が返らなくなることがあるため、既定はポートです（1.4.4 では、起動と終了 15 回・5 並行・強制終了の検知まで確かめました）。`SORA_ISOLATION=strict` では、パイプでなければ起動しません（ポートだと、同じコンテナの別の uid のプロセスから Chromium を操作できるため。`false` と、Bun 1.4.4 未満の既定を断ります）。',
   },
   SORA_BROWSER_UID: {
     area: 'browser', kind: 'str', default: 'auto', pattern: /^\s*(?:auto|off|0*[1-9]\d{0,9})\s*$/i,
     form: '`auto`・`off`・1 以上の整数（uid・gid）',
     defaultDoc: '*(未設定 = auto)*',
-    doc: 'root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。`SORA_ISOLATION=strict` では、これを基準に、利用者ごとに別のプロセスを、1 ずつ大きい uid（基準 + 0〜3）で起動します（README 4.5）。',
+    doc: 'root で動く Sora 本体が、Chromium を起動するときの uid です。`auto`（未設定）は 65532（distroless の `nonroot`）に落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid・gid に落とします。落とすには、同梱の起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）が要ります。落とすには、コンテナの capability に `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID` も要ります（Docker の既定にはあります。`--cap-drop=ALL` で動かすときは、`--cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID` を足します）。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で起動し、数を明示したときは起動を失敗させます。Sora 本体が root でないときは、何もしません。ページの renderer が破られても、運用者の秘密（環境変数・DB）に届きにくくなります。`SORA_ISOLATION=strict` では、`off` は使えず、root で起動して落とせることを、起動のときに求めます。プロファイルのディレクトリは、落とした uid だけが読める一時ディレクトリで、Chromium の終了後に消えます。`SORA_ISOLATION=strict` では、これを基準に、利用者ごとに別のプロセスを、1 ずつ大きい uid（基準 + 0〜3）で起動します（README 4.5）。',
   },
   SORA_BROWSER_SANDBOX: {
     area: 'browser', kind: 'enum', values: ['auto', 'on', 'off'],
     defaultDoc: '*(未設定 = auto)*',
-    doc: 'Chromium 自身のサンドボックスです。`auto`（未設定）は、有効にして起動を試し、起動できなければ `--no-sandbox` に戻して警告します（Docker の既定の seccomp・AppArmor など、ユーザー名前空間を作れない環境。Docker の既定のままでは、こちらになります。README 4.5 の seccomp プロファイルを渡すと、使えます）。そのときも、uid の分離（`SORA_BROWSER_UID`）は効きます。結果は、プロセスで 1 回だけ決めます。`on` は、有効にできなければ起動を失敗させます。`off` は常に `--no-sandbox` です。root のまま（`SORA_BROWSER_UID=off` や、起動用バイナリがない）では、有効にできません。`NODE_ENV=test` の既定は `off` です。',
+    doc: 'Chromium 自身のサンドボックスです。`auto`（未設定）は、有効にして起動を試し、起動できなければ `--no-sandbox` に戻して警告します（Docker の既定の seccomp・AppArmor など、ユーザー名前空間を作れない環境。Docker の既定のままでは、こちらになります。README 4.5 の seccomp プロファイルを渡すと、使えます）。そのときも、uid の分離（`SORA_BROWSER_UID`）は効きます。結果は、プロセスで 1 回だけ決めます。`on` は、有効にできなければ起動を失敗させます。`off` は常に `--no-sandbox` です。root のまま（`SORA_BROWSER_UID=off` や、起動用バイナリがない）では、有効にできません。`NODE_ENV=test` の既定は `off` です。`SORA_ISOLATION=strict` では、`on` だけを受け付け、起動のときに、実際に有効で起動できることを確かめます。',
   },
 
   // --- 静的取得 ---
   SORA_FETCH_ALLOW_PRIVATE_NETWORK: {
     area: 'fetch', kind: 'bool', default: false, legacy: ['ALLOW_LOCAL_FETCH'], legacyOnly: 'warn',
-    doc: '`true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**）',
+    doc: '`true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**。`SORA_ISOLATION=strict` では使えません。この設定のとき、出口のゲートウェイは使われません）',
   },
   SORA_FETCH_DEFAULT_REFERER: {
     area: 'fetch', kind: 'bool', default: true, legacy: ['SORA_DEFAULT_REFERER'], legacyOnly: 'error',

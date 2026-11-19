@@ -12,6 +12,7 @@ import {
   planBrowserLaunch,
   removeProfileDir,
   SandboxFallback,
+  strictLaunchProblems,
   withoutNoSandbox,
 } from './browser_launch_plan.js';
 import { type QueuePolicy, SimpleSemaphore } from './browser_semaphore.js';
@@ -19,7 +20,7 @@ import { BrowserHandle, BrowserPool } from './browser_pool.js';
 import { reapUid } from './browser_reap.js';
 import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
-import { limits } from './security/limits.js';
+import { limits, STRICT_LIMITS } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
 import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
@@ -353,6 +354,33 @@ function planLaunch(slot: number | undefined): ReturnType<typeof planBrowserLaun
     // tenant ごとのブラウザは、基準の uid + 番号（別の tenant のプロセスが、同じ uid にならない）
     slot,
   });
+}
+
+/**
+ * strict の起動の検査: tenant ごとの Chromium を、別の uid に落とせるか、ブラウザとの接続がパイプか（実際の環境で。設計 2。段階 8）。問題を返す。
+ * 接続がポートだと、Chromium は 127.0.0.1 の TCP で待ち受け、同じコンテナの別の uid（ほかの tenant）のプロセスから操作できてしまう。
+ * Chromium が無いときは検査しない（ブラウザを使えないので、落とす先も、接続も無い）。番号の数は strict の上限で調べる。
+ */
+export function strictBrowserLaunchProblems(
+  env: Env = process.env,
+  chromiumAvailable: boolean = CHROME_EXECUTABLE_PATH !== undefined,
+  bunVersion: string = Bun.version,
+): string[] {
+  if (!chromiumAvailable) return [];
+  const problems = strictLaunchProblems({
+    env,
+    currentUid: launchProbe.currentUid(),
+    launcherExists: launchProbe.launcherExists(),
+    nodeEnv: envStr('NODE_ENV'),
+    missingCapabilities: launchProbe.missingCapabilities(),
+    processMax: STRICT_LIMITS.browserProcessMax,
+  });
+  if (browserCdpMode(env, bunVersion) !== 'pipe') {
+    problems.push(
+      'SORA_ISOLATION=strict では、ブラウザとの接続をパイプにする必要があります（SORA_BROWSER_PIPE=false は使えません。Bun が 1.4.4 未満のときも、既定がポートになるので、Bun を上げるか、SORA_BROWSER_PIPE=true にしてください）。ポートの接続は、127.0.0.1 の TCP で待ち受けるので、同じコンテナのほかの利用者の uid のプロセスから、Chromium を操作できてしまいます',
+    );
+  }
+  return problems;
 }
 
 /** 番号（slot）のプロセスが落とす uid。uid を分けていないとき（落とさない・計画が決まらない）は undefined */

@@ -13,6 +13,7 @@ import {
 import { callerScope, createAuthMiddleware } from './auth.js';
 import { restModuleGuard } from './routes/module_guard.js';
 import { envEnum, envList } from './config.js';
+import { runStrictStartup } from './browser_startup.js';
 import { installEgressFetch } from './net/egress_fetch.js';
 import { checkStartupEnv } from './startup_check.js';
 
@@ -200,6 +201,9 @@ installShutdownHandlers();
 if (import.meta.main) {
   // 環境変数の検査。誤りがあれば、待ち受ける前に exit(1)（テストが index.js を import しても走らない）
   checkStartupEnv();
+  // SORA_ISOLATION=strict のときだけ、待ち受ける前に、前回の異常終了が残した Chromium のプロファイルを消し、Chromium を 1 回起動して確かめる
+  // （サンドボックス・別の uid で起動できなければ exit(1)）。strict でなければ、何もしない
+  await runStrictStartup();
   // SORA_EGRESS_GATEWAY=on のとき、Bun の fetch（固定の提供元・webhook など）も、出口のゲートウェイに通す。使わないときは、何も変えない
   installEgressFetch();
   const server = Bun.serve({

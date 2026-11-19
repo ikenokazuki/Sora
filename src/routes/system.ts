@@ -10,9 +10,11 @@ import {
   checkDetailedHealth,
   isSharedBrowserConnected,
 } from '../scraper.js';
+import { requireAdminKey } from '../auth.js';
 import { getActiveSessionCount } from '../browser_session.js';
 import { clearTenantCache } from '../cache.js';
 import { dbCacheStats } from '../db.js';
+import { isolationLevel } from '../security/limits.js';
 import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
 import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
@@ -97,6 +99,11 @@ systemRoutes.get('/', (c) => {
 systemRoutes.get('/health', async (c) => {
   const detailed = c.req.query('detailed');
   if (detailed === 'true' || detailed === '1') {
+    // strict では、詳細（外部依存先の疎通・稼働の内訳）は管理者の鍵だけ。ふつうの /health は、コンテナの死活確認に使うので、公開のまま（設計 5・穴 14）
+    if (isolationLevel() === 'strict') {
+      const rejected = requireAdminKey(c);
+      if (rejected) return rejected;
+    }
     const report = await checkDetailedHealth();
     return c.json(report, report.status === 'ok' ? 200 : 503);
   }
