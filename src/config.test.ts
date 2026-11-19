@@ -83,6 +83,7 @@ const INTS: Record<string, [number, number | undefined, number | undefined, numb
   SORA_AUTH_DAILY_LIMIT: [1, undefined, undefined],
   SORA_MCP_MAX_SESSIONS: [1, undefined, 100],
   SORA_BROWSER_MAX_CONCURRENCY: [1, undefined, undefined, 50],
+  SORA_BROWSER_MAX_PROCESSES: [1, undefined, undefined, 64],
   SORA_BROWSER_IDLE_TTL_MS: [0, undefined, 300_000],
   SORA_FETCH_MAX_CHROME_PROFILE: [136, 999, 149],
   SORA_SEARCH_SCRAPE_DEADLINE_MS: [0, undefined, 0],
@@ -118,8 +119,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (52 + 11 settings, 13 standard names, 43 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(63);
+  test('counts match the design (53 + 11 settings, 13 standard names, 43 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(64);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(43);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());
