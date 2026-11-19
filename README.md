@@ -2492,7 +2492,7 @@ YouTube のチャンネル（URL・`@ハンドル`・`UC…` のチャンネル 
 ### 4.1 ディストロレス (Distroless) コンテナ設計
 - **ベースイメージ**: `gcr.io/distroless/cc-debian12`
 - **シェルなし・パッケージマネージャなし**: コンテナ内に `/bin/sh` や `apt`、`curl` は一切存在せず、攻撃者がシェルを奪取する余地がありません。
-- **最小権限設計**: 非 root 実行に対応し、Docker / Podman / Kubernetes などの標準コンテナ環境で安全に隔離・実行可能。
+- **最小権限設計**: `standard`（信頼できる範囲の利用）は、非 root でも動きます。信頼できない利用者に公開する `strict`（4.5・4.6）は、root で起動し、Chromium だけを別の uid に落とします（capability 5 つと、ユーザー名前空間を許す seccomp が要ります）。動作を確かめてあるのは、単一ホストの Docker・Podman です。Kubernetes・Cloud Run は、未検証です（[`docs/operations/strict.md`](docs/operations/strict.md) の 7 章）。
 
 ### 4.2 セキュリティ & パフォーマンス機能
 - **🛡️ 多重 SSRF & DNS Rebinding 防御**:
@@ -2737,6 +2737,8 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 - **ツール定義を軽くする**には、`tools/list` から `outputSchema` を省いたまま使います（既定。`SORA_MCP_OUTPUT_SCHEMA=true` で含める）。MCP クライアント側にツール検索がある場合はそちらを使い、ない場合は `SORA_MCP_DEFER_TOOLS=true`（既定）で初期公開を 13 ツールに絞れます。
 
 ### 4.5 ブラウザの隔離を強める（Docker・Podman）
+
+**対象とする実行環境は、単一ホストの Docker・Podman（VPS など）です。** Kubernetes・Cloud Run は、未検証です（理由と、確かめてあること・いないことは、[`docs/operations/strict.md`](docs/operations/strict.md) の 7 章）。
 
 ページを読む Chromium が乗っ取られても、Sora 本体に届かないよう、次の 2 つで守っています。
 
