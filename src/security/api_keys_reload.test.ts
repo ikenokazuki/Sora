@@ -351,6 +351,31 @@ describe('読む間の置き換え・一時的な失敗・古い表で動く間(
     expect(logs).toHaveLength(count);
   });
 
+  test('消えたあと、同じ署名のファイルが戻れば(置き換えの途中だけ消えていた)、古い表ではなくなる。知らせ直さない', () => {
+    loadApiKeyStore(path, T0);
+    const gone: KeyFileFs = { stat: () => { throw errno('ENOENT'); }, read: realFs.read };
+    loadApiKeyStore(path, T0 + 1000, gone);
+    loadApiKeyStore(path, T0 + 61_000, gone);
+    expect(logs.filter((line) => line.includes('分前から使えていません'))).toHaveLength(1);
+    loadApiKeyStore(path, T0 + 62_000); // 同じファイルが戻った(署名が同じ)
+    const count = logs.length;
+    loadApiKeyStore(path, T0 + 200_000);
+    expect(logs).toHaveLength(count);
+  });
+
+  test('直ったあとに、またすぐ消えたときは、「N 分前から」を、消えた時刻から数える(前の失敗の時刻から数えない)', () => {
+    loadApiKeyStore(path, T0);
+    replace('{ broken');
+    loadApiKeyStore(path, T0 + 1000); // 古い表で動き始める
+    replace([row('bob', KEY_B)]);
+    loadApiKeyStore(path, T0 + 200_000); // 直った
+    unlinkSync(path);
+    loadApiKeyStore(path, T0 + 201_000); // 消えた
+    loadApiKeyStore(path, T0 + 261_000);
+    const reminder = logs.filter((line) => line.includes('分前から使えていません')).at(-1) ?? '';
+    expect(reminder).toContain('1 分前から');
+  });
+
   test('同じ警告(平文の鍵を所有者以外も読める)は、読み直すたびに繰り返さない。消えて、また出るときは、もう一度出す', () => {
     loadApiKeyStore(path, T0);
     const plain = (keys: string) => {
@@ -390,6 +415,24 @@ describe('読む間の置き換え・一時的な失敗・古い表で動く間(
     resetApiKeyStoreCache();
     chmodSync(path, 0o640);
     expect(loadApiKeyStore(path, T0).warnings).toEqual([]);
+  });
+
+  test('ファイルの署名は、更新時刻・変更時刻・大きさ・inode の、どれか 1 つが変わっても、読み直す。どれも変わらなければ、読み直さない(偽の stat で、1 つずつ確かめる)', () => {
+    const base = { mtimeMs: 1000.5, ctimeMs: 2000.5, size: 120, ino: 77, mode: 0o600 };
+    const virtual = join(dir, 'virtual.json');
+    for (const field of ['mtimeMs', 'ctimeMs', 'size', 'ino'] as const) {
+      resetApiKeyStoreCache();
+      let stat = { ...base };
+      let text = file([row('alice', KEY_A)]);
+      const fakeFs: KeyFileFs = { stat: () => ({ ...stat }), read: () => text };
+      expect(loadApiKeyStore(virtual, T0, fakeFs).store?.lookup(KEY_A), field).toBe('alice');
+      // 署名が同じなら、中身が変わっていても、読み直さない
+      text = file([row('bob', KEY_B)]);
+      expect(loadApiKeyStore(virtual, T0 + 1000, fakeFs).store?.lookup(KEY_A), `${field}: 署名が同じ`).toBe('alice');
+      // 1 つだけ変える
+      stat = { ...base, [field]: base[field] + 1 };
+      expect(loadApiKeyStore(virtual, T0 + 2000, fakeFs).store?.lookup(KEY_B), `${field}: 変わった`).toBe('bob');
+    }
   });
 
   test('同じ大きさの鍵への交換(置き換え)も、読み直す(実際の鍵の更新の典型)', async () => {
