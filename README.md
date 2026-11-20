@@ -772,7 +772,21 @@ sora_cache_db_bytes 4096000
 # HELP sora_cache_hits_total Total cache hits
 # TYPE sora_cache_hits_total counter
 sora_cache_hits_total 156
+# HELP sora_cache_hit_rate Cache hit rate
+# TYPE sora_cache_hit_rate gauge
+sora_cache_hit_rate 0.7647
+# HELP sora_active_browser_sessions Active browser sessions count
+# TYPE sora_active_browser_sessions gauge
+sora_active_browser_sessions 2
+# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering
+# TYPE sora_bot_upgrade_total counter
+sora_bot_upgrade_total 12
+# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry
+# TYPE sora_bot_retry_total counter
+sora_bot_retry_total 3
 ```
+
+`sora_bot_upgrade_total` / `sora_bot_retry_total`（JSON では `botDetection`）は、静的取得が SPA / Bot 検知画面と判定されてブラウザ描画へ昇格した回数と、ブラウザ描画後もなお空白と判定されて再試行した回数です。対象サイトの Bot 対策の強さや取得成功率の傾向を把握する運用指標として利用できます。
 
 ##### 検索 / セキュリティカウンタ一覧（`GET /metrics` の `counters` とPrometheus形式の両方に出力します。累積値のみ、ゲージは`verbose`診断参照。主要なもの）
 
@@ -794,21 +808,6 @@ sora_cache_hits_total 156
 | `sora_credential_strip_total` | クロスオリジン除去回数 |
 | `sora_redirect_block_total` | redirect保護による拒否回数 |
 | `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
-# HELP sora_cache_hit_rate Cache hit rate
-# TYPE sora_cache_hit_rate gauge
-sora_cache_hit_rate 0.7647
-# HELP sora_active_browser_sessions Active browser sessions count
-# TYPE sora_active_browser_sessions gauge
-sora_active_browser_sessions 2
-# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering
-# TYPE sora_bot_upgrade_total counter
-sora_bot_upgrade_total 12
-# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry
-# TYPE sora_bot_retry_total counter
-sora_bot_retry_total 3
-```
-
-`sora_bot_upgrade_total` / `sora_bot_retry_total`（JSON では `botDetection`）は、静的取得が SPA / Bot 検知画面と判定されてブラウザ描画へ昇格した回数と、ブラウザ描画後もなお空白と判定されて再試行した回数です。対象サイトの Bot 対策の強さや取得成功率の傾向を把握する運用指標として利用できます。
 
 #### `POST /cache/clear` (キャッシュ全削除)
 メモリキャッシュと SQLite 永続キャッシュを全て破棄します。取得内容を強制的に最新化したい場合に利用します。
