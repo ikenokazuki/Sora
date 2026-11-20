@@ -137,7 +137,7 @@ export KEYS_DIR=/srv/sora/keys                 # 鍵ファイルのディレク�
 ## 6. 日々の運用
 
 - **更新:** `docker pull ghcr.io/ikenokazuki/sora:latest` で取り直して、作り直します。Chromium が入っているので、その修正を取り込むため、定期的に（目安: 週に 1 回）。戻せるよう、動かしていたイメージのタグ（`sha-` と 7 桁）を控えておきます。
-- **見るもの:** `/metrics`（JSON。管理者の鍵を付けて、Sora に直接）の `counters` に、`sora_auth_rejected_missing_total`（鍵なし）・`sora_auth_rejected_invalid_total`（誤った鍵）・`sora_auth_rejected_not_admin_total`・`sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total` などがあります（起きるまで出ないものもあります）。拒否が急に増えたら、プロキシのログで接続元を探して、プロキシかホストのファイアウォールで止めます。利用者ごとの詳しい状態は、管理者の鍵で `/health?detailed=true` です。
+- **見るもの:** `/metrics`（JSON。管理者の鍵を付けて、Sora に直接）の `counters` に、`sora_auth_rejected_missing_total`（鍵なし）・`sora_auth_rejected_invalid_total`（誤った鍵）・`sora_auth_rejected_not_admin_total`・`sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total`・`sora_quota_exceeded_total`（日次の上限で断った）などがあります（起きるまで出ないものもあります。一覧は [`strict.md` の 4 章](strict.md#拒否制限を数えるカウンタ)）。**鍵ファイルを読み直せず、前の鍵で動いている間は、消した鍵がまだ有効です。** `sora_auth_keys_stale` が 1 になるので、アラートを置いてください（`/health?detailed=true` の `isolation.authKeys` にも出ます。[`strict.md` の 4 章](strict.md#見えるもの隔離の状態)）。拒否が急に増えたら、プロキシのログで接続元を探して、プロキシかホストのファイアウォールで止めます。利用者ごとの詳しい状態は、管理者の鍵で `/health?detailed=true` です。
 - **悪用への対応:** その利用者の鍵を失効します（約 1 秒で効きます）。量は、日次の上限（`SORA_AUTH_DAILY_LIMIT`）で利用者ごとに絞れます。接続元の遮断は、プロキシかファイアウォールです。
 - **メモリ:** [`strict.md` の 1 章](strict.md#1-起動に必要なもの)のとおりです。同時に持つブラウザのプロセス（既定 4。`SORA_BROWSER_MAX_PROCESSES`）と、同時に開くページ（`SORA_BROWSER_MAX_CONCURRENCY`）が、メモリを決めます。VPS のメモリに合わせて決めてください。
 - **外向きの制限:** [`strict.md` の 5 章](strict.md#5-ネットワークを絞るコンテナの外側で)です。

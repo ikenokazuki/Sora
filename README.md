@@ -697,6 +697,7 @@ curl --compressed http://localhost:3016/trade/hts/releases/2026HTSRev23 -o 2026H
 
 #### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
 SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
+`strict` では、管理者の鍵が要り、応答に `isolation`（水準・ブラウザのサンドボックスと接続・tenant ごとのブラウザのプロセスの数・出口のゲートウェイ・鍵の表。鍵ファイルを読み直せず前の鍵で動いているか）が付きます。`standard` は今までどおりで、欄も増えません（[`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。
 ```json
 {
   "status": "ok",
@@ -716,7 +717,7 @@ SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎
 ```
 
 #### `GET /metrics` (運用統計・キャッシュヒット率・リソース使用量)
-`standard` は鍵なしで開きます。`strict` では、管理者の鍵（鍵ファイルの `"admin": true`）が要ります（鍵なしは 401、管理者でない鍵は 403。Prometheus 形式も同じ。読み方は [`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。
+`standard` は鍵なしで開きます。`strict` では、管理者の鍵（鍵ファイルの `"admin": true`）が要ります（鍵なしは 401、管理者でない鍵は 403。Prometheus 形式も同じ。読み方は [`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。`strict` では、JSON に `isolation`（詳細な health と同じ欄）が、Prometheus 形式に gauge（`sora_isolation_strict`・`sora_browser_sandbox_on`・`sora_auth_keys_stale` など）が付きます。`standard` は、項目も行も増えません。
 ```json
 {
   "status": "ok",
@@ -808,6 +809,7 @@ sora_bot_retry_total 3
 | `sora_credential_strip_total` | クロスオリジン除去回数 |
 | `sora_redirect_block_total` | redirect保護による拒否回数 |
 | `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
+| `sora_quota_exceeded_total` | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて 429 にした回数（認証のミドルウェアの 429 と、一括・crawl の件数で断った分） |
 
 #### `POST /cache/clear` (キャッシュ全削除)
 メモリキャッシュと SQLite 永続キャッシュを全て破棄します。取得内容を強制的に最新化したい場合に利用します。
