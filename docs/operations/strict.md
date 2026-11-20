@@ -44,7 +44,7 @@ docker run -d --name sora -p 3016:8000 \
   ghcr.io/ikenokazuki/sora:latest
 ```
 
-**鍵の追加・削除に、再起動は要りません。** 鍵ファイルを書き換える(同じディレクトリに一時ファイルを書いてから置き換える)と、次の要求から最大約 1 秒で効きます。登録のたびに鍵を足す運用ができます。**注意**: 読み直しに失敗(書き換えが壊れていた)したあいだは、前の鍵を使い続けるので、**消した鍵も、管理者から外した鍵も、有効のままです。** 失敗の理由と、「N 分前から使えていません」を、ログに出します(1 分ごと。認証が要る要求が来たときに出ます。タイマーは持たないので、要求が来ない間は出ません)。ログ(`[Sora/Auth]`)と、`/metrics` の `sora_auth_keys_reload_failed_total`(読み直しの失敗)・`sora_auth_keys_missing_total`(ファイルが消えた回数)を、監視してください。鍵ファイルへの書き込み権は、全利用者と管理者の権限そのものです。詳しくは README 4.6。
+**鍵の追加・削除に、再起動は要りません。** 鍵ファイルを書き換える(同じディレクトリに一時ファイルを書いてから置き換える)と、次の要求から最大約 1 秒で効きます。登録のたびに鍵を足す運用ができます。**注意**: 読み直しに失敗(書き換えが壊れていた)したあいだは、前の鍵を使い続けるので、**消した鍵も、管理者から外した鍵も、有効のままです。** 失敗の理由と、「N 分前から使えていません」を、ログに出します(1 分ごと。認証が要る要求が来たときに出ます。タイマーは持たないので、要求が来ない間は出ません)。ログ(`[Sora/Auth]`)と、`/metrics`(管理者の鍵で読みます)の `sora_auth_keys_reload_failed_total`(読み直しの失敗)・`sora_auth_keys_missing_total`(ファイルが消えた回数)を、監視してください。鍵ファイルへの書き込み権は、全利用者と管理者の権限そのものです。詳しくは README 4.6。
 
 メモリは、利用者ごとのプロセスのぶん増えます（空のページ 1 つで、1 プロセスあたり約 120〜160 MB。README 4.5）。同時に持てるプロセスは、既定で 4 つまでです(`SORA_BROWSER_MAX_PROCESSES` で、1〜64 に変えられます)。利用者が多い運用では、メモリに合わせて増やしてください。使われていないプロセスは閉じて回すので、メモリを決めるのは、プロセスの数そのものより、同時に開くページの数です(`SORA_BROWSER_MAX_CONCURRENCY` もあわせて見直します)。
 
@@ -103,11 +103,31 @@ Chromium のプロファイル（Cookie・セッションを含みます）は�
 - 前提: **同じ `/tmp` を使う Sora は 1 つ**です。同じ `/tmp` を共有する別の Sora が、起動の直前に作ったプロファイルを、使用中と分からずに消すことがあります。
 - `standard` では、何も消しません。
 
-## 4. `/health?detailed=true` は管理者の鍵だけ
+## 4. `/health?detailed=true` と `/metrics` は管理者の鍵だけ
 
-`strict` では、`GET /health?detailed=true`（外部依存先の疎通と、稼働の内訳）に、管理者の鍵（鍵ファイルの `"admin": true`）が要ります。鍵なし・知らない鍵は 401、管理者でない鍵は 403 です。
+`strict` では、`GET /health?detailed=true`（外部依存先の疎通と、稼働の内訳）と、`GET /metrics`（運用のカウンタ・キャッシュ・メモリの数字。JSON も Prometheus 形式も）に、管理者の鍵（鍵ファイルの `"admin": true`）が要ります。鍵なし・知らない鍵は 401、管理者でない鍵は 403 です。`standard` は、どちらも鍵なしで開きます。
 
-コンテナの死活確認に使う `GET /health`（`detailed` なし）は、`strict` でも鍵なしで開きます。`/metrics` は、これまでどおり鍵なしで開き、全利用者の合計の数字が見えます。
+`/metrics` の中身は、プロセス全体の合計の数字だけで、利用者（tenant）を見分ける情報はありません（カウンタの名前は、固定の語か、数えた理由の語だけです）。ただ、利用の多さ・拒否の多さが、ほかの利用者に見えるのは避けたいので、管理者の鍵に限ります。読むときは、鍵を付けます。
+
+```bash
+curl -H "Authorization: Bearer <管理者の鍵>" "http://127.0.0.1:3016/metrics?format=prometheus"
+```
+
+Prometheus で読むときは、管理者の鍵だけを書いたファイルを `credentials_file` に指します（末尾の改行があっても読めます）。`format` の指定は要りません（Prometheus が送る `Accept` で、Prometheus 形式になります）。
+
+```yaml
+scrape_configs:
+  - job_name: sora
+    metrics_path: /metrics
+    authorization:
+      credentials_file: /etc/prometheus/sora-admin-key
+    static_configs:
+      - targets: ['127.0.0.1:3016']
+```
+
+Prometheus 3.7.2 で、この形のターゲットが `up` になり、`sora_uptime_seconds` などが取り込まれること、`authorization` の無い設定は `server returned HTTP status 401 Unauthorized` で `down` になることを確かめました。
+
+コンテナの死活確認に使う `GET /health`（`detailed` なし）は、`strict` でも鍵なしで開きます（`cachedEntries`・`activeMcpSessions` の、全利用者の合計の数字は見えます）。
 
 ## 5. ネットワークを絞る（コンテナの外側で）
 
@@ -119,7 +139,7 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 ## 6. `strict` でも、まだ足りないもの
 
 - Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使います。サイトが出した Cookie が、利用者をまたいで共有されます。
-- `/metrics` と、`detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は鍵なしで開き、全利用者の合計の数字が見えます。
+- `detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は、コンテナの死活確認のために鍵なしで開き、全利用者の合計の数字が見えます。
 - 音声のデコーダーが破られたときは、同じ利用者のブラウザセッションの Cookie には届きえます（ほかの利用者のプロセスには、uid が違うので届きません）。
 - PDF の解析は、1 件ごとの別プロセスで動き、メモリ・時間・出力量の上限を超えたものだけが止まります（README 4.6）。ただし、**この別プロセスは Sora 本体と同じ uid（イメージは root）で動き、Chromium のようには分けていません。** pdf.js 自体の脆弱性を突かれると、root として、Sora の環境変数・DB・鍵ファイルに届き、**ほかの利用者のブラウザのプロファイル（別の uid の 0700）と Cookie にも届きます。同時に動く 2 件の別プロセスは同じ uid なので、相手に渡している PDF〔の中身〕も覗けます。** strict の利用者のあいだの隔離を、pdf.js の脆弱性 1 つで破りうる、ということです（同じプロセスで動かしていた以前と同じで、悪くはなっていません）。外向きの通信も、出口のゲートウェイを通りません（5 章のコンテナの外側の制限が要ります）。
 

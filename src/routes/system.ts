@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { existsSync } from 'fs';
 import {
   CHROME_EXECUTABLE_PATH,
@@ -96,14 +96,20 @@ systemRoutes.get('/', (c) => {
   });
 });
 
+/**
+ * 鍵なしで開く経路（auth.ts の公開の一覧）のうち、strict のときだけ管理者の鍵を求めるものの関所（/health?detailed=true と /metrics。設計 5・穴 14）。
+ * 公開の経路は認証の中間層を通らないので、経路の側が自分で鍵を調べる。通すときは undefined、断るときは応答。standard は何も調べない（今までどおり）。
+ */
+function strictAdminGate(c: Context): Response | undefined {
+  return isolationLevel() === 'strict' ? requireAdminKey(c) : undefined;
+}
+
 systemRoutes.get('/health', async (c) => {
   const detailed = c.req.query('detailed');
   if (detailed === 'true' || detailed === '1') {
-    // strict では、詳細（外部依存先の疎通・稼働の内訳）は管理者の鍵だけ。ふつうの /health は、コンテナの死活確認に使うので、公開のまま（設計 5・穴 14）
-    if (isolationLevel() === 'strict') {
-      const rejected = requireAdminKey(c);
-      if (rejected) return rejected;
-    }
+    // strict では、詳細（外部依存先の疎通・稼働の内訳）は管理者の鍵だけ。ふつうの /health は、コンテナの死活確認に使うので、公開のまま
+    const rejected = strictAdminGate(c);
+    if (rejected) return rejected;
     const report = await checkDetailedHealth();
     return c.json(report, report.status === 'ok' ? 200 : 503);
   }
@@ -121,6 +127,9 @@ systemRoutes.get('/health', async (c) => {
 });
 
 systemRoutes.get('/metrics', (c) => {
+  // strict では、管理者の鍵だけ。中身は全員分の合計（tenant を見分ける情報はない）だが、利用の多さ・失敗の多さは、他の利用者には見せない
+  const rejected = strictAdminGate(c);
+  if (rejected) return rejected;
   const format = c.req.query('format');
   const accept = c.req.header('accept') || '';
   const mem = process.memoryUsage();

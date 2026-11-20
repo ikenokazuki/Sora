@@ -42,7 +42,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
    - `validateHostIpDns` は、DNS の失敗を通す（`catch` で空を返す）。攻撃者が自分の DNS で最初の問い合わせだけ失敗させれば、検査を抜けられる。（PR 2c-2 で、Sora の手元で名前を引いて接続するときは、閉じた。下の「実装の状態」）
    - `SORA_FETCH_ALLOW_PRIVATE_NETWORK=true`（v4 までは `ALLOW_LOCAL_FETCH`）で全部通る。
 6. **静的取得も、検証した IP に接続を固定していない。** 検証は `validateHostIpDns`（`http_fetcher.ts`）、接続は wreq-js が別に解決する。
-7. **`/metrics` は認証なしの公開**（`PUBLIC_PATHS`）。中身に tenant の情報が無いかは未確認。
+7. **`/metrics` は認証なしの公開**（`PUBLIC_PATHS`）。中身に tenant の情報が無いかは未確認。→ 確認した: プロセス全体の合計だけで、tenant を見分ける情報は無い。`strict` は管理者の鍵だけにした（5 章の「実装の状態（PR 8b）」）。
 
 ### ほかのツールの穴（監査、2026-11-12）
 
@@ -242,6 +242,7 @@ Sora を、互いに信頼できない複数のユーザーが使う共有のサ
 - **`POST /cache/clear`**: 呼んだ tenant の分だけ。全体は `admin`。
 - **ブラウザセッション**: 所有者なしの `legacy` セッションは、`strict` では使えない。1 tenant あたりの上限を設ける。全体の上限に達したら、他人を追い出さず、新しい作成を断る（429）。（5b-4 で、名前の空間・利用者ごとと全体の上限・429 を、5b-5 で、`strict` での `legacy` セッションの禁止を入れた）
 - **`/metrics`**: `strict` では、`admin` の鍵だけにする（接続元がループバックかどうかは、認証に使わない。PR 3c）。中身に tenant の情報が無いかを確認する。
+- **実装の状態（PR 8b。`/metrics` を管理者の鍵だけにする。`standard` の挙動は変わらない）**: ユーザーの指示（2026-11-20。「取り組みやすいほうから」）で、PR 8 の「残り」のうち最も小さいものから。`routes/system.ts` の `strictAdminGate`（`isolationLevel() === 'strict'` のときだけ `requireAdminKey`）を `/metrics` の入口に足した（`/health?detailed=true` も同じ関所に寄せた）。`/metrics` は公開の経路（`PUBLIC_PATHS`）のままで、認証の中間層を通らないので、この経路が自分で鍵を調べる。JSON も Prometheus 形式（`?format=prometheus`・`Accept: text/plain`）も同じで、鍵なし・知らない鍵は 401、管理者でない鍵は 403、鍵の表を読めなければ 503、鍵ファイルが無い組み立て（起動の検査を通らない経路）は 401。**中身の確認**（穴 7）: 返すのは、プロセス全体の合計（稼働時間・メモリ・キャッシュ・ブラウザのセッション数・bot 検出・セキュリティのカウンタ・Chromium の接続）だけで、tenant を見分ける情報は無い。カウンタの名前を動的に作る 4 か所（`pdf.ts`・`egress_gateway.ts`・`tenant_budget.ts`・`fair_queue.ts`）は、列挙された理由の語か固定の資源の名前だけで、利用者の入力は入らない。それでも、利用の多さ・拒否の多さが、ほかの利用者に見えるのは避ける。**確認**: 新しいテスト `metrics_admin.test.ts` 11 件（strict 7・standard 1・実アプリ 3。実アプリは、経路の書き方 11 通り・HEAD・別サイトの Origin・管理者の鍵・死活確認の `/health` を見る）。変異 10 個（関所の削除・無視・反転・常時・無効・鍵の有無だけで判定、`/health` の関所 2 つ、`requireAdminKey` の管理者の判定 2 つ）をすべて検出。実アプリ（`index.ts` の `app`）を `strict` で立て、Prometheus 3.7.2 の `authorization.credentials_file`（末尾の改行つきも）で、ターゲットが `up` になり `sora_uptime_seconds` が取り込まれること、`authorization` なしは `HTTP status 401` で `down` になることを確かめた（読み方は手引の 4 章）。**残り**: `detailed` なしの `/health` の合計の数字（コンテナの死活確認のため公開のまま。決定済み）・見える化（8 章）・上流の取得が共有の Cookie（未決 14）。
 - **ウォッチ・intel・全体に効く操作**（穴 18・19）: `watch_check` の id 省略は、呼んだ tenant の全件だけ。`POST /intelligence/country`・`GET /intelligence/context/:id` に tenant を付ける。全体に効く操作は `admin` の鍵だけ。
 - **REST にも `SORA_MODULES` を適用する**（穴 20。ユーザーの決定、2026-11-13: `standard` でも入れる。v5 で `ENABLED_MODULES` から改名）: 運用者が無効にしたモジュールの口は、REST でも閉じる（ルーターの入口で、操作の台帳 `rest_operations.ts` の category を引いて一括して見る）。影響を受けるのは、`SORA_MODULES` を `all` 以外に絞った運用だけ（`all` と未設定は変わらない）。
 - **`/health?detailed=true`**（穴 14。ユーザーの決定、2026-11-13）: 結果を 1 分キャッシュする（`standard` でも。外向きの通信は、何人が呼んでも 1 分に 3 回まで。結果が最大 1 分古くなる）。鍵の要求（`strict` では `admin` の鍵だけ）は、`strict` の切り替えを作るとき（段階 8）に入れる。詳しくない `/health` は、コンテナの死活確認に使うので、公開のまま。

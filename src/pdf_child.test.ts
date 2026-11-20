@@ -23,10 +23,12 @@ const alive = (pid: number): boolean => {
     return false;
   }
   try {
-    // 終わったが、まだ刈られていない（ゾンビ）子は、止まっている。Linux 以外では /proc が無いので、生きているとする
+    // 終わったが、まだ刈られていない（ゾンビ）子は、止まっている
     return !/^\d+ \(.*\) Z /.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
   } catch {
-    return true;
+    // /proc があるのに、この pid の欄だけ読めない = kill(0) が通ったあと、読む前に刈られた（もう居ない）。負荷のもとで実際に起きた。
+    // /proc 自体が無い環境（Linux 以外）だけ、見分けられないので、生きているとする
+    return !existsSync('/proc/self/stat');
   }
 };
 
