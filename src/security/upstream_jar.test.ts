@@ -154,8 +154,6 @@ describe('strict で tenant を指定しない取得は、Cookie を持ち越さ
 
   test('同時の取得は、互いの Cookie を見ない', async () => {
     await strict(async () => {
-      // 先に 1 回取得して、共有の池のセッションを作っておく（作る前に 2 本が同時に来ると、別々のセッションが 2 つできて、たまたま分かれる）
-      await settle('/echo');
       const [a, b] = await Promise.all([cookieSeen('/pair?n=a'), cookieSeen('/pair?n=b')]);
       expect(a).toBe('a=1');
       expect(b).toBe('b=1');

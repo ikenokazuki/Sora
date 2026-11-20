@@ -325,6 +325,8 @@ export class NativeFetchSession implements UniversalHttpSession {
 }
 
 const httpSessionPool = new Map<string, PooledHttpSession>();
+/** 作成の途中のセッション（キーごと）。同じキーの最初の取得が同時に来ても、作るのは 1 つ */
+const httpSessionCreating = new Map<string, Promise<UniversalHttpSession>>();
 
 function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
   clearTimeout(pooled.timer);
@@ -395,6 +397,7 @@ async function createHttpSession(browser: BrowserProfile, proxyUrl?: string): Pr
 /**
  * ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元）。
  * scope を渡すと資格情報付きリクエスト専用の分離セッションになり、保存済み Cookie は復元せず、終了時も永続化しない。
+ * 同じキーの取得が同時に来ても、作るのは 1 つ（全員が同じセッションを受ける）。
  */
 export async function getOrCreateHttpSession(
   domain: string,
@@ -410,6 +413,27 @@ export async function getOrCreateHttpSession(
     return existing.session;
   }
 
+  // 同じキーの作成が途中なら、それを待つ（2 つ作ると、片方は池に入らず、そのセッションに付いた Cookie が取り残される）
+  const creating = httpSessionCreating.get(key);
+  if (creating) return creating;
+  const created = createPooledHttpSession(key, domain, browser, proxyUrl, tenantId, scope);
+  httpSessionCreating.set(key, created);
+  try {
+    return await created;
+  } finally {
+    httpSessionCreating.delete(key);
+  }
+}
+
+/** 新しいセッションを作り、保存済み Cookie を戻して、プールに入れる。呼ぶのは getOrCreateHttpSession だけ（同じキーでは同時に 2 回呼ばない） */
+async function createPooledHttpSession(
+  key: string,
+  domain: string,
+  browser: BrowserProfile,
+  proxyUrl: string | undefined,
+  tenantId: string,
+  scope: string | undefined,
+): Promise<UniversalHttpSession> {
   await evictOldestHttpSessionIfNeeded();
 
   const session = await createHttpSession(browser, proxyUrl);
