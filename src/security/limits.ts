@@ -119,6 +119,8 @@ export interface Limits {
   pdfMaxPages: number;
   /** PDF の 1 回の解析に使う時間の上限（ミリ秒）。ページごとに調べ、超えたら、読んだページまでで止める（結果に isTruncated と警告）。1 ページが重い PDF（ページ数 × 重さ）が、枠を握り続けないため */
   pdfMaxParseMs: number;
+  /** PDF の解析の別プロセスの、メモリ（RSS）の上限（MB）。超えたら、そのプロセスだけを止める（読めたページまでを返す。1 ページも読めなければ失敗）。Flate で膨らむ PDF などが、本体ごと落とすのを防ぐ。実在の論文（最大 11MB）で 94〜154MB */
+  pdfMaxChildMemoryMb: number;
   /** PDF の解析（同時 2 件。全員で共有）の順番を待つ解析の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
   pdfQueuePerTenant: number;
   /** PDF の解析の順番を待つ解析の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
@@ -186,6 +188,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   addressBudgetPerMinute: 0,
   pdfMaxPages: 1000,
   pdfMaxParseMs: 60_000,
+  pdfMaxChildMemoryMb: 1536,
   pdfQueuePerTenant: 50,
   pdfQueueTotal: 200,
   pdfQueueWaitMs: 60_000,
@@ -247,6 +250,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   addressBudgetPerMinute: 60,
   pdfMaxPages: 200,
   pdfMaxParseMs: 15_000,
+  pdfMaxChildMemoryMb: 768,
   pdfQueuePerTenant: 20,
   pdfQueueTotal: 80,
   pdfQueueWaitMs: 30_000,

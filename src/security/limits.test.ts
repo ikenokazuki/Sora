@@ -159,6 +159,13 @@ describe('limits', () => {
     expect(STRICT_LIMITS.pdfQueuePerTenant).toBeGreaterThanOrEqual(20);
   });
 
+  test('PDF の解析の別プロセスのメモリ（RSS）の上限は strict 768 MB・standard 1,536 MB。実在の論文（最大 11MB）の 94〜154MB の数倍で、同時 2 件の最悪でも strict は約 1.5GB', () => {
+    expect(STRICT_LIMITS.pdfMaxChildMemoryMb).toBe(768);
+    expect(STANDARD_LIMITS.pdfMaxChildMemoryMb).toBe(1536);
+    // 正当な PDF（実測の最大 154MB）が止まらない大きさ
+    expect(STRICT_LIMITS.pdfMaxChildMemoryMb).toBeGreaterThanOrEqual(4 * 154);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上

@@ -12,6 +12,8 @@ COPY . .
 RUN bun build ./src/index.ts --target=bun --outfile=server.js
 # 住所データの構築専用の入口。アプリ本体を読み込まないので、子プロセスとして軽く起動できる
 RUN bun build ./src/services/address_build_main.ts --target=bun --outfile=address-build.js
+# PDF の解析を別プロセスで動かす入口（src/pdf_child_main.ts）。重い PDF が本体のメモリと時間を使い切るのを、親が止められるように、server.js とは別にまとめる
+RUN bun build ./src/pdf_child_main.ts --target=bun --outfile=pdf-parse.js
 
 # Stage 1b: wreq-js の native（静的取得の TLS・HTTP の実装）を、ソースからビルドする。
 # npm の wreq-js が持つ native（ビルド済み）は、wreq-js が新しい版を公開しないかぎり古いまま残る（3.2.0 は 2026-08-23 で、それ以降の公開はない）。
@@ -141,6 +143,7 @@ WORKDIR /app
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /app/server.js /app/server.js
 COPY --from=builder /app/address-build.js /app/address-build.js
+COPY --from=builder /app/pdf-parse.js /app/pdf-parse.js
 # MCP リソースとして配るスキル（src/mcp/resources.ts が /app/plugins/ から読む）
 COPY --from=builder /app/plugins/sora-deep-research/skills /app/plugins/sora-deep-research/skills
 COPY --from=builder /app/package.json /app/package.json

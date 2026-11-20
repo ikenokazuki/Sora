@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStrictStartup, STARTUP_PROBE_TENANT, sweepStaleProfileDirs, verifyStrictBrowser } from './browser_startup.js';
+import { runStrictStartup, STARTUP_PROBE_TENANT, sweepStaleProfileDirs, verifyStrictBrowser, verifyStrictPdf } from './browser_startup.js';
+import { parsePdfToMarkdown, pdfSlots } from './pdf.js';
+import { PDF_PROBE_TEXT, startupProbePdf } from './pdf_probe.js';
 
 /**
  * strict の起動の確認（設計 2。段階 8）: 前回の実行が異常終了して残った Chromium のプロファイルの掃除と、Chromium の試し起動。
@@ -249,6 +251,7 @@ describe('runStrictStartup（待ち受ける前の、strict の起動の確認�
       exit: (code) => void exits.push(code),
       isStrict: () => true,
       sweep: () => ({ removed: [], inUse: [], failed: [] }),
+      verifyPdf: async () => ({ status: 'ok' }),
       verify: async () => ({ status: 'ok' }),
       ...deps,
     });
@@ -359,5 +362,125 @@ describe('runStrictStartup（待ち受ける前の、strict の起動の確認�
     expect(skipped.lines.join('\n')).toContain('警告');
     expect(skipped.lines.join('\n')).toContain('Chromium');
     expect(skipped.lines.join('\n')).not.toContain('通りました');
+  });
+});
+
+describe('verifyStrictPdf（PDF の解析を別プロセスで動かせるかの試し読み）', () => {
+  test('試し読み用の PDF は、実際に読める（本文は PDF_PROBE_TEXT）。1 ページ', async () => {
+    const result = await parsePdfToMarkdown(startupProbePdf(), 'probe.pdf', 1000, { inline: true });
+    expect(result.content).toContain(PDF_PROBE_TEXT);
+    expect(result.metadata).toMatchObject({ totalPages: 1, pagesRead: 1 });
+    expect(startupProbePdf().length).toBeLessThan(2000);
+  });
+
+  test('実際の別プロセス（同梱の入口）で通る。専用の tenant の順番を取り、手放す', async () => {
+    expect(await verifyStrictPdf()).toEqual({ status: 'ok' });
+    expect(pdfSlots.activeCount).toBe(0);
+  });
+
+  test('解析が失敗したら、理由を添えて断る（strict の必須の条件だと分かる文）', async () => {
+    const check = await verifyStrictPdf(async () => {
+      throw new Error('spawn bun ENOENT');
+    });
+    expect(check.status).toBe('failed');
+    if (check.status === 'failed') {
+      expect(check.problem).toContain('spawn bun ENOENT');
+      expect(check.problem).toContain('別プロセス');
+      expect(check.problem).not.toContain('通りました');
+    }
+  });
+
+  test('メモリ（RSS）を /proc から読めない環境では、断る（メモリの上限が黙って効かなくならないように）。読めれば、通る', async () => {
+    let parsed = false;
+    const parse = async () => {
+      parsed = true;
+      return { content: PDF_PROBE_TEXT } as Awaited<ReturnType<typeof parsePdfToMarkdown>>;
+    };
+    const blind = await verifyStrictPdf(parse, () => undefined);
+    expect(blind.status).toBe('failed');
+    if (blind.status === 'failed') {
+      expect(blind.problem).toContain('/proc');
+      expect(blind.problem).toContain('RSS');
+    }
+    expect(parsed).toBe(false);
+    expect(await verifyStrictPdf(parse, () => 42)).toEqual({ status: 'ok' });
+    expect(parsed).toBe(true);
+  });
+
+  test('入口が見つからないときも（strict は黙って弱くしない）、断る', async () => {
+    process.env.SORA_ISOLATION = 'strict';
+    try {
+      const check = await verifyStrictPdf((bytes, url, max, options) => parsePdfToMarkdown(bytes, url, max, { ...options, child: { entryDir: '/nonexistent-entry-dir' } }));
+      expect(check.status).toBe('failed');
+      if (check.status === 'failed') expect(check.problem).toContain('pdf-parse.js');
+    } finally {
+      delete process.env.SORA_ISOLATION;
+    }
+  });
+
+  test('結果の本文が違えば、断る（読めたふりをしていないかの確認）', async () => {
+    const check = await verifyStrictPdf(async () => ({ content: 'something else' }) as Awaited<ReturnType<typeof parsePdfToMarkdown>>);
+    expect(check.status).toBe('failed');
+  });
+
+  test('試し読みは、専用の tenant（利用者の tenant と重ならない）で行う', async () => {
+    let seen: string | undefined;
+    await verifyStrictPdf(async (_bytes, _url, _max, options) => {
+      seen = options?.tenantId;
+      return { content: PDF_PROBE_TEXT } as Awaited<ReturnType<typeof parsePdfToMarkdown>>;
+    });
+    expect(seen).toBe(STARTUP_PROBE_TENANT);
+  });
+});
+
+describe('runStrictStartup の PDF の確認', () => {
+  const run = async (deps: Partial<Parameters<typeof runStrictStartup>[0]>) => {
+    const lines: string[] = [];
+    const exits: number[] = [];
+    const order: string[] = [];
+    await runStrictStartup({
+      stderr: (line) => lines.push(line),
+      exit: (code) => void exits.push(code),
+      isStrict: () => true,
+      sweep: () => ({ removed: [], inUse: [], failed: [] }),
+      verifyPdf: async () => {
+        order.push('pdf');
+        return { status: 'ok' };
+      },
+      verify: async () => {
+        order.push('browser');
+        return { status: 'ok' };
+      },
+      ...deps,
+    });
+    return { lines, exits, order };
+  };
+
+  test('PDF の確認 → ブラウザの試し起動の順に行い、PDF が通ったことを 1 行で知らせる', async () => {
+    const { lines, exits, order } = await run({});
+    expect(order).toEqual(['pdf', 'browser']);
+    expect(exits).toEqual([]);
+    expect(lines.filter((line) => line.includes('PDF') && line.includes('別プロセス'))).toHaveLength(1);
+  });
+
+  test('PDF の確認に失敗したら、理由を出して exit(1)。ブラウザの試し起動はしない。通ったと知らせない', async () => {
+    const { lines, exits, order } = await run({ verifyPdf: async () => ({ status: 'failed', problem: 'PDF の解析を別プロセスで動かせませんでした: 理由' }) });
+    expect(exits).toEqual([1]);
+    expect(order).toEqual([]);
+    expect(lines.join('\n')).toContain('エラー');
+    expect(lines.join('\n')).toContain('動かせませんでした: 理由');
+    expect(lines.join('\n')).toContain('起動しません');
+    expect(lines.join('\n')).not.toContain('通りました');
+  });
+
+  test('Chromium が無くてブラウザの確認を省くときも、PDF の確認は行う', async () => {
+    const { order, exits } = await run({ verify: async () => ({ status: 'skipped' }) });
+    expect(order).toEqual(['pdf']);
+    expect(exits).toEqual([]);
+  });
+
+  test('strict でなければ、PDF の確認もしない', async () => {
+    const { order } = await run({ isStrict: () => false });
+    expect(order).toEqual([]);
   });
 });

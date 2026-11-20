@@ -18,6 +18,7 @@ on:
       - scripts/static-egress-check.ts
       - scripts/fetch-egress-check.ts
       - scripts/auth-check.ts
+      - scripts/pdf-isolation-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
@@ -34,11 +35,20 @@ on:
       - src/mcp.ts
       - src/routes/mcp_route.ts
       - src/security/api_keys.ts
+      - src/security/child_env.ts
+      - src/security/fair_queue.ts
       - src/security/tenant_context.ts
       - src/security/tenant_state.ts
       - src/security/credential_scope.ts
       - src/cache.ts
       - src/scraper.ts
+      - src/pdf.ts
+      - src/pdf_child.ts
+      - src/pdf_child_main.ts
+      - src/pdf_extract.ts
+      - src/pdf_probe.ts
+      - src/browser_startup.ts
+      - src/test_fixtures/pdf.ts
       - src/db.ts
       - src/security/migrations.ts
       - src/services/watch.ts
@@ -88,6 +98,8 @@ jobs:
       # (8)(9) ブラウザの通信を出口のゲートウェイに通すと（SORA_EGRESS_GATEWAY=on）、内部の宛先は断られ、名前はゲートウェイが解決し、ClientHello は変わらないこと
       # （既定の運用と、サンドボックス有効の硬化した運用の両方で）を確かめる。
       # (10) 静的取得（イメージの wreq-js の native）を出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらないことを確かめる。
+      # (11) Bun の fetch と通信する子プロセスの通信を出口のゲートウェイに通すこと、(12) 本物のアプリの認証（MCP・REST）、
+      # (13) PDF の解析が、イメージに同梱の別プロセス（pdf-parse.js）で動き、メモリの暴走を、その解析のプロセスだけで止めること（コンテナのメモリを 1GB に絞り、既定と硬化した運用の両方で）を確かめる。
       # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check
