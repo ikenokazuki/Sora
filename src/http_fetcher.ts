@@ -22,20 +22,24 @@ import { errorMessage } from './errors.js';
 type WreqModule = typeof import('wreq-js');
 export type BrowserProfile = import('wreq-js').BrowserProfile;
 
-let wreqModule: WreqModule | null = null;
-let wreqLoadAttempted = false;
+let wreqModulePromise: Promise<WreqModule | null> | undefined;
 
-async function getWreqModule(): Promise<WreqModule | null> {
-  if (wreqLoadAttempted) return wreqModule;
-  wreqLoadAttempted = true;
-  try {
-    wreqModule = await import('wreq-js');
-    clampChromeProfileToNative(wreqModule.getProfiles());
-  } catch (err) {
-    console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
-    wreqModule = null;
-  }
-  return wreqModule;
+/**
+ * wreq-js の読み込みは 1 回だけ行い、読み込みの途中に来た呼び出しも、同じ結果を待つ。
+ * 待たずに「まだ無い」と受け取ると、起動直後の同時の取得が、標準の fetch の代用のセッションを受けてプールに残る。
+ */
+function getWreqModule(): Promise<WreqModule | null> {
+  wreqModulePromise ??= (async () => {
+    try {
+      const mod = await import('wreq-js');
+      clampChromeProfileToNative(mod.getProfiles());
+      return mod;
+    } catch (err) {
+      console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
+      return null;
+    }
+  })();
+  return wreqModulePromise;
 }
 
 export interface UniversalHttpSession {
