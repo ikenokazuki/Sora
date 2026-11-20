@@ -27,7 +27,7 @@
 - **Sora を root で起動します**（公開イメージの既定です。Chromium だけが別の uid に落ちます）。`user:`・`runAsUser`・`USER` で root 以外を指定すると、uid を落とせず、起動しません。
 - **capability** `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID`（Docker の既定にあります。`--cap-drop=ALL` の運用は、この 5 つを足します）。
 - **uid 65532〜65535**（`SORA_BROWSER_UID` の基準 + 0〜3）は、Sora の Chromium 専用にします。利用者の入れ替えのときと、起動の確認のあとに、その uid で動いているプロセスを、Sora が終わらせます。ホストで直接動かすときは、別の用途に使わないでください（コンテナなら問題になりません）。
-- **ユーザー名前空間を許す seccomp。** Docker の既定は止めているので、[`deploy/seccomp-sora.json`](../../deploy/seccomp-sora.json) を渡します（README 4.5）。rootless Podman の既定は、渡さなくても動きました。AppArmor は、Docker の既定のままにします。
+- **ユーザー名前空間を許す seccomp。** Docker の既定は止めているので、[`deploy/seccomp-sora.json`](../../deploy/seccomp-sora.json) を渡します（README 4.5）。rootless Podman の既定は、cap を落とさないなら、渡さなくても動きました。**`--cap-drop=ALL` と組むときは、Podman の既定の seccomp ではサンドボックスを有効にできず、`strict` は起動を断ります**（Podman 5.7.0 で確かめました。`no-new-privileges` の有無は関係ありません。同じファイルを渡すと通ります）。AppArmor は、Docker の既定のままにします。
 - 起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージに入っています）と、Chromium。
 - **stdio では使えません。** `strict` は共有のサービス（HTTP）用で、stdio には、利用者を分ける鍵がありません。
 
