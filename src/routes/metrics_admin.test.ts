@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { resetApiKeyStoreCache } from '../security/api_keys.js';
+import { loadApiKeyStore, resetApiKeyStoreCache } from '../security/api_keys.js';
 import { getSecurityMetrics, resetSecurityMetrics } from '../security/metrics.js';
 import { withEnv } from '../test_fixtures/env.js';
 import { systemRoutes } from './system.js';
@@ -37,7 +37,8 @@ const app = new Hono().route('/', systemRoutes);
 const call = (path: string, headers: Record<string, string> = {}) => app.request(path, { headers });
 const strict = <T>(fn: () => Promise<T>) => withEnv({ SORA_ISOLATION: 'strict', SORA_AUTH_KEYS_FILE: keysFile }, fn);
 /** 数字が出ていないことの確かめ（JSON の欄と、Prometheus 形式の行） */
-const leaksNumbers = (text: string) => text.includes('"counters"') || text.includes('sora_uptime_seconds') || text.includes('"uptimeSeconds"');
+const leaksNumbers = (text: string) =>
+  text.includes('"counters"') || text.includes('sora_uptime_seconds') || text.includes('"uptimeSeconds"') || text.includes('isolation');
 
 /** JSON・?format=prometheus・Accept: text/plain の 3 通り。どれも同じ数字を返す口 */
 const FORMS: Array<[string, Record<string, string>]> = [
@@ -204,5 +205,92 @@ describe('GET /metrics（strict。実アプリを通す）', () => {
       expect((await callReal('/health')).status).toBe(200);
       expect((await callReal('/')).status).toBe(200);
     });
+  });
+});
+
+/**
+ * 隔離の状態（設計 8）: strict の管理者にだけ、JSON の isolation と Prometheus の gauge を付ける。standard は、項目も行も増やさない（今までどおり）。
+ */
+describe('GET /metrics の隔離の状態', () => {
+  type Isolation = {
+    level: string;
+    browser: { sandbox: string; connection: string; processes: { active: number; max: number } };
+    egressGateway: { enabled: boolean; started: boolean };
+    authKeys?: { keys: number; tenants: number; stale: boolean; staleSeconds: number };
+  };
+  const admin = { authorization: `Bearer ${ADMIN}` };
+  const JSON_KEYS = ['activeSessions', 'botDetection', 'cache', 'chromium', 'counters', 'memory', 'service', 'status', 'timestamp', 'uptimeSeconds', 'version'];
+  /** Prometheus の「名前 値」の行を、名前 → 値 にする */
+  const samples = (text: string) => Object.fromEntries(text.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split(' ')));
+
+  test('strict の管理者には、JSON に isolation（水準・ブラウザ・ゲートウェイ・鍵の表）が付く', async () => {
+    await strict(async () => {
+      const body = (await (await call('/metrics', admin)).json()) as { isolation?: Isolation };
+      const iso = body.isolation;
+      expect(iso?.level).toBe('strict');
+      expect(['on', 'off', 'unknown']).toContain(iso?.browser.sandbox as string);
+      expect(['pipe', 'port']).toContain(iso?.browser.connection as string);
+      expect(iso?.browser.processes.max).toBeGreaterThan(0);
+      expect(typeof iso?.egressGateway.enabled).toBe('boolean');
+      expect(iso?.authKeys).toEqual({ keys: 2, tenants: 2, stale: false, staleSeconds: 0 });
+    });
+  });
+
+  test('Prometheus 形式（?format=prometheus・Accept: text/plain）にも、gauge が付く', async () => {
+    await strict(async () => {
+      for (const [path, headers] of FORMS.slice(1)) {
+        const text = await (await call(path, { ...headers, ...admin })).text();
+        const values = samples(text);
+        expect(values.sora_isolation_strict, path).toBe('1');
+        expect(['0', '1']).toContain(values.sora_browser_sandbox_on);
+        expect(['0', '1']).toContain(values.sora_browser_cdp_pipe);
+        expect(Number(values.sora_browser_tenant_processes_max)).toBeGreaterThan(0);
+        expect(['0', '1']).toContain(values.sora_egress_gateway_enabled);
+        expect(['0', '1']).toContain(values.sora_egress_gateway_started);
+        expect(values.sora_auth_keys_stale).toBe('0');
+        expect(values.sora_auth_keys_stale_seconds).toBe('0');
+        expect(text).toContain('# TYPE sora_isolation_strict gauge');
+        expect(text).toContain('sora_uptime_seconds'); // 既存の行は、そのまま出る
+      }
+    });
+  });
+
+  test('前の鍵で動いている間は、JSON の authKeys.stale が true で、Prometheus の sora_auth_keys_stale が 1', async () => {
+    await strict(async () => {
+      expect((await call('/metrics', admin)).status).toBe(200);
+      writeFileSync(keysFile, '{ broken', { mode: 0o600 });
+      loadApiKeyStore(keysFile, Date.now() + 5000); // 1 秒に 1 回の確認を、進めた時刻で起こす（読み直しに失敗して、前の表で動き始める）
+      const json = (await (await call('/metrics', admin)).json()) as { isolation?: Isolation };
+      expect(json.isolation?.authKeys).toMatchObject({ keys: 2, tenants: 2, stale: true });
+      const prom = samples(await (await call('/metrics?format=prometheus', admin)).text());
+      expect(prom.sora_auth_keys_stale).toBe('1');
+    });
+  });
+
+  test('鍵なし・知らない鍵・管理者でない鍵への応答には、隔離の状態を出さない', async () => {
+    await strict(async () => {
+      for (const [path, headers] of FORMS) {
+        for (const extra of [{}, { 'x-api-key': 'not-a-key-0123456789' }, { authorization: `Bearer ${ALICE}` }] as Array<Record<string, string>>) {
+          const res = await call(path, { ...headers, ...extra });
+          expect([401, 403]).toContain(res.status);
+          const text = await res.text();
+          expect(text).not.toContain('isolation');
+          expect(text).not.toContain('sora_browser_sandbox_on');
+        }
+      }
+    });
+  });
+
+  test('standard では、JSON の項目も Prometheus の行も増えない（今までどおり。鍵ファイルがあっても）', async () => {
+    for (const vars of [{ SORA_ISOLATION: undefined, SORA_AUTH_KEYS_FILE: undefined }, { SORA_ISOLATION: 'standard', SORA_AUTH_KEYS_FILE: keysFile }]) {
+      await withEnv(vars, async () => {
+        const json = (await (await call('/metrics')).json()) as Record<string, unknown>;
+        expect(Object.keys(json).sort()).toEqual(JSON_KEYS);
+        const prom = await (await call('/metrics?format=prometheus')).text();
+        for (const name of ['sora_isolation_strict', 'sora_browser_sandbox_on', 'sora_browser_cdp_pipe', 'sora_browser_tenant_processes', 'sora_egress_gateway', 'sora_auth_keys_stale']) {
+          expect(prom, name).not.toContain(name);
+        }
+      });
+    }
   });
 });

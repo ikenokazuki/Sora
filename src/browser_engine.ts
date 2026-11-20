@@ -185,6 +185,14 @@ export function perTenantBrowsersEnabled(): boolean {
 }
 
 /**
+ * tenant ごとのブラウザのプロセス: いま番号（uid）を持っている数と、同時に持てる上限（運用者が見る。設計 8）。
+ * 分けていないとき（`standard`）の上限は 0。
+ */
+export function browserProcessUsage(): { active: number; max: number } {
+  return { active: browserPool.size, max: limits().browserProcessMax };
+}
+
+/**
  * ブラウザの取得。`standard` は共有ブラウザ。`strict` は、tenantId（省略は legacy）のブラウザ（なければ起動する）。
  * tenant ごとのときに、プロセスの数の上限に達していて、閉じてよいものが無ければ、ResourceBusyError（process_limit）
  */

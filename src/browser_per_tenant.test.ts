@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { browserSemaphore, closeSharedBrowser, getBrowser, isSharedBrowserConnected, maybeRotateSharedBrowser, perTenantBrowsersEnabled, recordBrowserUsage, resolveChromiumPath } from './browser_engine.js';
+import { browserProcessUsage, browserSemaphore, closeSharedBrowser, getBrowser, isSharedBrowserConnected, maybeRotateSharedBrowser, perTenantBrowsersEnabled, recordBrowserUsage, resolveChromiumPath } from './browser_engine.js';
 import { ResourceBusyError } from './errors.js';
 import { STRICT_LIMITS } from './security/limits.js';
 import { withEnv } from './test_fixtures/env.js';
@@ -165,6 +165,28 @@ describe.skipIf(!resolveChromiumPath())('tenant ごとのブラウザのプロ�
   test('ブラウザごとのプロキシの指定は、番号（uid）の管理の外になるので、使えない', async () => {
     await strict(async () => {
       await expect(getBrowser('http://proxy.invalid:8080', 'name:A')).rejects.toThrow('SORA_ISOLATION=strict');
+    });
+  });
+
+  test('運用者が見る数（browserProcessUsage。設計 8）: 番号を持っているプロセスの数が、起動で増え、閉じると 0 に戻る。上限は設定に従う', async () => {
+    await strict(async () => {
+      expect(browserProcessUsage()).toEqual({ active: 0, max: STRICT_LIMITS.browserProcessMax });
+      await getBrowser(undefined, 'name:A');
+      expect(browserProcessUsage().active).toBe(1);
+      await getBrowser(undefined, 'name:B');
+      await getBrowser(undefined, 'name:A'); // 同じ tenant は数えない
+      expect(browserProcessUsage().active).toBe(2);
+      await closeSharedBrowser();
+      expect(browserProcessUsage().active).toBe(0);
+    });
+    await withEnv({ SORA_ISOLATION: 'strict', SORA_BROWSER_MAX_PROCESSES: '7' }, () => {
+      expect(browserProcessUsage().max).toBe(7);
+    });
+  }, 120000);
+
+  test('分けていない水準（standard）の上限は 0（tenant ごとのプロセスがないので）', async () => {
+    await withEnv({ SORA_ISOLATION: 'standard' }, () => {
+      expect(browserProcessUsage()).toEqual({ active: 0, max: 0 });
     });
   });
 });

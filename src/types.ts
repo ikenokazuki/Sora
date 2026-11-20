@@ -1169,6 +1169,34 @@ const CACHE_META_SHAPE = {
   ageSeconds: z.number().optional().describe('キャッシュに保存してからの経過秒数（キャッシュから返した時のみ）'),
 };
 
+/** 隔離の状態（SORA_ISOLATION=strict のとき、管理者の鍵の関所の中だけ。standard は付かない） */
+export const IsolationStatusSchema = z
+  .object({
+    level: z.literal('strict').describe('運用の水準'),
+    browser: z.object({
+      sandbox: z.enum(['on', 'off', 'unknown']).describe('直近に起動した Chromium のサンドボックス。起動する前は unknown'),
+      connection: z.enum(['pipe', 'port']).describe('Chromium との接続。pipe は TCP のデバッグポートを開かない。port は 127.0.0.1 で待ち受ける'),
+      processes: z.object({
+        active: z.number().describe('tenant ごとの Chromium のプロセスのうち、いま番号（uid）を持っている数'),
+        max: z.number().describe('同時に持てる上限'),
+      }),
+    }),
+    egressGateway: z.object({
+      enabled: z.boolean().describe('出口のゲートウェイを使う設定か'),
+      started: z.boolean().describe('ゲートウェイを始めている（待ち受けている）か'),
+    }),
+    authKeys: z
+      .object({
+        keys: z.number().describe('いま使っている鍵の表の、鍵の数'),
+        tenants: z.number().describe('いま使っている鍵の表の、利用者（name）の数'),
+        stale: z.boolean().describe('鍵ファイルを読み直せず、前の表で動いているか（消した鍵・管理者から外した鍵が、まだ有効な状態）'),
+        staleSeconds: z.number().describe('stale のとき、前の表で動き始めてからの秒数。stale でなければ 0'),
+      })
+      .optional()
+      .describe('鍵の表（鍵ファイルを使っていて、表があるときだけ）'),
+  })
+  .describe('隔離の状態（strict のとき、管理者の鍵の関所の中だけ）');
+
 export const HealthResponseSchema = z.object({
   status: z.string().describe('稼働ステータス ("ok"。detailed で SQLite 障害時は "degraded")'),
   service: z.string().describe('サービス名 ("sora")'),
@@ -1183,6 +1211,7 @@ export const HealthResponseSchema = z.object({
     p2pquake: DependencyStatusSchema,
     egov: DependencyStatusSchema,
   }).optional().describe('依存先ごとの疎通状態 (detailed のみ)'),
+  isolation: IsolationStatusSchema.optional().describe('隔離の状態 (detailed かつ SORA_ISOLATION=strict のみ。管理者の鍵が要る)'),
   cachedEntries: z.number().optional().describe('キャッシュエントリ数'),
   chromiumAvailable: z.boolean().optional().describe('Chromium ブラウザの利用可否'),
   yahooMcpAvailable: z.boolean().optional().describe('Yahoo MCP バイナリの利用可否'),
@@ -1213,6 +1242,7 @@ export const MetricsResponseSchema = z.object({
   }).describe('Bot検知・ブラウザ昇格統計'),
   activeSessions: z.number().describe('アクティブな対話型ブラウザセッション数'),
   counters: z.record(z.string(), z.number()).describe('セキュリティ・取得系のカウンタ (名前 → 累計)'),
+  isolation: IsolationStatusSchema.optional().describe('隔離の状態 (SORA_ISOLATION=strict のみ。管理者の鍵が要る)'),
   chromium: z.object({
     available: z.boolean().describe('Chromium 実行ファイルの有無'),
     sharedConnected: z.boolean().describe('常駐共有ブラウザインスタンスの接続状態'),
