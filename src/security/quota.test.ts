@@ -5,6 +5,7 @@ import { createAuthMiddleware, hashApiKey } from '../auth.js';
 import { dbAddApiUsage, dbGetApiUsage } from '../db.js';
 import { QuotaExceededError, secondsUntilNextUtcDay } from '../errors.js';
 import { withEnv } from '../test_fixtures/env.js';
+import { getSecurityMetrics, resetSecurityMetrics } from './metrics.js';
 import { chargeQuota, checkQuota, refundQuota, setQuotaEnabled, usageKeyForTenant } from './quota.js';
 import { tenantIdForApiKey } from './tenant_context.js';
 
@@ -207,5 +208,42 @@ describe('dbAddApiUsage', () => {
     const key = `add-neg-${randomUUID()}`;
     expect(dbAddApiUsage(key, today(), -5)).toBe(0);
     expect(dbGetApiUsage(key, today())).toBe(0);
+  });
+});
+
+describe('断った回数を数える（sora_quota_exceeded_total。設計 8）', () => {
+  const exceeded = () => getSecurityMetrics().sora_quota_exceeded_total;
+
+  test('上限を超える件数を断るたびに 1 つ増える。chargeQuota も checkQuota も、1 回の断りを 1 つと数える（二重に数えない）', async () => {
+    await withLimit('10', () => {
+      resetSecurityMetrics();
+      const tenant = `name:count-${randomUUID()}`;
+      chargeQuota(tenant, 8);
+      expect(exceeded()).toBeUndefined(); // 通した呼び出しは数えない
+      expect(() => chargeQuota(tenant, 3)).toThrow(QuotaExceededError);
+      expect(exceeded()).toBe(1);
+      expect(() => checkQuota(tenant, 3)).toThrow(QuotaExceededError);
+      expect(exceeded()).toBe(2);
+      chargeQuota(tenant, 2); // ちょうど残りの分は通る
+      expect(exceeded()).toBe(2);
+    });
+  });
+
+  test('断っていないときは数えない: 上限なし・0 件・Sora 自身の取得（public）・無効（stdio）', async () => {
+    resetSecurityMetrics();
+    await withLimit(undefined, () => chargeQuota(`name:free-${randomUUID()}`, 1000));
+    await withLimit('10', () => {
+      const tenant = `name:quiet-${randomUUID()}`;
+      chargeQuota(tenant, 10);
+      chargeQuota(tenant, 0); // 0 件は足さず、断らない
+      chargeQuota('public', 1000);
+      setQuotaEnabled(false);
+      try {
+        chargeQuota(tenant, 1000);
+      } finally {
+        setQuotaEnabled(true);
+      }
+    });
+    expect(exceeded()).toBeUndefined();
   });
 });

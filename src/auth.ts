@@ -211,6 +211,7 @@ export function createAuthMiddleware(expectedApiKey?: string, keyStore?: ApiKeyS
       c.header('X-RateLimit-Remaining', String(Math.max(0, dailyLimit - usageCount)));
 
       if (usageCount > dailyLimit) {
+        incrementSecurityCounter('sora_quota_exceeded_total'); // 断った回数（一括・crawl の件数で断った分と同じ名前。設計 8）
         c.header('Retry-After', String(secondsUntilNextUtcDay()));
         return c.json(
           {

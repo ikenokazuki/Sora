@@ -4,6 +4,7 @@
 import { envInt } from '../config.js';
 import { dbAddApiUsage, dbGetApiUsage } from '../db.js';
 import { QuotaExceededError } from '../errors.js';
+import { incrementSecurityCounter } from './metrics.js';
 import { PUBLIC_TENANT_ID } from './tenant_context.js';
 
 /** 今日（UTC）の日付。crawl のように日をまたぎうる呼び出しは、始めに 1 回取って、足す・戻すに同じ日を渡す */
@@ -36,7 +37,10 @@ export function checkQuota(tenantId: string, units: number, day = quotaDay()): v
   const limit = envInt('SORA_AUTH_DAILY_LIMIT');
   if (!enabled || key === undefined || limit === undefined || !validUnits(units)) return;
   const current = dbGetApiUsage(key, day);
-  if (current + units > limit) throw new QuotaExceededError(limit, current, units);
+  if (current + units > limit) {
+    incrementSecurityCounter('sora_quota_exceeded_total'); // 断った回数（認証のミドルウェアの 429 と同じ名前。設計 8）。投げるのはここだけ
+    throw new QuotaExceededError(limit, current, units);
+  }
 }
 
 /** units 回ぶんを足す。上限を超えるなら、何も足さずに QuotaExceededError。上限を決めていなくても、数える（使用量の記録のため） */
