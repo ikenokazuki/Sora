@@ -44,7 +44,7 @@ TLS を自動で取得します。HTTP/2 も使えます。
 
 ```text
 sora.example.com {
-	# /metrics は、鍵なしで全利用者の合計の数字が見えるので、外には出さない
+	# /metrics は、運用者だけが読むもの（strict では管理者の鍵も要る）。外には出さない
 	@metrics path /metrics
 	respond @metrics 404
 
@@ -71,7 +71,7 @@ sora.example.com {
 
 - 鍵（`X-API-Key`・`Authorization: Bearer`）は、プロキシを通って Sora に届き、管理者・一般・鍵なしが、直接つないだときと同じ結果（200・403・401）になります。
 - 2 MB を超える本文は、Caddy が 413 で断ります。
-- `/metrics` は 404 になります（`/METRICS`・`//metrics` も 404）。手元からは、Sora に直接（`curl http://127.0.0.1:3016/metrics`）読めます。`/health` は開けたままです（外からの死活監視用）。
+- `/metrics` は 404 になります（`/METRICS`・`//metrics` も 404）。手元からは、Sora に直接（`curl -H "Authorization: Bearer <管理者の鍵>" http://127.0.0.1:3016/metrics`。`strict` では管理者の鍵が要ります）読めます。`/health` は開けたままです（外からの死活監視用）。
 - **Caddy の既定のアクセスログは、`X-API-Key` を平文で残します**（`Authorization` は `REDACTED` になります）。上の `format filter` で、どちらも除きます。除いた設定のログには、鍵の文字列が残りませんでした。
 - 進行状況のストリーミング（`POST /scrape/stream`・`/crawl/stream`）は、追加の設定なしで、取得の進みに合わせて届きます（`start` と `render` はすぐ、`enrich` と `done` は取得が終わってから）。
 - `SORA_ALLOWED_HOSTS` に合わない Host の要求には、Caddy が空の応答を返し、Sora まで届きません。
@@ -91,7 +91,7 @@ server {
 
 	client_max_body_size 2m;
 
-	# /metrics は、鍵なしで全利用者の合計の数字が見えるので、外には出さない
+	# /metrics は、運用者だけが読むもの（strict では管理者の鍵も要る）。外には出さない
 	location = /metrics { return 404; }
 
 	location / {
@@ -137,7 +137,7 @@ export KEYS_DIR=/srv/sora/keys                 # 鍵ファイルのディレク�
 ## 6. 日々の運用
 
 - **更新:** `docker pull ghcr.io/ikenokazuki/sora:latest` で取り直して、作り直します。Chromium が入っているので、その修正を取り込むため、定期的に（目安: 週に 1 回）。戻せるよう、動かしていたイメージのタグ（`sha-` と 7 桁）を控えておきます。
-- **見るもの:** `/metrics`（JSON）の `counters` に、`sora_auth_rejected_missing_total`（鍵なし）・`sora_auth_rejected_invalid_total`（誤った鍵）・`sora_auth_rejected_not_admin_total`・`sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total` などがあります（起きるまで出ないものもあります）。拒否が急に増えたら、プロキシのログで接続元を探して、プロキシかホストのファイアウォールで止めます。利用者ごとの詳しい状態は、管理者の鍵で `/health?detailed=true` です。
+- **見るもの:** `/metrics`（JSON。管理者の鍵を付けて、Sora に直接）の `counters` に、`sora_auth_rejected_missing_total`（鍵なし）・`sora_auth_rejected_invalid_total`（誤った鍵）・`sora_auth_rejected_not_admin_total`・`sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total` などがあります（起きるまで出ないものもあります）。拒否が急に増えたら、プロキシのログで接続元を探して、プロキシかホストのファイアウォールで止めます。利用者ごとの詳しい状態は、管理者の鍵で `/health?detailed=true` です。
 - **悪用への対応:** その利用者の鍵を失効します（約 1 秒で効きます）。量は、日次の上限（`SORA_AUTH_DAILY_LIMIT`）で利用者ごとに絞れます。接続元の遮断は、プロキシかファイアウォールです。
 - **メモリ:** [`strict.md` の 1 章](strict.md#1-起動に必要なもの)のとおりです。同時に持つブラウザのプロセス（既定 4。`SORA_BROWSER_MAX_PROCESSES`）と、同時に開くページ（`SORA_BROWSER_MAX_CONCURRENCY`）が、メモリを決めます。VPS のメモリに合わせて決めてください。
 - **外向きの制限:** [`strict.md` の 5 章](strict.md#5-ネットワークを絞るコンテナの外側で)です。

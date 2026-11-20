@@ -2473,6 +2473,8 @@ export function generateOpenApiDocument() {
                 },
               },
             },
+            '401': { description: 'strict で、管理者の鍵が無い・誤り' },
+            '403': { description: 'strict で、管理者でない鍵' },
           },
         },
       },
