@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
+import { Hono } from 'hono';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { closeHttpSession, fetchWithSafeRedirects } from '../http_fetcher.js';
@@ -6,6 +7,7 @@ import { createProdMetaHttp, createProdWeiboHttp } from '../services/social/tran
 import { dbGetTenantCookies, dbSaveTenantCookies } from '../db.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './metrics.js';
 import { withEnv } from '../test_fixtures/env.js';
+import { systemRoutes } from '../routes/system.js';
 
 /**
  * strict では、tenant を指定しない取得（Sora 自身の上流への取得。Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など）は、
@@ -200,6 +202,15 @@ describe('strict で tenant を指定しない取得は、Cookie を持ち越さ
       expect(await cookieSeen()).toBeNull();
       expect(sessions()).toEqual({ opened: 2, closed: 2 });
     });
+  });
+
+  test('開いた数と閉じた数が、/metrics（Prometheus 形式）に出る（最初の取得までは、どちらも出ない）', async () => {
+    const metrics = async () => (await new Hono().route('/', systemRoutes).request('/metrics?format=prometheus')).text(); // standard の /metrics は、鍵なしで開く
+    expect(await metrics()).not.toContain('sora_fetch_throwaway_session');
+    await strict(async () => { await settle('/echo'); });
+    const text = await metrics();
+    expect(text).toContain('sora_fetch_throwaway_session_opened_total 1');
+    expect(text).toContain('sora_fetch_throwaway_session_closed_total 1');
   });
 
   test('tenant を指定した取得（明示の legacy も）は、これまでどおり、池のセッションで Cookie を持ち越す', async () => {

@@ -187,4 +187,4 @@ Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査
 - 接続を使い回さないので、取得ごとに TCP と TLS の握手が入ります。ローカルの実測で、1 取得あたり約 1.7 ミリ秒の上乗せです（実際の上流では、握手の往復の分が加わります。測っていません）。
 - 通過した bot 対策の状態（Cookie）を使い回せません。`standard` で通っていたサイトが、`strict` では確認の画面を返すことがあります。
 - 利用者を指定した取得（`scrape`・`crawl` など）は、どちらの水準でも、利用者ごとのセッションで、この変更の対象ではありません。
-- 閉じ忘れの見張りには、`/metrics`（4 章の管理者の鍵で読みます）の `sora_fetch_throwaway_session_opened_total` と `sora_fetch_throwaway_session_closed_total` の差を見ます。差は、いま取得の途中にあるセッションの数で、取得がなければ 0 に戻ります。
+- 閉じ忘れの見張りには、`/metrics`（4 章の管理者の鍵で読みます）の `sora_fetch_throwaway_session_opened_total` と `sora_fetch_throwaway_session_closed_total` の差を見ます（最初の取得までは、どちらも出ません。無いものは 0 として見ます）。差は、いま取得の途中にあるセッションの数で、取得がなければ 0 に戻ります。
