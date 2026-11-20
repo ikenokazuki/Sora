@@ -51,8 +51,8 @@ describe('子プロセスは、通信するかを決めてある', () => {
   const SPAWN = /\b(?:spawn|spawnSync|execFile|execFileSync|execSync|fork)\s*\(|\bBun\.spawn(?:Sync)?\s*\(|from\s+['"](?:node:)?child_process['"]/;
   /** 通信する子プロセス。環境変数に egressChildProxyEnv() を重ねて、通信をゲートウェイに通す */
   const NETWORKED = ['src/services/yahoo.ts', 'src/services/address_builder.ts'];
-  /** 通信しない子プロセス（本文の抽出・実行ファイルの版の問い合わせ）。Chromium は、起動の引数でゲートウェイを指す（browser_launch_plan.ts） */
-  const OFFLINE = ['src/browser_engine.ts', 'src/extractor/rs_trafilatura.ts'];
+  /** 通信しない子プロセス（本文の抽出・実行ファイルの版の問い合わせ・PDF の解析）。Chromium は、起動の引数でゲートウェイを指す（browser_launch_plan.ts） */
+  const OFFLINE = ['src/browser_engine.ts', 'src/extractor/rs_trafilatura.ts', 'src/pdf_child.ts'];
 
   test('子プロセスを起こすのは、一覧のファイルだけ（足すときは、通信するかを決めて、一覧に足す）', () => {
     const spawners = sourceFiles().filter((file) => codeLines(file).some(({ text }) => SPAWN.test(text)));

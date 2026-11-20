@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { extractText } from 'unpdf';
 import { ResourceBusyError } from './errors.js';
 import { safeTruncateMarkdown } from './enrichment.js';
-import { parsePdfToMarkdown, pdfQueuePolicy, pdfSlots } from './pdf.js';
+import { parsePdfToMarkdown, PdfParseLimitError, pdfChildLimits, pdfExtractParams, pdfQueuePolicy, pdfSlots, resetPdfWarnings } from './pdf.js';
 import { runAsCaller } from './security/caller.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
-import { makePdf } from './test_fixtures/pdf.js';
+import { makeBombPdf, makePdf } from './test_fixtures/pdf.js';
 
 /**
  * PDF の解析（設計 6。穴 26）。以前は、全ページを一度に（Promise.all）読み、本文の大きさもページ数も上限が無く、同時に何件でも、1 つのスレッドで解析した。
@@ -89,14 +90,14 @@ describe('1 回の解析の時間の上限（1 ページが重い PDF が、枠�
   test('strict の 15 秒に達したら、読んだページまでで止める。isTruncated・pagesRead・警告（共有のキャッシュに、短くだけ残るように）。standard は 60 秒なので、同じ時計でも多く読む', async () => {
     process.env.SORA_ISOLATION = 'strict';
     const pdf = makePdf(Array.from({ length: 20 }, (_, p) => [`page-${p + 1}`]));
-    const strict = await parsePdfToMarkdown(pdf.slice(), URL_OF, 30_000, { now: clock() });
+    const strict = await parsePdfToMarkdown(pdf.slice(), URL_OF, 30_000, { now: clock(), inline: true });
     expect(strict.metadata).toMatchObject({ totalPages: 20, pagesRead: 2 });
     expect(strict.isTruncated).toBe(true);
     expect(strict.warnings?.join('\n')).toContain('時間の上限');
     expect(strict.content).toContain('page-2');
     expect(strict.content).not.toContain('page-3');
     delete process.env.SORA_ISOLATION;
-    const standard = await parsePdfToMarkdown(pdf.slice(), URL_OF, 30_000, { now: clock() });
+    const standard = await parsePdfToMarkdown(pdf.slice(), URL_OF, 30_000, { now: clock(), inline: true });
     expect(standard.metadata).toMatchObject({ pagesRead: 11 });
   });
 
@@ -105,12 +106,12 @@ describe('1 回の解析の時間の上限（1 ページが重い PDF が、枠�
     expect(result.warnings).toBeUndefined();
   });
 
-  test('ページの合間に、イベントループへ処理を譲る（解析の間も、タイマーが動く）', async () => {
+  test('ページの合間に、イベントループへ処理を譲る（このプロセスの中で解析するときも、タイマーが動く）', async () => {
     const pdf = makePdf(Array.from({ length: 120 }, (_, p) => Array.from({ length: 30 }, (_, l) => lineOf(p * 100 + l))));
     let ticks = 0;
     const timer = setInterval(() => { ticks++; }, 1);
     try {
-      await parsePdfToMarkdown(pdf, URL_OF, 30_000);
+      await parsePdfToMarkdown(pdf, URL_OF, 30_000, { inline: true });
     } finally {
       clearInterval(timer);
     }
@@ -237,5 +238,214 @@ describe('解析の順番（同時 2 件。利用者ごとに公平。待つ数�
     expect(pdfSlots.max).toBe(2);
     process.env.SORA_ISOLATION = 'strict';
     expect(pdfQueuePolicy()).toEqual({ perTenant: 20, total: 80, waitMs: 30_000, sharePercent: 100 });
+  });
+});
+
+describe('別プロセスでの解析（重い・悪意のある PDF が、本体を巻き込まない）', () => {
+  const HANG = [process.execPath, '--no-env-file', '-e', 'setInterval(() => {}, 1000);'];
+  const script = (body: string): string[] => [process.execPath, '--no-env-file', '-e', body];
+  const hasProc = existsSync('/proc/self/status');
+
+  test('別プロセスでも、このプロセスの中でも、結果は同じ（本文・ハイライトの元・文書情報・ページ数・警告まで）', async () => {
+    const makers = [
+      () => makePdf([['Hello page one'], ['Second page text']], { title: 'Sample Title', author: 'Sample Author' }),
+      () => makePdf(Array.from({ length: 150 }, (_, p) => Array.from({ length: 40 }, (_, l) => lineOf(p * 100 + l)))),
+      () => makePdf(Array.from({ length: 250 }, (_, p) => [`marker-${p + 1}`])),
+      () => makePdf([['body']], { title: 'T', custom: { Foo: 'bar' } }),
+    ];
+    for (const make of makers) {
+      const pids: number[] = [];
+      const viaChild = await parsePdfToMarkdown(make(), URL_OF, 30_000, { child: { onSpawn: (pid) => pids.push(pid) } });
+      const inline = await parsePdfToMarkdown(make(), URL_OF, 30_000, { inline: true });
+      // 別プロセスが実際に起動された（入口が見つからずに、このプロセスの中で解析した、ではない）
+      expect(pids).toHaveLength(1);
+      expect(pids[0]).toBeGreaterThan(0);
+      expect(pids[0]).not.toBe(process.pid);
+      expect(viaChild).toEqual(inline);
+    }
+  });
+
+  test('壊れた PDF は、このプロセスの中で解析したときと、同じ名前・同じ文の例外になる', async () => {
+    const bad = new TextEncoder().encode('not a pdf');
+    const pids: number[] = [];
+    const viaChild = await parsePdfToMarkdown(bad.slice(), URL_OF, 30_000, { child: { onSpawn: (pid) => pids.push(pid) } }).catch((e: unknown) => e);
+    const inline = await parsePdfToMarkdown(bad.slice(), URL_OF, 30_000, { inline: true }).catch((e: unknown) => e);
+    expect(pids).toHaveLength(1);
+    expect(viaChild).toBeInstanceOf(Error);
+    expect(inline).toBeInstanceOf(Error);
+    expect((viaChild as Error).name).toBe((inline as Error).name);
+    expect((viaChild as Error).message).toBe((inline as Error).message);
+    expect(viaChild).not.toBeInstanceOf(PdfParseLimitError);
+    expect(pdfSlots.activeCount).toBe(0);
+  });
+
+  test.skipIf(!hasProc)('メモリの暴走（圧縮爆弾）は、その解析だけを止める。PdfParseLimitError（memory）で失敗し、順番は手放し、次の解析は動く', async () => {
+    const error = await parsePdfToMarkdown(makeBombPdf(256), URL_OF, 30_000, { child: { limits: { memoryMb: 200 } } }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PdfParseLimitError);
+    expect(error).toMatchObject({ name: 'PdfParseLimitError', reason: 'memory' });
+    expect((error as Error).message).toContain('メモリの上限（200 MB）');
+    expect(pdfSlots.activeCount).toBe(0);
+    const next = await parsePdfToMarkdown(makePdf([['still works']]), URL_OF);
+    expect(next.content).toContain('still works');
+  });
+
+  test.skipIf(!hasProc)('2 ページ目が爆弾なら、読めた先頭のページまでを返す（isTruncated・pagesRead・警告。キャッシュに短くだけ残る）', async () => {
+    const result = await parsePdfToMarkdown(makeBombPdf(256, ['first page text']), URL_OF, 30_000, { child: { limits: { memoryMb: 200 } } });
+    expect(result.content).toContain('first page text');
+    expect(result.metadata).toMatchObject({ totalPages: 2, pagesRead: 1 });
+    expect(result.isTruncated).toBe(true);
+    expect(result.warnings?.join('\n')).toContain('メモリの上限（200 MB）');
+    expect(result.warnings?.join('\n')).toContain('先頭の 1 ページ');
+  });
+
+  test('時間の上限を過ぎても終わらない子は止める。何も読めていなければ、タイムアウトの文（408）で失敗する', async () => {
+    const started = Date.now();
+    const error = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: HANG, limits: { hardMs: 300 } } }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PdfParseLimitError);
+    expect(error).toMatchObject({ reason: 'time' });
+    expect((error as Error).message).toContain('タイムアウト');
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(pdfSlots.activeCount).toBe(0);
+  });
+
+  test('1 ページ読めたあとに止まったら、そこまでの結果と警告を返す', async () => {
+    const body = `console.log(JSON.stringify({ t: 'open', numPages: 3, info: { Title: 'Partial' } }));
+      console.log(JSON.stringify({ t: 'page', n: 1, text: 'only the first page' }));
+      setInterval(() => {}, 1000);`;
+    const result = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script(body), limits: { hardMs: 2000 } } });
+    expect(result).toMatchObject({ title: 'Partial', content: 'only the first page', isTruncated: true, metadata: { totalPages: 3, pagesRead: 1 } });
+    expect(result.warnings?.join('\n')).toContain('時間の上限');
+  });
+
+  test('子が途中で勝手に終わった（カーネルの OOM など）ときも、読めたページまでを返す。何も読めていなければ失敗', async () => {
+    const partial = `console.log(JSON.stringify({ t: 'open', numPages: 3, info: {} }));
+      console.log(JSON.stringify({ t: 'page', n: 1, text: 'page one' }));
+      process.kill(process.pid, 'SIGKILL');`;
+    const result = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script(partial) } });
+    expect(result).toMatchObject({ content: 'page one', isTruncated: true, metadata: { totalPages: 3, pagesRead: 1 } });
+    expect(result.warnings?.join('\n')).toContain('途中で終了');
+    const none = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script("process.kill(process.pid, 'SIGKILL');") } }).catch((e: unknown) => e);
+    expect(none).toBeInstanceOf(PdfParseLimitError);
+    expect(none).toMatchObject({ reason: 'crashed' });
+  });
+
+  test('子が約束を破ったら（形が違う行）、止めて、読めた分まで。読めていなければ失敗', async () => {
+    const body = `console.log(JSON.stringify({ t: 'open', numPages: 3, info: {} }));
+      console.log(JSON.stringify({ t: 'page', n: 1, text: 'good page' }));
+      console.log('this is not json');
+      setInterval(() => {}, 1000);`;
+    const result = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script(body) } });
+    expect(result).toMatchObject({ content: 'good page', metadata: { pagesRead: 1 } });
+    expect(result.warnings?.join('\n')).toContain('想定外');
+    const none = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script("console.log('garbage'); setInterval(() => {}, 1000);") } }).catch((e: unknown) => e);
+    expect(none).toMatchObject({ name: 'PdfParseLimitError', reason: 'protocol' });
+  });
+
+  test('error の行は、pdf.js の例外として投げ直す（名前も文も、そのまま）', async () => {
+    const body = "console.log(JSON.stringify({ t: 'error', name: 'PasswordException', message: 'No password given' }));";
+    const error = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script(body) } }).catch((e: unknown) => e);
+    expect(error).toMatchObject({ name: 'PasswordException', message: 'No password given' });
+    expect(error).not.toBeInstanceOf(PdfParseLimitError);
+  });
+
+  test('2 件を同時に解析しても、結果は混ざらない（順番の枠は 2 件）', async () => {
+    const [a, b] = await Promise.all([parsePdfToMarkdown(makePdf([['alpha only']]), URL_OF, 30_000, { tenantId: 'name:A' }), parsePdfToMarkdown(makePdf([['beta only']]), URL_OF, 30_000, { tenantId: 'name:B' })]);
+    expect(a.content).toContain('alpha only');
+    expect(a.content).not.toContain('beta');
+    expect(b.content).toContain('beta only');
+    expect(b.content).not.toContain('alpha');
+  });
+
+  test('入口（pdf-parse.js・pdf_child_main.ts）が見つからないとき: standard はこのプロセスの中で解析する。strict は失敗する（黙って弱くしない）', async () => {
+    const result = await parsePdfToMarkdown(makePdf([['fallback works']]), URL_OF, 30_000, { child: { entryDir: '/nonexistent-entry-dir' } });
+    expect(result.content).toContain('fallback works');
+    process.env.SORA_ISOLATION = 'strict';
+    const error = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { entryDir: '/nonexistent-entry-dir' } }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('pdf-parse.js');
+    expect(pdfSlots.activeCount).toBe(0);
+  });
+});
+
+describe('別プロセスに渡す頼み方と上限（水準で決まる）', () => {
+  test('頼み方（pdfExtractParams）: ページ数と時間は水準の表、必要な文字数は maxChars から（max(maxChars, 20 万字) × 1.5 + 1,000）', () => {
+    expect(pdfExtractParams(30_000)).toEqual({ pageLimit: 1000, needed: 301_000, budgetMs: 60_000 });
+    expect(pdfExtractParams(400_000)).toEqual({ pageLimit: 1000, needed: 601_000, budgetMs: 60_000 });
+    process.env.SORA_ISOLATION = 'strict';
+    expect(pdfExtractParams(30_000)).toEqual({ pageLimit: 200, needed: 301_000, budgetMs: 15_000 });
+  });
+
+  test('別プロセスの上限（pdfChildLimits）: メモリは水準の表、時間は 1 回の解析の時間に 10 秒足したもの、出力は 32MB。試験用の上書きが効く', () => {
+    expect(pdfChildLimits()).toEqual({ memoryMb: 1536, hardMs: 70_000, maxOutputBytes: 32 * 1024 * 1024, pollMs: 25, exitGraceMs: 2_000 });
+    process.env.SORA_ISOLATION = 'strict';
+    expect(pdfChildLimits()).toEqual({ memoryMb: 768, hardMs: 25_000, maxOutputBytes: 32 * 1024 * 1024, pollMs: 25, exitGraceMs: 2_000 });
+    expect(pdfChildLimits({ memoryMb: 5, hardMs: 7 })).toEqual({ memoryMb: 5, hardMs: 7, maxOutputBytes: 32 * 1024 * 1024, pollMs: 25, exitGraceMs: 2_000 });
+  });
+});
+
+describe('別プロセスの結果の扱い（協調の時間の上限・入口が無いときの警告）', () => {
+  const script = (body: string): string[] => [process.execPath, '--no-env-file', '-e', body];
+
+  test('別プロセスが「時間の上限で止めた」（done の timeBudgetHit）と返したら、このプロセスの中で止めたときと同じ警告・isTruncated になる', async () => {
+    const body = `console.log(JSON.stringify({ t: 'open', numPages: 9, info: {} }));
+      console.log(JSON.stringify({ t: 'page', n: 1, text: 'only one' }));
+      console.log(JSON.stringify({ t: 'page', n: 2, text: 'two' }));
+      console.log(JSON.stringify({ t: 'done', timeBudgetHit: true }));`;
+    const result = await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script(body) } });
+    expect(result.isTruncated).toBe(true);
+    expect(result.metadata).toMatchObject({ totalPages: 9, pagesRead: 2 });
+    expect(result.warnings).toEqual(['PDF の解析が時間の上限（60 秒）に達し、先頭の 2 ページまでの結果です（全 9 ページ）']);
+  });
+
+  test('入口が見つからないときの警告は、ちょうど 1 回だけ（解析のたびには出さない）', async () => {
+    resetPdfWarnings();
+    const warnings: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void warnings.push(args.map(String).join(' '));
+    try {
+      for (let i = 0; i < 3; i++) await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { entryDir: '/nonexistent-entry-dir' } });
+    } finally {
+      console.warn = original;
+    }
+    expect(warnings.filter((w) => w.includes('[Sora/PDF]') && w.includes('pdf-parse.js'))).toHaveLength(1);
+  });
+
+  test('/Count が負の PDF は、このプロセスの中でも別プロセスでも、同じ結果になる（ページ数は 0。失敗しない）', async () => {
+    const make = () => {
+      const text = new TextDecoder().decode(makePdf([['body']])).replace('/Count 1', '/Count -3');
+      return new TextEncoder().encode(text);
+    };
+    const inline = await parsePdfToMarkdown(make(), URL_OF, 30_000, { inline: true });
+    const viaChild = await parsePdfToMarkdown(make(), URL_OF, 30_000);
+    expect(viaChild).toEqual(inline);
+    expect(viaChild.metadata?.totalPages).toBe(0);
+  });
+
+  test('止めたときのログに出す、子の標準エラーの末尾は、1 行に収める（子が改行を含む文を書いても、ログの行を偽造されない）', async () => {
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(' '));
+    try {
+      await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script("process.stderr.write('real\\n[Sora/PDF] FORGED LOG LINE\\n'); process.exit(1);") } }).catch(() => undefined);
+    } finally {
+      console.warn = original;
+    }
+    const logged = lines.filter((line) => line.includes('PDF の解析のプロセスを止めました'));
+    expect(logged).toHaveLength(1);
+    // 1 回の出力が 1 行（子が書いた改行は、エスケープされて、行の途中に残る）
+    expect(logged[0]).not.toContain('\n');
+    expect(logged[0]).toContain('\\n[Sora/PDF] FORGED LOG LINE');
+  });
+
+  test('止めた別プロセスは、理由ごとに数える（`/metrics` の sora_pdf_child_killed_<理由>_total）。読めたページがあっても、なくても', async () => {
+    resetSecurityMetrics();
+    await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script("process.kill(process.pid, 'SIGKILL');") } }).catch(() => undefined);
+    await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script("console.log('garbage'); setInterval(() => {}, 1000);") } }).catch(() => undefined);
+    await parsePdfToMarkdown(makePdf([['x']]), URL_OF, 30_000, { child: { command: script('setInterval(() => {}, 1000);'), limits: { hardMs: 300 } } }).catch(() => undefined);
+    const metrics = getSecurityMetrics();
+    expect(metrics.sora_pdf_child_killed_crashed_total).toBe(1);
+    expect(metrics.sora_pdf_child_killed_protocol_total).toBe(1);
+    expect(metrics.sora_pdf_child_killed_time_total).toBe(1);
+    expect(metrics.sora_pdf_child_killed_memory_total).toBeUndefined();
   });
 });
