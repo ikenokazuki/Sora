@@ -145,7 +145,7 @@ export const SETTINGS = {
   },
   SORA_ISOLATION: {
     area: 'core', kind: 'enum', values: ['standard', 'strict'], default: 'standard',
-    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。`strict` は、この上限の値を切り替え、ブラウザを利用者ごとに別のプロセス（別の uid）で動かし（README 4.5）、`/health?detailed=true` と `/metrics` を管理者の鍵だけにします。さらに、起動のときに、`SORA_AUTH_KEYS_FILE`（名前つきの鍵）・`SORA_BROWSER_SANDBOX=on`・`SORA_EGRESS_GATEWAY=on` の設定と、ブラウザとの接続がパイプであること、root で起動して Chromium を別の uid に落とせること（`SORA_BROWSER_UID=off` は不可）を求め、満たさなければ起動しません。待ち受ける前に、前回の異常終了が残した Chromium のプロファイル（`/tmp/sora-chromium-*`。消せなければ起動しません）を消し、Chromium を 1 回起動して確かめます（`docs/operations/strict.md`）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
+    doc: '運用の水準です。`standard`（未設定）は、ユーザーが 1 人か、互いに信頼できる少数の運用で、今までの使い方を止めない緩い値の上限だけを置きます。`strict` は、互いに信頼できない利用者に公開する共有のサービス用で、上限を設計書の値まで締めます（サイトマップの `Sitemap:` 行 5・索引の子 20・本文 10MB・全体 30 秒、crawl のパターンとセレクタ 20 個まで、など。値は README の「4.6 複数のユーザーで使う」）。`strict` は、この上限の値を切り替え、ブラウザを利用者ごとに別のプロセス（別の uid）で動かし（README 4.5）、`/health?detailed=true` と `/metrics` を管理者の鍵だけにし、Sora 自身の上流への取得（利用者を指定しない取得）を、取得ごとの使い捨てのセッションで動かして、サイトが出した Cookie を利用者をまたいで持ち越さないようにします。さらに、起動のときに、`SORA_AUTH_KEYS_FILE`（名前つきの鍵）・`SORA_BROWSER_SANDBOX=on`・`SORA_EGRESS_GATEWAY=on` の設定と、ブラウザとの接続がパイプであること、root で起動して Chromium を別の uid に落とせること（`SORA_BROWSER_UID=off` は不可）を求め、満たさなければ起動しません。待ち受ける前に、前回の異常終了が残した Chromium のプロファイル（`/tmp/sora-chromium-*`。消せなければ起動しません）を消し、Chromium を 1 回起動して確かめます（`docs/operations/strict.md`）。書き方の誤り（知らない値）は、起動のときにエラーにして止めます',
   },
   SORA_DB_PATH: {
     area: 'core', kind: 'path',

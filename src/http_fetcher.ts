@@ -8,7 +8,7 @@ import { getFallbackUserAgent } from './browser_stealth.js';
 import { envBool, envError, envInt, envList, envRaw } from './config.js';
 import { parseTrustStoreMode } from './tls_trust.js';
 import { incrementSecurityCounter } from './security/metrics.js';
-import { limits } from './security/limits.js';
+import { isolationLevel, limits } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { markTenantStateUsed } from './security/tenant_state.js';
@@ -374,6 +374,20 @@ export async function closeHttpSession(domain: string, tenantId = 'legacy', scop
   await closePooledHttpSession(pooled);
 }
 
+/** 新しいセッションを作る（wreq が使えなければ、標準の fetch で代える）。プールには入れない */
+async function createHttpSession(browser: BrowserProfile, proxyUrl?: string): Promise<UniversalHttpSession> {
+  const mod = await getWreqModule();
+  if (!mod) return new NativeFetchSession();
+  const trustStore = parseTrustStoreMode(envRaw('SORA_FETCH_TRUST_STORE'));
+  return mod.createSession({
+    browser: withinMaxProfile(browser),
+    os: EMULATION_OS,
+    emulation: { headers: { 'accept-language': ACCEPT_LANGUAGE }, origHeaders: CHROME_HEADER_ORDER },
+    ...(trustStore ? { trustStore } : {}),
+    ...(proxyUrl ? { proxy: proxyUrl } : {}),
+  });
+}
+
 /**
  * ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元）。
  * scope を渡すと資格情報付きリクエスト専用の分離セッションになり、保存済み Cookie は復元せず、終了時も永続化しない。
@@ -394,21 +408,7 @@ export async function getOrCreateHttpSession(
 
   await evictOldestHttpSessionIfNeeded();
 
-  const mod = await getWreqModule();
-  let session: UniversalHttpSession;
-
-  if (mod) {
-    const trustStore = parseTrustStoreMode(envRaw('SORA_FETCH_TRUST_STORE'));
-    session = await mod.createSession({
-      browser: withinMaxProfile(browser),
-      os: EMULATION_OS,
-      emulation: { headers: { 'accept-language': ACCEPT_LANGUAGE }, origHeaders: CHROME_HEADER_ORDER },
-      ...(trustStore ? { trustStore } : {}),
-      ...(proxyUrl ? { proxy: proxyUrl } : {}),
-    });
-  } else {
-    session = new NativeFetchSession();
-  }
+  const session = await createHttpSession(browser, proxyUrl);
 
   // 資格情報付きの分離セッションは、保存済み Cookie を引き継がず空のジャーで始める
   const savedCookies = scope ? undefined : dbGetTenantCookies(tenantId, domain);
@@ -454,8 +454,17 @@ export function groupCookiesByDomain(
   return map;
 }
 
+/** 取得に使うセッションを開く（1 回の取得の中で、1 回だけ呼ばれる） */
+type SessionOpener = (domain: string, browser: BrowserProfile, proxyUrl: string | undefined, credentialScope: string | undefined) => Promise<UniversalHttpSession>;
+
 /**
  * 安全な HTTP リダイレクト追跡フェッチ
+ *
+ * tenantId を渡さない取得は、Sora 自身の上流への取得（Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など）。
+ * standard では、共有の（legacy の）セッションと保存済みの Cookie を使う（bot 対策の通過状態を使い回せる）。
+ * strict では、サイトが出した Cookie（訪問者の ID など）が、利用者をまたいで共有されないよう、取得ごとの新しいセッション（空のジャー）で動かし、
+ * 終われば閉じる（受けた Cookie を保存せず、保存済みの Cookie も戻さない。設計 未決 14）。1 回の取得の中のリダイレクトでは、受けた Cookie が付く。
+ * tenantId を渡した取得（明示の 'legacy' も）は、どの水準でも、tenant の池のセッションを使う
  */
 export async function fetchWithSafeRedirects(
   initialUrl: string,
@@ -464,8 +473,38 @@ export async function fetchWithSafeRedirects(
   customHeaders?: Record<string, string>,
   customCookies?: CookieParam[],
   proxyUrl?: string,
-  tenantId = 'legacy',
+  tenantId?: string,
   parentSignal?: AbortSignal,
+): Promise<{ finalUrl: string; response: Response }> {
+  if (tenantId !== undefined || isolationLevel() !== 'strict') {
+    const tenant = tenantId ?? 'legacy';
+    return followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal,
+      (domain, browser, proxy, scope) => getOrCreateHttpSession(domain, browser, proxy, tenant, scope));
+  }
+  let throwaway: UniversalHttpSession | undefined;
+  try {
+    return await followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal,
+      async (_domain, browser, proxy) => {
+        throwaway = await createHttpSession(browser, proxy);
+        incrementSecurityCounter('sora_fetch_throwaway_session_opened_total');
+        return throwaway;
+      });
+  } finally {
+    // 成功も失敗も閉じる。応答の本体は、閉じたあとも最後まで読める（Cookie のジャーは、ヘッダーを受けるときにしか使われない）。
+    // 閉じた数は、閉じる呼び出しと同じ式で数える（閉じ忘れを、開いた数との差で見張れるように）
+    if (throwaway) await throwaway.close().catch(() => {}).finally(() => incrementSecurityCounter('sora_fetch_throwaway_session_closed_total'));
+  }
+}
+
+async function followSafeRedirects(
+  initialUrl: string,
+  timeoutMs: number,
+  maxRedirects: number,
+  customHeaders: Record<string, string> | undefined,
+  customCookies: CookieParam[] | undefined,
+  proxyUrl: string | undefined,
+  parentSignal: AbortSignal | undefined,
+  openSession: SessionOpener,
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
   let redirects = 0;
@@ -487,7 +526,7 @@ export async function fetchWithSafeRedirects(
   // 資格情報付きリクエストは専用のジャーで動かす。通常セッションと共有すると、認証で得た Set-Cookie が
   // 後続の「資格情報なし」リクエストに流れ、ログイン済みの内容が共有キャッシュに入ってしまう。
   const credentialScope = credentialScopeFor(customHeaders, customCookies);
-  const session = await getOrCreateHttpSession(initialDomain, browser, effectiveProxyUrl, tenantId, credentialScope);
+  const session = await openSession(initialDomain, browser, effectiveProxyUrl, credentialScope);
   // この取得が、Cookie を持つセッション（保存済みの Cookie を戻したもの、前の取得で受け取ったもの）で始まるなら、結果は、その tenant の状態で見える内容かもしれない。
   // 結果を置く側（scrapeUrl など）が、共有のキャッシュに置かないよう、印を立てる。この取得の途中で受け取る Cookie は、数えない（この取得の結果を変えない）
   try {

@@ -138,7 +138,6 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 
 ## 6. `strict` でも、まだ足りないもの
 
-- Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査など、Sora 自身の上流への取得は、共有の（`legacy` の）セッションと、その保存済みの Cookie を使います。サイトが出した Cookie が、利用者をまたいで共有されます。
 - `detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は、コンテナの死活確認のために鍵なしで開き、全利用者の合計の数字が見えます。
 - 音声のデコーダーが破られたときは、同じ利用者のブラウザセッションの Cookie には届きえます（ほかの利用者のプロセスには、uid が違うので届きません）。
 - PDF の解析は、1 件ごとの別プロセスで動き、メモリ・時間・出力量の上限を超えたものだけが止まります（README 4.6）。ただし、**この別プロセスは Sora 本体と同じ uid（イメージは root）で動き、Chromium のようには分けていません。** pdf.js 自体の脆弱性を突かれると、root として、Sora の環境変数・DB・鍵ファイルに届き、**ほかの利用者のブラウザのプロファイル（別の uid の 0700）と Cookie にも届きます。同時に動く 2 件の別プロセスは同じ uid なので、相手に渡している PDF〔の中身〕も覗けます。** strict の利用者のあいだの隔離を、pdf.js の脆弱性 1 つで破りうる、ということです（同じプロセスで動かしていた以前と同じで、悪くはなっていません）。外向きの通信も、出口のゲートウェイを通りません（5 章のコンテナの外側の制限が要ります）。
@@ -178,3 +177,14 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 台数を増やすなら、**利用者を決まったインスタンスに振り分ける**（各インスタンスは、独立した Sora）形が、この作りに合います（未検証です）。
 
 公式の資料: [Kubernetes の Pod Security Standards](https://kubernetes.io/docs/concepts/security/pod-security-standards/)・[Cloud Run のコンテナの規約](https://docs.cloud.google.com/run/docs/container-contract)・[Cloud Run の外向きの IP](https://docs.cloud.google.com/run/docs/configuring/static-outbound-ip)。
+
+## 8. 上流への取得は、Cookie を持ち越さない
+
+Yahoo・YouTube・歌詞・TikTok の字幕・X・楽曲認識・画像の検査・SNS（Weibo・Meta）など、Sora 自身が出す取得（利用者のセッションを指定しない取得）は、`strict` では、取得ごとに新しいセッション（空の Cookie のジャー）で動かし、終わったら閉じます（成功も失敗も）。サイトが出した Cookie（訪問者の ID など）が、ほかの利用者の取得に付くのを防ぐためです。受けた Cookie は保存せず、保存済みの Cookie も戻しません。1 回の取得の中のリダイレクト（Cookie を出してから飛ばすサイト）では、受けた Cookie が付きます。`standard` は、共有の（`legacy` の）セッションのままです。
+
+運用で気づくこと:
+
+- 接続を使い回さないので、取得ごとに TCP と TLS の握手が入ります。ローカルの実測で、1 取得あたり約 1.7 ミリ秒の上乗せです（実際の上流では、握手の往復の分が加わります。測っていません）。
+- 通過した bot 対策の状態（Cookie）を使い回せません。`standard` で通っていたサイトが、`strict` では確認の画面を返すことがあります。
+- 利用者を指定した取得（`scrape`・`crawl` など）は、どちらの水準でも、利用者ごとのセッションで、この変更の対象ではありません。
+- 閉じ忘れの見張りには、`/metrics`（4 章の管理者の鍵で読みます）の `sora_fetch_throwaway_session_opened_total` と `sora_fetch_throwaway_session_closed_total` の差を見ます（最初の取得までは、どちらも出ません。無いものは 0 として見ます）。差は、いま取得の途中にあるセッションの数で、取得がなければ 0 に戻ります。

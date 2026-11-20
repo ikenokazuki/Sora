@@ -5,12 +5,15 @@ import type { WeiboHttp } from './weibo.js';
 import type { DiscoveryWebSearch } from './discovery.js';
 import type { WeiboSessionOpener } from './weibo_session.js';
 
-/** 本番HTTP: 既存の共通取得器を使い、wreq指紋・SSRF検証・間隔調整を再利用する。 */
+/**
+ * 本番HTTP: 既存の共通取得器を使い、wreq指紋・SSRF検証・間隔調整を再利用する。
+ * tenant は指定しない（利用者のものではない取得。strict では、取得ごとの使い捨てのセッションで、Cookie を持ち越さない。http_fetcher.ts の fetchWithSafeRedirects）。
+ */
 export function createProdWeiboHttp(): WeiboHttp {
   return {
     async getJson(url, headers, cookies, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
-      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, cookies.length ? cookies.map((c) => ({ name: c.name, value: c.value })) : undefined, undefined, 'legacy', signal);
+      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, cookies.length ? cookies.map((c) => ({ name: c.name, value: c.value })) : undefined, undefined, undefined, signal);
       const text = await response.text();
       try {
         return { status: response.status, data: JSON.parse(text) };
@@ -26,13 +29,13 @@ export function createProdMetaHttp(): MetaHttp {
     async getPage(url, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
       const headers = { Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'en-US,en;q=0.8' };
-      const { response, finalUrl } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, undefined, undefined, 'legacy', signal);
+      const { response, finalUrl } = await fetchWithSafeRedirects(url, timeoutMs, 5, headers, undefined, undefined, undefined, signal);
       if (signal.aborted) throw signal.reason;
       return { status: response.status, finalUrl, html: await response.text() };
     },
     async getJson(url, timeoutMs, signal) {
       const { fetchWithSafeRedirects } = await import('../../http_fetcher.js');
-      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 3, { Accept: 'application/json' }, undefined, undefined, 'legacy', signal);
+      const { response } = await fetchWithSafeRedirects(url, timeoutMs, 3, { Accept: 'application/json' }, undefined, undefined, undefined, signal);
       if (signal.aborted) throw signal.reason;
       return { status: response.status, data: await response.json() };
     },
