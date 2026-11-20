@@ -22,20 +22,24 @@ import { errorMessage } from './errors.js';
 type WreqModule = typeof import('wreq-js');
 export type BrowserProfile = import('wreq-js').BrowserProfile;
 
-let wreqModule: WreqModule | null = null;
-let wreqLoadAttempted = false;
+let wreqModulePromise: Promise<WreqModule | null> | undefined;
 
-async function getWreqModule(): Promise<WreqModule | null> {
-  if (wreqLoadAttempted) return wreqModule;
-  wreqLoadAttempted = true;
-  try {
-    wreqModule = await import('wreq-js');
-    clampChromeProfileToNative(wreqModule.getProfiles());
-  } catch (err) {
-    console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
-    wreqModule = null;
-  }
-  return wreqModule;
+/**
+ * wreq-js の読み込みは 1 回だけ行い、読み込みの途中に来た呼び出しも、同じ結果を待つ。
+ * 待たずに「まだ無い」と受け取ると、起動直後の同時の取得が、標準の fetch の代用のセッションを受けてプールに残る。
+ */
+function getWreqModule(): Promise<WreqModule | null> {
+  wreqModulePromise ??= (async () => {
+    try {
+      const mod = await import('wreq-js');
+      clampChromeProfileToNative(mod.getProfiles());
+      return mod;
+    } catch (err) {
+      console.warn(`[http_fetcher] wreq-js native module unavailable (${errorMessage(err) || err}). Gracefully falling back to native fetch.`);
+      return null;
+    }
+  })();
+  return wreqModulePromise;
 }
 
 export interface UniversalHttpSession {
@@ -321,6 +325,8 @@ export class NativeFetchSession implements UniversalHttpSession {
 }
 
 const httpSessionPool = new Map<string, PooledHttpSession>();
+/** 作成の途中のセッション（キーごと）。同じキーの最初の取得が同時に来ても、作るのは 1 つ */
+const httpSessionCreating = new Map<string, Promise<UniversalHttpSession>>();
 
 function refreshHttpSessionTimer(pooled: PooledHttpSession): void {
   clearTimeout(pooled.timer);
@@ -391,6 +397,7 @@ async function createHttpSession(browser: BrowserProfile, proxyUrl?: string): Pr
 /**
  * ドメインに対応するセッションをプールから取得、無ければ作成（保存済みCookieを復元）。
  * scope を渡すと資格情報付きリクエスト専用の分離セッションになり、保存済み Cookie は復元せず、終了時も永続化しない。
+ * 同じキーの取得が同時に来ても、作るのは 1 つ（全員が同じセッションを受ける）。
  */
 export async function getOrCreateHttpSession(
   domain: string,
@@ -406,6 +413,27 @@ export async function getOrCreateHttpSession(
     return existing.session;
   }
 
+  // 同じキーの作成が途中なら、それを待つ（2 つ作ると、片方は池に入らず、そのセッションに付いた Cookie が取り残される）
+  const creating = httpSessionCreating.get(key);
+  if (creating) return creating;
+  const created = createPooledHttpSession(key, domain, browser, proxyUrl, tenantId, scope);
+  httpSessionCreating.set(key, created);
+  try {
+    return await created;
+  } finally {
+    httpSessionCreating.delete(key);
+  }
+}
+
+/** 新しいセッションを作り、保存済み Cookie を戻して、プールに入れる。呼ぶのは getOrCreateHttpSession だけ（同じキーでは同時に 2 回呼ばない） */
+async function createPooledHttpSession(
+  key: string,
+  domain: string,
+  browser: BrowserProfile,
+  proxyUrl: string | undefined,
+  tenantId: string,
+  scope: string | undefined,
+): Promise<UniversalHttpSession> {
   await evictOldestHttpSessionIfNeeded();
 
   const session = await createHttpSession(browser, proxyUrl);
