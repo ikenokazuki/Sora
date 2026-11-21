@@ -16,6 +16,7 @@ import { errorMessage } from './errors.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import { readChildRssMb } from './pdf_child.js';
 import { PDF_PROBE_TEXT, startupProbePdf } from './pdf_probe.js';
+import { PdfDropError } from './pdf_uid.js';
 import { isolationLevel } from './security/limits.js';
 
 const PREFIX = '[Sora/Strict]';
@@ -171,6 +172,10 @@ export async function verifyStrictPdf(parse: typeof parsePdfToMarkdown = parsePd
     }
     return { status: 'ok' };
   } catch (error) {
+    if (error instanceof PdfDropError) {
+      // 別プロセスの入口の問題ではない。PDF の解析のプロセスを、別の uid に落とせない（落とす条件は、その文に入っている）
+      return { status: 'failed', problem: `PDF の解析の別プロセスを、別の uid に落とせませんでした: ${error.message}（docs/operations/strict.md）` };
+    }
     return {
       status: 'failed',
       problem: `PDF の解析を別プロセスで動かせませんでした: ${errorMessage(error) ?? String(error)}（strict は、重い PDF が本体を巻き込まないよう、PDF の解析を別プロセスで動かすことが必須です。同梱の pdf-parse.js と bun を確かめてください）`,

@@ -21,6 +21,7 @@ export const AREAS = {
   mcp: 'MCP',
   browser: 'ブラウザ',
   fetch: '静的取得',
+  pdf: 'PDF',
   proxy: 'プロキシ',
   egress: '出口のゲートウェイ',
   search: '検索',
@@ -268,6 +269,14 @@ export const SETTINGS = {
     form: '3 桁の Chrome の版（136 以上）',
     defaultDoc: '`149`（公開イメージは `154`）',
     doc: '静的取得が使う Chrome プロファイル（`chrome_<版>`）の上限。ブラウザも、この版までしか名乗りません（UA・TLS・ヘッダを、静的取得と同じにするため）。実際の Chromium がこれより新しければ、この版になります。3 桁の Chrome の版（136 以上）で、未設定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、Containerfile で自前にビルドした native（上流の wreq-util の Chrome 150〜154 のプロファイルを持つ）に合わせて 154 にしています。**値を下げれば、UA・TLS・ヘッダがその版のものに戻ります**（例: `149`。イメージの作り直しは要りません）。native が持たない版を指定すると、最初の静的取得で、native が持つ最大まで下げて警告を出します。起動のときに読みます',
+  },
+
+  // --- PDF ---
+  SORA_PDF_UID: {
+    area: 'pdf', kind: 'str', default: 'auto', pattern: /^\s*(?:auto|off|0*[1-9]\d{0,9})\s*$/i,
+    form: '`auto`・`off`・1 以上の整数（uid・gid）',
+    defaultDoc: '*(未設定 = auto)*',
+    doc: 'root で動く Sora 本体が、PDF の解析の別プロセスを起動するときの uid です。`auto`（未設定）は 65530 から落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid から落とします。同時に動く PDF の解析は 2 件で、1 件ごとに別の uid（基準 + 0・1。既定では 65530・65531）にします。解析が終わるたびに、その uid のプロセスが残っていないことを確かめて、残っていれば終わらせます。落とすには、`SORA_BROWSER_UID` と同じ起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）と、同じ capability（`CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID`）が要ります。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で動かし、数を明示したときは PDF の解析を失敗させます。Sora 本体が root でないときは、何もしません。PDF の解析（pdf.js）が破られても、運用者の秘密（環境変数・DB・鍵ファイル）と、ほかの利用者の PDF や Chromium に届きにくくなります。Chromium の uid（`SORA_BROWSER_UID` の基準から、ブラウザのプロセスの数ぶん）とは重ならないようにしてください（重なると、standard は警告を出して、PDF の解析を落とさずに従来どおり動かし、strict は PDF の解析を断ります。重なったまま落とすと、解析のあとの片づけが、同じ uid の Chromium まで終わらせるためです）。`SORA_ISOLATION=strict` では、`off` は使えず、root で起動して落とせることを求めます（落とせないと PDF の解析を断り、起動の確認でも止まります）',
   },
 
   // --- プロキシ ---

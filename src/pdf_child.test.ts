@@ -464,6 +464,12 @@ describe('子に渡す環境変数（運用者の秘密は渡さない。bun を
     }
   });
 
+  test('pdfChildEnv: extra は足す（許可リストの外の名前でも。起動用バイナリへの伝言）。入力の許可リストの外は、足さない', () => {
+    const source = { PATH: '/bin', SORA_API_KEY: 'k' };
+    expect(pdfChildEnv(source, { SORA_LAUNCH_UID: '65530' })).toEqual({ PATH: '/bin', SORA_LAUNCH_UID: '65530' });
+    expect(pdfChildEnv(source)).toEqual({ PATH: '/bin' });
+  });
+
   test('pdfChildEnv: PATH・HOME・TMPDIR・LD_LIBRARY_PATH・TZ だけを、あるものだけ渡す（入力を書き換えない）', () => {
     const source = { PATH: '/bin', HOME: '/home/x', TMPDIR: '/tmp', LD_LIBRARY_PATH: '/lib', TZ: 'Asia/Tokyo', LANG: 'ja_JP.UTF-8', HTTPS_PROXY: 'http://u:p@h', SORA_API_KEY: 'k', EMPTY: undefined };
     const before = JSON.stringify(source);

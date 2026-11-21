@@ -2624,6 +2624,12 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 | `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
 | `SORA_RS_TRAFILATURA_PATH` | *(未設定。公開イメージは `/usr/local/bin/rs-trafilatura`)* | 本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`） |
 
+**PDF**
+
+| 環境変数名 | デフォルト値 | 説明 |
+|---|---|---|
+| `SORA_PDF_UID` | *(未設定 = auto)* | root で動く Sora 本体が、PDF の解析の別プロセスを起動するときの uid です。`auto`（未設定）は 65530 から落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid から落とします。同時に動く PDF の解析は 2 件で、1 件ごとに別の uid（基準 + 0・1。既定では 65530・65531）にします。解析が終わるたびに、その uid のプロセスが残っていないことを確かめて、残っていれば終わらせます。落とすには、`SORA_BROWSER_UID` と同じ起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージにあります）と、同じ capability（`CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID`）が要ります。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で動かし、数を明示したときは PDF の解析を失敗させます。Sora 本体が root でないときは、何もしません。PDF の解析（pdf.js）が破られても、運用者の秘密（環境変数・DB・鍵ファイル）と、ほかの利用者の PDF や Chromium に届きにくくなります。Chromium の uid（`SORA_BROWSER_UID` の基準から、ブラウザのプロセスの数ぶん）とは重ならないようにしてください（重なると、standard は警告を出して、PDF の解析を落とさずに従来どおり動かし、strict は PDF の解析を断ります。重なったまま落とすと、解析のあとの片づけが、同じ uid の Chromium まで終わらせるためです）。`SORA_ISOLATION=strict` では、`off` は使えず、root で起動して落とせることを求めます（落とせないと PDF の解析を断り、起動の確認でも止まります） |
+
 **プロキシ**
 
 | 環境変数名 | デフォルト値 | 説明 |

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { safeTruncateMarkdown, estimateTokens } from './enrichment.js';
 import { type PdfChildLimits, type PdfChildOutcome, type PdfKillReason, pdfChildCommand, readChildRssMb, resolvePdfChildEntry, runPdfChild } from './pdf_child.js';
 import { type PdfChildEvent, type PdfExtractParams, extractPdfPages } from './pdf_extract.js';
+import { PDF_CONCURRENCY, withPdfUid } from './pdf_uid.js';
 import { currentCaller } from './security/caller.js';
 import { type QueuePolicy, SimpleSemaphore } from './security/fair_queue.js';
 import { isolationLevel, limits } from './security/limits.js';
@@ -13,8 +14,9 @@ import { type ScrapeResult, DEFAULT_MAX_CHARS, HIGHLIGHT_SOURCE_MAX_CHARS } from
  * PDF の解析（pdf.js）の順番（設計 6。穴 26）。同時に動かすのは 2 件までで、全員で共有する。
  * 待っている tenant を順番に回して公平に渡し、待つ数（利用者ごと・全体）と待ち時間に上限を置く（limits.ts の pdf*）。
  * 解析そのものは、1 件ごとに別プロセス（pdf_child.ts・pdf_child_main.ts）で動かし、時間・メモリ・出力量の上限を超えたら、そのプロセスだけを止める。
+ * 別プロセスは、本体と別の uid に落として動かす（pdf_uid.ts。同時の 2 件が別の uid になるよう、数 PDF_CONCURRENCY はそちらで定める）。
  */
-export const PDF_CONCURRENCY = 2;
+export { PDF_CONCURRENCY };
 
 export function pdfQueuePolicy(): QueuePolicy {
   const current = limits();
@@ -186,7 +188,8 @@ export async function parsePdfToMarkdown(
     } else {
       const childLimits = pdfChildLimits(options.child?.limits);
       warnIfMemoryWatchOff();
-      const outcome = await runPdfChild(uint8, params, childLimits, onEvent, { command, onSpawn: options.child?.onSpawn });
+      // 別の uid に落とすときは、起動用バイナリ経由のコマンドで動かし、終わったら、その uid のプロセスを片づける（pdf_uid.ts）
+      const outcome = await withPdfUid(command, (launch) => runPdfChild(uint8, params, childLimits, onEvent, { ...launch, onSpawn: options.child?.onSpawn }));
       if (outcome.kind === 'error') {
         // pdf.js の例外（壊れた PDF・パスワード付きなど）。このプロセスの中で解析したときと、同じ名前・同じ文で投げ直す
         const error = new Error(outcome.message);

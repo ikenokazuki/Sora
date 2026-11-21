@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  browserUidRange,
   DEFAULT_BROWSER_UID,
   DEFAULT_LAUNCHER,
   browserProxyArgs,
@@ -134,6 +135,26 @@ describe('planBrowserLaunch: tenant ごとのブラウザの番号（slot）は�
     const { plan, warnings } = planBrowserLaunch({ ...base, slot: 1, missingCapabilities: ['CAP_SETUID'] });
     expect(plan.drop).toBeNull();
     expect(warnings.join('\n')).toContain('CAP_SETUID');
+  });
+});
+
+describe('browserUidRange（Chromium が使う uid の範囲。PDF の解析の uid と重ならないかの検査に使う）', () => {
+  test('既定は 65532 から、プロセスの数ぶん（両端を含む）', () => {
+    expect(browserUidRange({}, 4)).toEqual({ first: 65532, last: 65535 });
+    expect(browserUidRange({ SORA_BROWSER_UID: 'auto' }, 1)).toEqual({ first: 65532, last: 65532 });
+  });
+
+  test('SORA_BROWSER_UID の数が基準になる', () => {
+    expect(browserUidRange({ SORA_BROWSER_UID: '10001' }, 3)).toEqual({ first: 10001, last: 10003 });
+  });
+
+  test('off（落とさない）は null。不正な値は、既定と同じ', () => {
+    expect(browserUidRange({ SORA_BROWSER_UID: ' OFF ' }, 4)).toBeNull();
+    expect(browserUidRange({ SORA_BROWSER_UID: 'abc' }, 2)).toEqual({ first: 65532, last: 65533 });
+  });
+
+  test('数が 1 未満でも、少なくとも 1 つ分', () => {
+    expect(browserUidRange({}, 0)).toEqual({ first: 65532, last: 65532 });
   });
 });
 

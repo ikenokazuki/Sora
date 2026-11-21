@@ -45,6 +45,15 @@ function parseUid(raw: string | undefined, warnings: string[]): { uid: number; e
 }
 
 /**
+ * Chromium が使う uid の範囲（SORA_BROWSER_UID の基準から、プロセスの数ぶん。両端を含む）。落とさない（off）なら null。
+ * PDF の解析の別プロセスの uid（pdf_uid.ts）が、これと重ならないかを調べるのに使う。
+ */
+export function browserUidRange(env: Env, processMax: number): { first: number; last: number } | null {
+  const uid = parseUid(envRaw('SORA_BROWSER_UID', env), []);
+  return uid === 'off' ? null : { first: uid.uid, last: uid.uid + Math.max(processMax, 1) - 1 };
+}
+
+/**
  * uid を落とすのに要る capability: プロファイルを渡す chown、Chromium の終了後に、別 uid 所有の 0700 のプロファイルを消す DAC_OVERRIDE、
  * 別 uid の Chromium に信号を送る KILL（無いと、puppeteer の後始末の process.kill が EPERM になり、プロセスが異常終了する）、
  * 起動用バイナリの setgroups・setgid・setuid。Docker の既定にはあるが、--cap-drop=ALL では無い。

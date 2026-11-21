@@ -7,6 +7,7 @@ import { parsePdfToMarkdown, PdfParseLimitError, pdfChildLimits, pdfExtractParam
 import { runAsCaller } from './security/caller.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 import { makeBombPdf, makePdf } from './test_fixtures/pdf.js';
+import { installFakePdfLauncher } from './test_fixtures/pdf_launcher.js';
 
 /**
  * PDF の解析（設計 6。穴 26）。以前は、全ページを一度に（Promise.all）読み、本文の大きさもページ数も上限が無く、同時に何件でも、1 つのスレッドで解析した。
@@ -15,11 +16,15 @@ import { makeBombPdf, makePdf } from './test_fixtures/pdf.js';
 
 const SAVED_ISOLATION = process.env.SORA_ISOLATION;
 const held: Array<() => void> = [];
+/** 別プロセスは、起動用バイナリ経由で別の uid に落として動かす（strict は、落とせないと失敗する）。本番（root のイメージ）と同じ経路を、偽の起動用バイナリで通す */
+let fakeLauncher: ReturnType<typeof installFakePdfLauncher>;
 beforeEach(() => {
   delete process.env.SORA_ISOLATION;
   resetSecurityMetrics();
+  fakeLauncher = installFakePdfLauncher();
 });
 afterEach(() => {
+  fakeLauncher.restore();
   for (const release of held.splice(0)) release();
   if (SAVED_ISOLATION === undefined) delete process.env.SORA_ISOLATION;
   else process.env.SORA_ISOLATION = SAVED_ISOLATION;

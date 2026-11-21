@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { runStrictStartup, STARTUP_PROBE_TENANT, sweepStaleProfileDirs, verifyStrictBrowser, verifyStrictPdf } from './browser_startup.js';
 import { parsePdfToMarkdown, pdfSlots } from './pdf.js';
 import { PDF_PROBE_TEXT, startupProbePdf } from './pdf_probe.js';
+import { PdfDropError } from './pdf_uid.js';
 
 /**
  * strict の起動の確認（設計 2。段階 8）: 前回の実行が異常終了して残った Chromium のプロファイルの掃除と、Chromium の試し起動。
@@ -387,6 +388,18 @@ describe('verifyStrictPdf（PDF の解析を別プロセスで動かせるかの
       expect(check.problem).toContain('spawn bun ENOENT');
       expect(check.problem).toContain('別プロセス');
       expect(check.problem).not.toContain('通りました');
+    }
+  });
+
+  test('別の uid に落とせないときは、落とせないと分かる文で断る（pdf-parse.js と bun の確認を促さない）', async () => {
+    const check = await verifyStrictPdf(async () => {
+      throw new PdfDropError('SORA_ISOLATION=strict では、Sora を root で起動する必要があります（いまは uid 1000）。');
+    });
+    expect(check.status).toBe('failed');
+    if (check.status === 'failed') {
+      expect(check.problem).toContain('別の uid');
+      expect(check.problem).toContain('root で起動する必要があります');
+      expect(check.problem).not.toContain('pdf-parse.js と bun を確かめて');
     }
   });
 

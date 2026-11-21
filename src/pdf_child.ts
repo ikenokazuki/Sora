@@ -60,11 +60,11 @@ const NUM_PAGES_MAX = 2 ** 31 - 1;
 /** 子に渡す環境変数の名前。bun を動かすのに要るものだけ（子は何も取得しないので、プロキシ〔URL に認証情報を含みうる〕・証明書・ロケールなどは要らない） */
 const CHILD_ENV_NAMES = ['PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'TZ'];
 
-/** 子に渡す環境変数。Sora の環境変数から、上の名前だけを取る（許可リスト childEnv を通す） */
-export function pdfChildEnv(source: Record<string, string | undefined> = process.env): Record<string, string> {
+/** 子に渡す環境変数。Sora の環境変数から、上の名前だけを取る（許可リスト childEnv を通す）。extra は足す（起動用バイナリへの伝言など） */
+export function pdfChildEnv(source: Record<string, string | undefined> = process.env, extra: Record<string, string> = {}): Record<string, string> {
   const picked: Record<string, string | undefined> = {};
   for (const name of CHILD_ENV_NAMES) picked[name] = source[name];
-  return childEnv({}, picked);
+  return childEnv(extra, picked);
 }
 
 /** 同梱の pdf-parse.js（本番）を優先し、無ければ TypeScript の入口（開発・テスト）を使う。どちらも無ければ undefined */
