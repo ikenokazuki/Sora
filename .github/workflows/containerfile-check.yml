@@ -19,6 +19,9 @@ on:
       - scripts/fetch-egress-check.ts
       - scripts/auth-check.ts
       - scripts/pdf-isolation-check.ts
+      - scripts/pdf-uid-check.ts
+      - scripts/vps-check.sh
+      - scripts/vps-check.ts
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
@@ -47,6 +50,8 @@ on:
       - src/pdf_child_main.ts
       - src/pdf_extract.ts
       - src/pdf_probe.ts
+      - src/pdf_uid.ts
+      - src/test_fixtures/pdf_launcher.ts
       - src/browser_startup.ts
       - src/test_fixtures/pdf.ts
       - src/db.ts
@@ -100,6 +105,7 @@ jobs:
       # (10) 静的取得（イメージの wreq-js の native）を出口のゲートウェイに通すと、DNS rebinding は断られ、名前はゲートウェイが解決し、ClientHello は変わらないことを確かめる。
       # (11) Bun の fetch と通信する子プロセスの通信を出口のゲートウェイに通すこと、(12) 本物のアプリの認証（MCP・REST）、
       # (13) PDF の解析が、イメージに同梱の別プロセス（pdf-parse.js）で動き、メモリの暴走を、その解析のプロセスだけで止めること（コンテナのメモリを 1GB に絞り、既定と硬化した運用の両方で）を確かめる。
+      # (14) PDF の解析の別プロセスが、別の uid で動き、秘密にも、もう 1 件にも届かないこと、(15) 実機の確認スクリプト（scripts/vps-check.sh）が、推奨の運用の strict のコンテナで通ること。
       # wreq-native-update.yml（上流の新しい rev の試しビルド）も、同じスクリプトで確かめる
       - name: Verify inside the image
         run: bash scripts/verify-image.sh sora-containerfile-check

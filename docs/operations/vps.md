@@ -134,7 +134,43 @@ export KEYS_DIR=/srv/sora/keys                 # 鍵ファイルのディレク�
 - 鍵ファイルを書き換えたときの扱い（壊れた書き換えのあいだは前の鍵のまま、など）と、書き込み権の意味は、README 4.6 にあります。**鍵ファイルとそのディレクトリを書ける人は、管理者の鍵を作れます。** 発行の仕組みと Sora を動かすユーザーだけに絞ってください。
 - 試験: `scripts/keys/keys_scripts.test.ts`（作ったファイルを、Sora 自身の読み込みで読んで確かめます）。
 
-## 6. 日々の運用
+## 6. 起動のあとに確かめる
+
+Sora は、起動の設定を 1 つ間違えても動きます（メモリの上限を付け忘れる・seccomp を外す・ポートをすべてのアドレスに公開する、など）。この手引と [`strict.md`](strict.md) のとおりの状態かを、1 回流して、合否で見るスクリプト（[`scripts/vps-check.sh`](../../scripts/vps-check.sh)）があります。動いているコンテナを**読むだけ**です（`--offline` でなければ、ウォッチを 1 つ作って、消します）。`docker` か `podman` だけが要ります（bun は、ホストに要りません。Sora と同じイメージの bun を、使い捨てのコンテナで動かします）。Sora のコンテナと**同じ Linux のホスト**（bash 4.4 以上）で動かします（リモートの docker〔`DOCKER_HOST`〕には対応しません）。
+
+```bash
+# 確かめる用の鍵を発行します（5 章。管理者の鍵 1 つと、一般の鍵 2 つ。利用者のあいだの分離を確かめるのに、一般の鍵が 2 つ要ります）
+export VPS_CHECK_ADMIN_KEY=$(./issue-key.sh vps-check-ops admin)
+export VPS_CHECK_KEY_A=$(./issue-key.sh vps-check-a)
+export VPS_CHECK_KEY_B=$(./issue-key.sh vps-check-b)
+
+bash scripts/vps-check.sh sora --url https://sora.example.com    # sora は、コンテナの名前
+
+./revoke-key.sh vps-check-ops; ./revoke-key.sh vps-check-a; ./revoke-key.sh vps-check-b    # 終わったら失効します
+```
+
+- 鍵は、**環境変数で渡します**（引数に書くと、プロセスの一覧・シェルの履歴に残ります）。どこにも表示しません。管理者の鍵が無ければ strict の状態を、一般の鍵が無ければ HTTP の確認の多くを、省きます。
+- `--url <公開の URL>`: リバースプロキシの外から、`/health`・`/metrics`（隠れているか）・鍵なしの `/scrape`（401）も確かめます。
+- `--offline`: 外の通信が要る確認（公開のページ・PDF・ウォッチ）を省きます。`--skip-network`: コンテナの中から、メタデータの IP・ホスト（ゲートウェイ）につなげないかの確認を省きます。
+- `RUNTIME=podman`: docker でなく podman を使います（省略すると、docker があれば docker）。
+
+確かめるもの（1 行ずつ `[PASS]`・`[WARN]`・`[FAIL]`・`[SKIP]`）:
+
+| 見出し | 確かめること |
+|---|---|
+| `container.*`・`config.*` | `docker inspect`・`podman inspect` の JSON: 特権・ホストのネットワーク・PID・IPC・メモリと PID の上限・seccomp・AppArmor・no-new-privileges・公開するポート・コンテナのランタイムのソケットのマウント・鍵のディレクトリが読み取り専用か・root で起動・読み取り専用のルート・再起動の設定・環境変数（strict の必須の設定。値は表示しません） |
+| `log.*` | 起動のログ: strict の起動の確認が通った記録・PDF の解析を別の uid に落とした記録・起動のときの警告 |
+| `http.*`・`strict.*` | 鍵なし・誤った鍵・一般の鍵・管理者の鍵の扱い、`/health?detailed=true` の strict の状態（サンドボックス・ブラウザとの接続・出口のゲートウェイ・鍵の表が前のままでないか）、内部の宛先（127.0.0.1・localhost・::1・メタデータ・プライベート IP）の取得を断ること、Chromium がこの環境で起動すること、公開のページ・PDF を読めること、利用者ごとにウォッチが分かれること |
+| `proc.*` | コンテナの中のプロセス（`/proc`）: 本体の seccomp・capability が 5 つだけか・Chromium と PDF の解析が root でなく、権限がなく、`--no-sandbox` でないか |
+| `net.*` | コンテナの中から、メタデータの IP・ホスト（ゲートウェイ）の SSH・HTTP につなげないか（コンテナの外側の制限。[`strict.md` の 5 章](strict.md#5-ネットワークを絞るコンテナの外側で)）。ホストのサービスにつながると `[WARN]` です |
+| `public.*` | `--url` を渡したとき、リバースプロキシの外から |
+
+- **`[FAIL]`** は、手引が必須とすること、または strict が約束することが、そうなっていないものです（1 つでもあれば、終了コード 1）。直します。
+- **`[WARN]`** は、手引の推奨との差です（読み取り専用のルート・`--cap-drop=ALL`・再起動の設定など）。直さなくても動きますが、見直してください。
+- **`[SKIP]`** は、確かめられなかったものです（鍵が無い・`--offline`・Chromium が動いていない、など）。
+- 確かめた環境: rootless Podman 5.7.0（推奨の運用で `[FAIL]` なし。わざと弱くした運用〔メモリの上限なし・seccomp を外す・特権に近い capability・standard〕で `[FAIL]` 15 件・終了コード 1）と、GitHub Actions の Docker（CI の `scripts/verify-image.sh` の 15。推奨の運用の strict のコンテナで `[FAIL]` なし）。インターネットに出ている実際の VPS での通しは、運用者の側で確かめてください（下の 8 章）。
+
+## 7. 日々の運用
 
 - **更新:** `docker pull ghcr.io/ikenokazuki/sora:latest` で取り直して、作り直します。Chromium が入っているので、その修正を取り込むため、定期的に（目安: 週に 1 回）。戻せるよう、動かしていたイメージのタグ（`sha-` と 7 桁）を控えておきます。
 - **見るもの:** `/metrics`（JSON。管理者の鍵を付けて、Sora に直接）の `counters` に、`sora_auth_rejected_missing_total`（鍵なし）・`sora_auth_rejected_invalid_total`（誤った鍵）・`sora_auth_rejected_not_admin_total`・`sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total`・`sora_quota_exceeded_total`（日次の上限で断った）・`sora_precheck_denied_<理由>_total`（内部の宛先への取得を断った）などがあります（起きるまで出ないものもあります。一覧は [`strict.md` の 4 章](strict.md#拒否制限を数えるカウンタ)）。**鍵ファイルを読み直せず、前の鍵で動いている間は、消した鍵がまだ有効です。** `sora_auth_keys_stale` が 1 になるので、アラートを置いてください（`/health?detailed=true` の `isolation.authKeys` にも出ます。[`strict.md` の 4 章](strict.md#見えるもの隔離の状態)）。拒否が急に増えたら、プロキシのログで接続元を探して、プロキシかホストのファイアウォールで止めます。利用者ごとの詳しい状態は、管理者の鍵で `/health?detailed=true` です。
@@ -142,10 +178,11 @@ export KEYS_DIR=/srv/sora/keys                 # 鍵ファイルのディレク�
 - **メモリ:** [`strict.md` の 1 章](strict.md#1-起動に必要なもの)のとおりです。同時に持つブラウザのプロセス（既定 4。`SORA_BROWSER_MAX_PROCESSES`）と、同時に開くページ（`SORA_BROWSER_MAX_CONCURRENCY`）が、メモリを決めます。VPS のメモリに合わせて決めてください。
 - **外向きの制限:** [`strict.md` の 5 章](strict.md#5-ネットワークを絞るコンテナの外側で)です。
 
-## 7. この手引で確かめていないこと
+## 8. この手引で確かめていないこと
 
 - 公開ホスト名での証明書の取得（Let's Encrypt）、HTTP/3。
 - root の Docker での通しの確認（rootless Podman だけです）。
 - nginx の `proxy_read_timeout 300s` で、長い取得が切れないか。
 - プロキシの手前に CDN を置く構成。
 - 鍵の渡し方（登録の画面・メール）は、この手引の外です。
+- `scripts/vps-check.sh` の、インターネットに出ている実際の VPS（root の Docker）での通し。手元の rootless Podman と、CI の Docker で確かめました（6 章）。ホストのファイアウォール・TLS の証明書・CDN の設定そのものは、このスクリプトでは確かめません（コンテナから出られる先と、`--url` の外から見える応答だけを見ます）。
