@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import { createAuthMiddleware, extractAuthToken } from './auth.js';
 import { secondsUntilNextUtcDay } from './errors.js';
+import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 import { removedSettings, withEnv } from './test_fixtures/env.js';
 
 function mockCtx(headers: Record<string, string> = {}) {
@@ -153,6 +154,37 @@ describe('Authorization の Bearer（RFC 7235: scheme は大文字小文字を�
     await withEnv({ SORA_ALLOW_ANONYMOUS: undefined }, async () => {
       expect((await app.request('/p', { headers: { Authorization: 'bearer secret-test-key' } })).status).toBe(200);
       expect((await app.request('/p', { headers: { Authorization: 'bearer wrong-key' } })).status).toBe(401);
+    });
+  });
+});
+
+describe('日次の上限で断った回数を数える（sora_quota_exceeded_total。設計 8）', () => {
+  const app = (key: string) => {
+    const a = new Hono();
+    a.use('*', createAuthMiddleware(key));
+    a.get('/p', (c) => c.json({ ok: true }));
+    return a;
+  };
+
+  test('429 で断った回数だけ増える。通した要求は数えない', async () => {
+    await withEnv({ SORA_AUTH_DAILY_LIMIT: '2' }, async () => {
+      resetSecurityMetrics();
+      const key = `daily-count-${randomUUID()}`;
+      const a = app(key);
+      const call = () => a.request('/p', { headers: { 'X-API-Key': key } });
+      expect([(await call()).status, (await call()).status]).toEqual([200, 200]);
+      expect(getSecurityMetrics().sora_quota_exceeded_total).toBeUndefined();
+      expect([(await call()).status, (await call()).status, (await call()).status]).toEqual([429, 429, 429]);
+      expect(getSecurityMetrics().sora_quota_exceeded_total).toBe(3);
+    });
+  });
+
+  test('上限を決めていなければ、数えない（断らない）', async () => {
+    await withEnv({ SORA_AUTH_DAILY_LIMIT: undefined }, async () => {
+      resetSecurityMetrics();
+      const key = `daily-none-${randomUUID()}`;
+      for (let i = 0; i < 4; i++) expect((await app(key).request('/p', { headers: { 'X-API-Key': key } })).status).toBe(200);
+      expect(getSecurityMetrics().sora_quota_exceeded_total).toBeUndefined();
     });
   });
 });

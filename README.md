@@ -697,6 +697,7 @@ curl --compressed http://localhost:3016/trade/hts/releases/2026HTSRev23 -o 2026H
 
 #### `GET /health?detailed=true` (外部依存関係並行ヘルスチェック & アラート)
 SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎通確認レポートを返します。SQLite 障害で degraded 判定時は `SORA_ALERT_WEBHOOK_URL` が設定されていれば管理者 Webhook へアラート通知を行います。
+`strict` では、管理者の鍵が要り、応答に `isolation`（水準・ブラウザのサンドボックスと接続・tenant ごとのブラウザのプロセスの数・出口のゲートウェイ・鍵の表。鍵ファイルを読み直せず前の鍵で動いているか）が付きます。`standard` は今までどおりで、欄も増えません（[`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。
 ```json
 {
   "status": "ok",
@@ -716,7 +717,7 @@ SQLite, Chromium, Yahoo, 気象庁 (JMA), P2P地震情報, e-Gov への並行疎
 ```
 
 #### `GET /metrics` (運用統計・キャッシュヒット率・リソース使用量)
-`standard` は鍵なしで開きます。`strict` では、管理者の鍵（鍵ファイルの `"admin": true`）が要ります（鍵なしは 401、管理者でない鍵は 403。Prometheus 形式も同じ。読み方は [`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。
+`standard` は鍵なしで開きます。`strict` では、管理者の鍵（鍵ファイルの `"admin": true`）が要ります（鍵なしは 401、管理者でない鍵は 403。Prometheus 形式も同じ。読み方は [`docs/operations/strict.md`](docs/operations/strict.md) の 4 章）。`strict` では、JSON に `isolation`（詳細な health と同じ欄）が、Prometheus 形式に gauge（`sora_isolation_strict`・`sora_browser_sandbox_on`・`sora_auth_keys_stale` など）が付きます。`standard` は、項目も行も増えません。
 ```json
 {
   "status": "ok",
@@ -772,7 +773,21 @@ sora_cache_db_bytes 4096000
 # HELP sora_cache_hits_total Total cache hits
 # TYPE sora_cache_hits_total counter
 sora_cache_hits_total 156
+# HELP sora_cache_hit_rate Cache hit rate
+# TYPE sora_cache_hit_rate gauge
+sora_cache_hit_rate 0.7647
+# HELP sora_active_browser_sessions Active browser sessions count
+# TYPE sora_active_browser_sessions gauge
+sora_active_browser_sessions 2
+# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering
+# TYPE sora_bot_upgrade_total counter
+sora_bot_upgrade_total 12
+# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry
+# TYPE sora_bot_retry_total counter
+sora_bot_retry_total 3
 ```
+
+`sora_bot_upgrade_total` / `sora_bot_retry_total`（JSON では `botDetection`）は、静的取得が SPA / Bot 検知画面と判定されてブラウザ描画へ昇格した回数と、ブラウザ描画後もなお空白と判定されて再試行した回数です。対象サイトの Bot 対策の強さや取得成功率の傾向を把握する運用指標として利用できます。
 
 ##### 検索 / セキュリティカウンタ一覧（`GET /metrics` の `counters` とPrometheus形式の両方に出力します。累積値のみ、ゲージは`verbose`診断参照。主要なもの）
 
@@ -794,21 +809,7 @@ sora_cache_hits_total 156
 | `sora_credential_strip_total` | クロスオリジン除去回数 |
 | `sora_redirect_block_total` | redirect保護による拒否回数 |
 | `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
-# HELP sora_cache_hit_rate Cache hit rate
-# TYPE sora_cache_hit_rate gauge
-sora_cache_hit_rate 0.7647
-# HELP sora_active_browser_sessions Active browser sessions count
-# TYPE sora_active_browser_sessions gauge
-sora_active_browser_sessions 2
-# HELP sora_bot_upgrade_total Static fetch results that triggered SPA/bot detection and were upgraded to browser rendering
-# TYPE sora_bot_upgrade_total counter
-sora_bot_upgrade_total 12
-# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry
-# TYPE sora_bot_retry_total counter
-sora_bot_retry_total 3
-```
-
-`sora_bot_upgrade_total` / `sora_bot_retry_total`（JSON では `botDetection`）は、静的取得が SPA / Bot 検知画面と判定されてブラウザ描画へ昇格した回数と、ブラウザ描画後もなお空白と判定されて再試行した回数です。対象サイトの Bot 対策の強さや取得成功率の傾向を把握する運用指標として利用できます。
+| `sora_quota_exceeded_total` | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて 429 にした回数（認証のミドルウェアの 429 と、一括・crawl の件数で断った分） |
 
 #### `POST /cache/clear` (キャッシュ全削除)
 メモリキャッシュと SQLite 永続キャッシュを全て破棄します。取得内容を強制的に最新化したい場合に利用します。
@@ -2753,7 +2754,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
   - `strict` では、ブラウザごとのプロキシの指定は使えません。
   - **音声のデコード**（`recognize_song`）: 利用者（や、利用者が指した先）の作ったバイト列は、Chromium のメディアのデコーダーに入るので、そのコンテキストとページから、外へ出られないようにしてから、バイト列を渡します（`standard`・`strict` とも。デコードの結果は変わりません）。3 層です。コンテキストの通信を、行き先の無いプロキシに向ける（ブラウザ本体が出す prerender・投機的な取得・WebRTC の TCP・移動の試みの TCP 接続も止まります）。ページの要求は、ページの中で完結するもの（`blob:`・`data:`・`about:`）のほかをすべて断り、ページの移動も断る。さらに、オフラインにする（WebSocket・WebRTC の UDP も止まります）。閉じられなかったときは、デコードしません。`strict` では、呼んだ利用者のプロセスで動きます（デコード専用のプロセスは足しません）。デコーダーそのものが破られたときは、この閉じ方に拘束されないので、破られた後の封じ込めは、利用者ごとの uid（上）と、出口の制御（`SORA_EGRESS_GATEWAY`・運用者のネットワークの制限）が担います。
 - **`strict` の起動の検査**: `strict` は、必要な設定と実行環境がそろっていなければ、**起動しません**。求めるのは、`SORA_AUTH_KEYS_FILE`（名前つきの鍵。4.6）・`SORA_BROWSER_SANDBOX=on`・`SORA_EGRESS_GATEWAY=on`・ブラウザとの接続がパイプであること（`SORA_BROWSER_PIPE=false` は不可。Bun 1.4.4 未満も不可）・root での起動と、uid を落とす capability です。待ち受ける前に、前回の異常終了が残した Chromium のプロファイル（`/tmp/sora-chromium-*`。消せなければ起動しません）を消し、Chromium をサンドボックス有効・別の uid で 1 回起動して確かめます。`/health?detailed=true` と `/metrics` は、管理者の鍵だけが開けます。要件・断られたときの直し方・コンテナの外側でのネットワークの絞り方は、[`docs/operations/strict.md`](docs/operations/strict.md) にあります。`standard` では、何も変わりません。
-- **Chromium 自身のサンドボックス**（`SORA_BROWSER_SANDBOX`）: ユーザー名前空間と seccomp-bpf で、ページを描く renderer を閉じ込めます。ただし、Docker の既定の seccomp は、ユーザー名前空間を作る syscall を止めるので、既定のままでは使えず、`--no-sandbox` に戻ります（起動時に警告が 1 行出ます）。rootless Podman の既定では、そのまま使えます。
+- **Chromium 自身のサンドボックス**（`SORA_BROWSER_SANDBOX`）: ユーザー名前空間と seccomp-bpf で、ページを描く renderer を閉じ込めます。ただし、Docker の既定の seccomp は、ユーザー名前空間を作る syscall を止めるので、既定のままでは使えず、`--no-sandbox` に戻ります（起動時に警告が 1 行出ます）。rootless Podman の既定では、cap を落とさないなら、そのまま使えます（`--cap-drop=ALL` と組むときは、Podman の既定の seccomp では使えません。`deploy/seccomp-sora.json` を渡してください。[`docs/operations/strict.md`](docs/operations/strict.md) の 1 章）。
 
 さらに、外向きの通信（ブラウザ・静的取得・Bun の `fetch` を使う取得（固定の提供元・webhook など）・通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築））を、Sora の中の**出口のゲートウェイ**に通せます（`SORA_EGRESS_GATEWAY=on`。既定は off です）。ページや取得先の応答が、DNS rebinding などで、ループバック・社内のアドレス・クラウドのメタデータの IP へ向かおうとしても、ゲートウェイが名前を 1 回だけ解決し、内部の IP が 1 つでもあれば断り、検査した IP にだけつなぎます。ブラウザ自身の名前解決と HTTP/3 も止めるので、起動の引数の上では、ブラウザがゲートウェイを通らない経路は残りません。Bun の `fetch` は、`globalThis.fetch` を包んで、すべてゲートウェイに通します。Bun は、環境変数 `NO_PROXY` が挙げた宛先には、指定したプロキシも使わず直接つなぐので、ゲートウェイを使うときは、最初の通信のあとに、Sora のプロセスの環境から `NO_PROXY` を外します（運用者の `NO_PROXY` は、ゲートウェイが、上流のプロキシを使わず直接つなぐ宛先として、これまでどおり受け持ちます）。子プロセスには、`HTTP_PROXY`・`HTTPS_PROXY` でゲートウェイを指し、`ALL_PROXY`・`NO_PROXY` は渡しません。ただし、環境変数に従わない子プロセスと、乗っ取られたブラウザ・子プロセスは、起動の引数や環境変数を無視して直接つなげます。それを防ぐのは、上の別 uid・サンドボックスと、コンテナの外向きの通信を絞るネットワークの設定です。ゲートウェイを通しても、ブラウザと静的取得の TLS の ClientHello は変わりません（イメージの中で確かめています）。ゲートウェイを有効にすると、内部の宛先（プライベートな IP・許していないポート）へは、運用者が設定した宛先（`SORA_X_DETAIL_BASE_URL` に指定した、社内の自前の FxEmbed など）も、届かなくなります。届かせたい宛先は、`SORA_EGRESS_ALLOW_HOSTS` に `host:port` で 1 つずつ挙げます（挙げた宛先は、Sora を使う人が指定した URL でも届くので、必要なものだけにしてください。クラウドのメタデータなどは、挙げても通しません）。運用者のプロキシ（`SORA_PROXY_URL` など）があるときは、挙げた宛先もそのプロキシに回ります。内部のサーバーに直接つなぐには、同じ宛先を `NO_PROXY` にも挙げてください。
 

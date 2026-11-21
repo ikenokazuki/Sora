@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { getSecurityMetrics, resetSecurityMetrics } from '../security/metrics.js';
-import { resetApiKeyStoreCache } from '../security/api_keys.js';
+import { loadApiKeyStore, resetApiKeyStoreCache } from '../security/api_keys.js';
 import { resetHealthProbeCache } from '../services/health.js';
 import { withEnv } from '../test_fixtures/env.js';
 import { systemRoutes } from './system.js';
@@ -168,5 +168,80 @@ describe('GET /health?detailed=true（strict。実アプリを通す）', () => 
       expect(res.status).toBe(200);
       expect(await res.json()).toMatchObject({ status: 'ok', service: 'sora' });
     });
+  });
+});
+
+/**
+ * 隔離の状態（設計 8）: strict の管理者にだけ、詳細に isolation を付ける（サンドボックスが off など、守りの弱いところを、
+ * ほかの利用者に見せない）。standard は、応答の項目を増やさない（今までどおり）。
+ */
+describe('GET /health?detailed=true の隔離の状態', () => {
+  type Isolation = {
+    level: string;
+    browser: { sandbox: string; connection: string; processes: { active: number; max: number } };
+    egressGateway: { enabled: boolean; started: boolean };
+    authKeys?: { keys: number; tenants: number; stale: boolean; staleSeconds: number };
+  };
+  const admin = { authorization: `Bearer ${ADMIN}` };
+  const DETAILED_KEYS = ['activeBrowserSessions', 'cachedEntries', 'dependencies', 'service', 'status', 'timestamp', 'uptimeSeconds', 'version'];
+  const PLAIN_KEYS = ['activeMcpSessions', 'cachedEntries', 'chromiumAvailable', 'mcpConnected', 'service', 'status', 'timestamp', 'version', 'yahooMcpAvailable'];
+
+  test('strict の管理者には、isolation（水準・ブラウザ・ゲートウェイ・鍵の表）が付く', async () => {
+    await strict(async () => {
+      const res = await call('/health?detailed=true', admin);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { isolation?: Isolation };
+      const iso = body.isolation;
+      expect(iso?.level).toBe('strict');
+      expect(['on', 'off', 'unknown']).toContain(iso?.browser.sandbox as string);
+      expect(['pipe', 'port']).toContain(iso?.browser.connection as string);
+      expect(iso?.browser.processes.max).toBeGreaterThan(0);
+      expect(typeof iso?.egressGateway.enabled).toBe('boolean');
+      expect(typeof iso?.egressGateway.started).toBe('boolean');
+      expect(iso?.authKeys).toEqual({ keys: 2, tenants: 2, stale: false, staleSeconds: 0 });
+    });
+  });
+
+  test('前の鍵で動いている間は authKeys.stale が true（消した鍵が有効なことを、運用者が見られる）。それだけでは degraded にしない', async () => {
+    await strict(async () => {
+      expect((await call('/health?detailed=true', admin)).status).toBe(200);
+      writeFileSync(keysFile, '{ broken', { mode: 0o600 });
+      loadApiKeyStore(keysFile, Date.now() + 5000); // 1 秒に 1 回の確認を、進めた時刻で起こす（読み直しに失敗して、前の表で動き始める）
+      resetHealthProbeCache();
+      const res = await call('/health?detailed=true', admin);
+      expect(res.status).toBe(200); // 前の表で、管理者の鍵は通る。degraded（503）にすると、オーケストレーターが再起動を繰り返しうる
+      const body = (await res.json()) as { status: string; isolation?: Isolation };
+      expect(body.status).toBe('ok');
+      expect(body.isolation?.authKeys).toMatchObject({ keys: 2, tenants: 2, stale: true });
+    });
+  });
+
+  test('鍵なし・知らない鍵・管理者でない鍵への応答には、隔離の状態を出さない', async () => {
+    await strict(async () => {
+      for (const headers of [{}, { 'x-api-key': 'not-a-key-0123456789' }, { authorization: `Bearer ${ALICE}` }] as Array<Record<string, string>>) {
+        const res = await call('/health?detailed=true', headers);
+        expect([401, 403]).toContain(res.status);
+        expect(await res.text()).not.toContain('isolation');
+      }
+    });
+  });
+
+  test('ふつうの /health（コンテナの死活確認）には、strict でも隔離の状態を出さない（項目も増えない）', async () => {
+    await strict(async () => {
+      const text = await (await call('/health')).text();
+      expect(text).not.toContain('isolation');
+      expect(Object.keys(JSON.parse(text)).sort()).toEqual(PLAIN_KEYS);
+    });
+  });
+
+  test('standard では、詳細にも付かない: 応答の項目は今までどおり（鍵ファイルがあっても）', async () => {
+    for (const vars of [{ SORA_ISOLATION: undefined, SORA_AUTH_KEYS_FILE: undefined }, { SORA_ISOLATION: 'standard', SORA_AUTH_KEYS_FILE: keysFile }]) {
+      await withEnv(vars, async () => {
+        resetHealthProbeCache();
+        const text = await (await call('/health?detailed=true')).text();
+        expect(text).not.toContain('isolation');
+        expect(Object.keys(JSON.parse(text)).sort()).toEqual(DETAILED_KEYS);
+      });
+    }
   });
 });

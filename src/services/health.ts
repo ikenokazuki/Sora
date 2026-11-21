@@ -7,6 +7,7 @@ import { getActiveSessionCount } from '../browser_session.js';
 import { SORA_VERSION } from '../types.js';
 import { errorKind, errorMessage } from '../errors.js';
 import { envUrl } from '../config.js';
+import { type IsolationStatus, isolationStatus } from '../security/isolation_status.js';
 
 export interface DependencyStatus {
   status: 'ok' | 'error' | 'unavailable';
@@ -29,6 +30,8 @@ export interface DetailedHealthReport {
     p2pquake: DependencyStatus;
     egov: DependencyStatus;
   };
+  /** 隔離の状態（水準・ブラウザ・ゲートウェイ・鍵の表）。水準が strict のときだけ（鍵の関所の中）。standard は付けない */
+  isolation?: IsolationStatus;
   timestamp: string;
 }
 
@@ -113,6 +116,8 @@ export async function checkDetailedHealth(options: { now?: number } = {}): Promi
   const [jma, p2pquake, egov] = await probeExternalDependencies(options.now ?? now);
 
   const isDegraded = sqliteStatus.status === 'error';
+  // 状態は、劣化（degraded。503 になり、オーケストレーターが再起動しうる）の判定には使わない。見せるだけ
+  const isolation = isolationStatus();
 
   const report: DetailedHealthReport = {
     status: isDegraded ? 'degraded' : 'ok',
@@ -129,6 +134,7 @@ export async function checkDetailedHealth(options: { now?: number } = {}): Promi
       p2pquake,
       egov,
     },
+    ...(isolation ? { isolation } : {}),
     timestamp: new Date().toISOString(),
   };
 

@@ -397,6 +397,37 @@ export function resetApiKeyStoreCache(): void {
   watched.clear();
 }
 
+/** 鍵の表の、いまの状態（運用者が見る。/health?detailed と /metrics。設計 8） */
+export interface ApiKeyTableStatus {
+  /** 使っている表の、鍵の数と利用者(name)の数 */
+  keys: number;
+  tenants: number;
+  /** いまのファイルを使えず、前の表で動いているか。消した鍵・管理者から外した鍵が、まだ有効な状態 */
+  stale: boolean;
+  /** stale のとき、前の表で動き始めてからの秒数（切り捨て）。stale でなければ 0 */
+  staleSeconds: number;
+}
+
+/**
+ * 鍵の表のいまの状態。ファイルは読み直さず、数えず、ログも出さない（最後の確認の結果を返すだけ。確認は、認証が要る要求のときに、
+ * 1 秒に 1 回まで起きる）。鍵ファイルを指定していない・まだ読んでいない・表が無い（最初の読み込みが誤り）ときは undefined。
+ * now は経過の秒数の計算だけに使う（テスト用。数でなければ、いまの時刻）。
+ */
+export function apiKeyTableStatus(env?: Env, now: number = Date.now()): ApiKeyTableStatus | undefined {
+  const path = envPath('SORA_AUTH_KEYS_FILE', env);
+  const entry = path ? watched.get(path) : undefined;
+  const store = entry?.current.store;
+  if (!entry || !store) return undefined;
+  const since = entry.staleSince;
+  const at = Number.isFinite(now) ? now : Date.now();
+  return {
+    keys: store.size,
+    tenants: store.names().length,
+    stale: since !== undefined,
+    staleSeconds: since === undefined ? 0 : Math.max(0, Math.floor((at - since) / 1000)),
+  };
+}
+
 /**
  * 認証が使う鍵の表。SORA_AUTH_KEYS_FILE が無ければ undefined（従来どおり SORA_API_KEY か、認証なし）。
  * 誤りがあれば例外（読めない鍵ファイルを、匿名にしない）。起動の検査（startup_check.ts）が先に読んで検査するので、

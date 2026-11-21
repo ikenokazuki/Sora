@@ -16,6 +16,7 @@ import { clearTenantCache } from '../cache.js';
 import { dbCacheStats } from '../db.js';
 import { isolationLevel } from '../security/limits.js';
 import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
+import { isolationGaugeLines, isolationStatus } from '../security/isolation_status.js';
 import { getSecurityMetrics } from '../security/metrics.js';
 import { SORA_VERSION, generateOpenApiDocument } from '../types.js';
 import { isModuleActive } from '../mcp/registry.js';
@@ -142,6 +143,8 @@ systemRoutes.get('/metrics', (c) => {
   const botDetection = getBotDetectionMetrics();
   const activeSessions = getActiveSessionCount();
   const uptime = Math.floor(process.uptime());
+  // 隔離の状態は、strict のときだけ（上の関所を通った管理者にだけ見える）。standard は、項目も行も増やさない
+  const isolation = isolationStatus();
 
   if (format === 'prometheus' || accept.includes('text/plain')) {
     const lines = [
@@ -188,6 +191,7 @@ systemRoutes.get('/metrics', (c) => {
       '# HELP sora_bot_retry_total Browser-rendered results still flagged as SPA/bot after first render, triggering a retry',
       '# TYPE sora_bot_retry_total counter',
       `sora_bot_retry_total ${botDetection.retryCount}`,
+      ...(isolation ? isolationGaugeLines(isolation) : []),
     ];
     for (const [name, value] of Object.entries(getSecurityMetrics())) {
       lines.push(`# TYPE ${name} counter`, `${name} ${value}`);
@@ -206,6 +210,7 @@ systemRoutes.get('/metrics', (c) => {
     botDetection,
     activeSessions,
     counters: getSecurityMetrics(),
+    ...(isolation ? { isolation } : {}),
     chromium: {
       available: !!CHROME_EXECUTABLE_PATH,
       sharedConnected: isSharedBrowserConnected(),

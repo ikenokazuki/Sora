@@ -27,7 +27,7 @@
 - **Sora を root で起動します**（公開イメージの既定です。Chromium だけが別の uid に落ちます）。`user:`・`runAsUser`・`USER` で root 以外を指定すると、uid を落とせず、起動しません。
 - **capability** `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID`（Docker の既定にあります。`--cap-drop=ALL` の運用は、この 5 つを足します）。
 - **uid 65532〜65535**（`SORA_BROWSER_UID` の基準 + 0〜3）は、Sora の Chromium 専用にします。利用者の入れ替えのときと、起動の確認のあとに、その uid で動いているプロセスを、Sora が終わらせます。ホストで直接動かすときは、別の用途に使わないでください（コンテナなら問題になりません）。
-- **ユーザー名前空間を許す seccomp。** Docker の既定は止めているので、[`deploy/seccomp-sora.json`](../../deploy/seccomp-sora.json) を渡します（README 4.5）。rootless Podman の既定は、渡さなくても動きました。AppArmor は、Docker の既定のままにします。
+- **ユーザー名前空間を許す seccomp。** Docker の既定は止めているので、[`deploy/seccomp-sora.json`](../../deploy/seccomp-sora.json) を渡します（README 4.5）。rootless Podman の既定は、cap を落とさないなら、渡さなくても動きました。**`--cap-drop=ALL` と組むときは、Podman の既定の seccomp ではサンドボックスを有効にできず、`strict` は起動を断ります**（Podman 5.7.0 で確かめました。`no-new-privileges` の有無は関係ありません。同じファイルを渡すと通ります）。AppArmor は、Docker の既定のままにします。
 - 起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージに入っています）と、Chromium。
 - **stdio では使えません。** `strict` は共有のサービス（HTTP）用で、stdio には、利用者を分ける鍵がありません。
 
@@ -127,6 +127,71 @@ scrape_configs:
 
 Prometheus 3.7.2 で、この形のターゲットが `up` になり、`sora_uptime_seconds` などが取り込まれること、`authorization` の無い設定は `server returned HTTP status 401 Unauthorized` で `down` になることを確かめました。
 
+### 見えるもの（隔離の状態）
+
+管理者の鍵で読む `/health?detailed=true` と `/metrics`（JSON）には、`isolation` の欄が付きます。`standard` には付かず、応答の項目は今までどおりです。ふつうの `/health`（死活確認）にも付きません。守りの弱いところ（サンドボックスが `off` など）を、ほかの利用者に見せないためです。
+
+```json
+"isolation": {
+  "level": "strict",
+  "browser": { "sandbox": "on", "connection": "pipe", "processes": { "active": 2, "max": 4 } },
+  "egressGateway": { "enabled": true, "started": true },
+  "authKeys": { "keys": 12, "tenants": 11, "stale": false, "staleSeconds": 0 }
+}
+```
+
+Prometheus 形式では、同じ内容が gauge で付きます（真偽は 1・0 です）。
+
+| 欄 | 意味 | gauge |
+|---|---|---|
+| `level` | 水準（`strict` のときだけ出ます） | `sora_isolation_strict`（常に 1） |
+| `browser.sandbox` | 直近に起動した Chromium のサンドボックス（`on`・`off`・`unknown`）。起動する前は `unknown` です。`strict` は、起動の試しで 1 回起動するので、待ち受けを始めるときには決まっています（Chromium が無い環境は、試しを省くので `unknown` のままです） | `sora_browser_sandbox_on`（`on` なら 1。`off`・`unknown` は 0） |
+| `browser.connection` | Chromium との接続。`pipe` は、TCP のデバッグポートを開きません。`port` は、127.0.0.1 で待ち受けます（`strict` の起動の検査は、`port` を断ります） | `sora_browser_cdp_pipe`（`pipe` なら 1） |
+| `browser.processes` | tenant ごとの Chromium のうち、いま番号（uid）を持っているプロセスの数（`active`）と、同時に持てる上限（`max`。`SORA_BROWSER_MAX_PROCESSES`） | `sora_browser_tenant_processes`・`sora_browser_tenant_processes_max` |
+| `egressGateway` | 出口のゲートウェイを使う設定か（`enabled`）と、始めている（待ち受けている）か（`started`） | `sora_egress_gateway_enabled`・`sora_egress_gateway_started` |
+| `authKeys` | 使っている鍵の表の、鍵の数と利用者の数。**`stale` は、鍵ファイルを読み直せず、前の表で動いていること**です（その間は、消した鍵・管理者から外した鍵が、まだ有効です）。`staleSeconds` は、前の表で動き始めてからの秒数です | `sora_auth_keys_stale`（動いていれば 1）・`sora_auth_keys_stale_seconds` |
+
+- `authKeys` は、鍵ファイルを使っていて、鍵の表があるときだけ出ます。鍵ファイルの確認は、認証が要る要求が来たときに、1 秒に 1 回までです（`/metrics` や `/health?detailed=true` を読む要求も、その 1 つです）。
+- `stale` のときも、`/health?detailed=true` は degraded（503）にしません。前の表で認証は動いているので、オーケストレーターが再起動を繰り返さないようにするためです。見つけるには、`sora_auth_keys_stale` にアラートを置きます。
+- アラートの書き方の例です（`promtool check rules` で、書き方を確かめました）。
+
+```yaml
+groups:
+  - name: sora
+    rules:
+      - alert: SoraKeyFileStale
+        expr: sora_auth_keys_stale == 1
+        for: 5m
+        annotations:
+          summary: 鍵ファイルを読み直せず、前の鍵で動いています（消した鍵がまだ有効です）
+      - alert: SoraSandboxNotOn
+        expr: sora_browser_sandbox_on == 0
+        for: 10m
+      - alert: SoraEgressGatewayNotStarted
+        expr: sora_egress_gateway_started == 0
+        for: 5m
+      - alert: SoraBrowserProcessesFull
+        expr: sora_browser_tenant_processes >= sora_browser_tenant_processes_max
+        for: 10m
+```
+
+### 拒否・制限を数えるカウンタ
+
+`/metrics` の `counters`（Prometheus 形式では counter）に出ます。**起きるまで出ないものがあります**（最初の 1 回で、0 から 1 になります）。急に増えたものを見ます。
+
+| 起きたこと | カウンタ |
+|---|---|
+| 鍵なし・誤った鍵・管理者でない鍵（401・403） | `sora_auth_rejected_missing_total`・`sora_auth_rejected_invalid_total`・`sora_auth_rejected_not_admin_total` |
+| 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて断った（429。一括・crawl の件数で断った分も） | `sora_quota_exceeded_total` |
+| ブラウザの枠・共有の外部資源の順番が混んでいて断った（429） | `sora_<資源>_busy_<理由>_total`（資源は `browser`・`geocoding`・`yahoo`・`country_intel`・`address`・`pdf`。理由は `tenant_queue_full`・`queue_full`・`queue_timeout`・`tenant_budget`。ブラウザは、ほかに `process_limit`・`session_limit`） |
+| ウォッチの登録数・確認の間隔の上限 | `sora_watch_limit_exceeded_total`・`sora_watch_too_frequent_total` |
+| MCP セッションの上限 | `sora_mcp_session_rejected_total`（新しい接続を断った）・`sora_mcp_session_evicted_total`（古い接続を閉じて空けた） |
+| ブラウザのページから来た REST 要求を、Host・Origin で断った | `sora_rest_origin_rejected_total` |
+| 出口のゲートウェイが断った（理由別） | `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`） |
+| 鍵ファイルの読み直し | `sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total`・`sora_auth_keys_missing_total` |
+
+出口のゲートウェイが数えるのは、**ゲートウェイに届いた接続**だけです。その前の、URL の事前検査（プライベートな IP・クラウドのメタデータの名前）で断られた分は、数えていません（6 章）。
+
 コンテナの死活確認に使う `GET /health`（`detailed` なし）は、`strict` でも鍵なしで開きます（`cachedEntries`・`activeMcpSessions` の、全利用者の合計の数字は見えます）。
 
 ## 5. ネットワークを絞る（コンテナの外側で）
@@ -141,6 +206,8 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 - `detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は、コンテナの死活確認のために鍵なしで開き、全利用者の合計の数字が見えます。
 - 音声のデコーダーが破られたときは、同じ利用者のブラウザセッションの Cookie には届きえます（ほかの利用者のプロセスには、uid が違うので届きません）。
 - PDF の解析は、1 件ごとの別プロセスで動き、メモリ・時間・出力量の上限を超えたものだけが止まります（README 4.6）。ただし、**この別プロセスは Sora 本体と同じ uid（イメージは root）で動き、Chromium のようには分けていません。** pdf.js 自体の脆弱性を突かれると、root として、Sora の環境変数・DB・鍵ファイルに届き、**ほかの利用者のブラウザのプロファイル（別の uid の 0700）と Cookie にも届きます。同時に動く 2 件の別プロセスは同じ uid なので、相手に渡している PDF〔の中身〕も覗けます。** strict の利用者のあいだの隔離を、pdf.js の脆弱性 1 つで破りうる、ということです（同じプロセスで動かしていた以前と同じで、悪くはなっていません）。外向きの通信も、出口のゲートウェイを通りません（5 章のコンテナの外側の制限が要ります）。
+
+- 出口のゲートウェイが数える拒否（`sora_egress_denied_*`）は、ゲートウェイに届いた接続だけです。その前の、URL の事前検査（プライベートな IP・クラウドのメタデータの名前を、取得の前に断る検査）で断られた分は、数えていません。内部への取得の試みが続いているかは、拒否の応答を受けた利用者の側にしか見えません。
 
 これらが済むまでは、公開する範囲を、運用者が把握できる利用者に限ってください。
 
