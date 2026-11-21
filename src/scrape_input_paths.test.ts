@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from 'bun:test';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { resolveChromiumPath } from './browser_engine.js';
 import { ResourceBusyError } from './errors.js';
 import { pdfSlots } from './pdf.js';
@@ -8,6 +8,7 @@ import * as scraper from './scraper.js';
 import { scrapeBatchUrls, scrapeUrl } from './scraper.js';
 import { scrapeRoutes } from './routes/scrape.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
+import { installFakePdfLauncher } from './test_fixtures/pdf_launcher.js';
 
 // 手元のサーバーで、scrape（url・urls）の入力が取得の経路ごとにどう効くかを確かめる（外へは出ない）
 const filler = '静的に取れる、十分に長い本文の文です。'.repeat(20);
@@ -109,7 +110,13 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
 
   describe('PDF の解析の順番（scrape が、呼んだ利用者の分で数える）', () => {
     const SAVED = process.env.SORA_ISOLATION;
+    /** strict の PDF の解析は、別の uid に落とせないと失敗する。本番（root のイメージ）と同じ経路を、偽の起動用バイナリで通す */
+    let fakeLauncher: ReturnType<typeof installFakePdfLauncher>;
+    beforeEach(() => {
+      fakeLauncher = installFakePdfLauncher();
+    });
     afterEach(() => {
+      fakeLauncher.restore();
       if (SAVED === undefined) delete process.env.SORA_ISOLATION;
       else process.env.SORA_ISOLATION = SAVED;
     });

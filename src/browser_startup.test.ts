@@ -474,6 +474,7 @@ describe('runStrictStartup の PDF の確認', () => {
     expect(order).toEqual(['pdf', 'browser']);
     expect(exits).toEqual([]);
     expect(lines.filter((line) => line.includes('PDF') && line.includes('別プロセス'))).toHaveLength(1);
+    expect(lines.filter((line) => line.includes('PDF') && line.includes('別の uid'))).toHaveLength(1);
   });
 
   test('PDF の確認に失敗したら、理由を出して exit(1)。ブラウザの試し起動はしない。通ったと知らせない', async () => {

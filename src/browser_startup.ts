@@ -223,7 +223,7 @@ export async function runStrictStartup(
     exit(1);
     return;
   }
-  stderr(`${PREFIX} PDF の解析を、別プロセスで動かせることを確かめました`);
+  stderr(`${PREFIX} PDF の解析を、別の uid に落とした別プロセスで動かせることを確かめました`);
 
   const check = await (deps.verify ?? (() => verifyStrictBrowser()))();
   if (check.status === 'failed') {
