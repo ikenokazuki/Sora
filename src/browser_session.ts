@@ -6,7 +6,6 @@ import {
   safeTruncateMarkdown,
   estimateTokens,
   DEFAULT_MAX_CHARS,
-  isBlockedHostname,
   validateHostIpDns,
   setupPageSecurity,
   throttleDomain,
@@ -23,6 +22,7 @@ import { envBool } from './config.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
 import { isolationLevel, type Limits, limits } from './security/limits.js';
 import { browserResolvesLocally } from './net/egress.js';
+import { deniesHost } from './net/precheck.js';
 import { DEFAULT_SESSION_TENANT, SessionRegistry } from './browser_session_registry.js';
 
 const EVALUATE_FORBIDDEN = 'Forbidden: Arbitrary JavaScript execution via evaluate is disabled by security policy (set SORA_BROWSER_ALLOW_EVALUATE=true to enable)';
@@ -719,7 +719,7 @@ export async function handleBrowserSessionAction(
     const deadline = Date.now() + lim.browserActionTotalMs;
     // 初期 URL が指定されている場合、ページ遷移を実行
     if (options.url) {
-      if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && isBlockedHostname(new URL(options.url).hostname)) {
+      if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && deniesHost(new URL(options.url).hostname)) {
         throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
       }
       const currentUrl = page.url();

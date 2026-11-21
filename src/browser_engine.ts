@@ -22,7 +22,7 @@ import { childEnv } from './security/child_env.js';
 import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { limits, strictBrowserProcessMax } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
-import { isBlockedHostname, isPrivateIp } from './net/ip_policy.js';
+import { countPrecheckDenied, deniesHost } from './net/precheck.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
 
@@ -608,7 +608,7 @@ export async function validateHostIpDns(hostname: string, options: { failClosed?
   if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) return [];
 
   const cleanHost = hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
-  if (isBlockedHostname(cleanHost) || isPrivateIp(cleanHost)) {
+  if (deniesHost(cleanHost)) {
     throw new Error(`プライベートネットワークまたは安全でないホストへのアクセスは遮断されています: ${hostname}`);
   }
 
@@ -620,11 +620,14 @@ export async function validateHostIpDns(hostname: string, options: { failClosed?
 
   const addresses = await dnsPromises.lookup(cleanHost, { all: true }).catch(() => []);
   if (addresses.length === 0) {
-    if (options.failClosed) throw new Error(`名前を解決できないため、宛先の IP を確かめられず、遮断されました: ${hostname}`);
+    if (options.failClosed) {
+      countPrecheckDenied('dns');
+      throw new Error(`名前を解決できないため、宛先の IP を確かめられず、遮断されました: ${hostname}`);
+    }
     return [];
   }
   for (const addr of addresses) {
-    if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
+    if (deniesHost(addr.address)) {
       throw new Error(`DNS Rebinding 攻撃（プライベート IP への解決）が検知されたため遮断されました: ${hostname} -> ${addr.address}`);
     }
   }
@@ -690,7 +693,7 @@ export async function setupPageSecurity(
           return req.abort('blockedbyclient');
         }
         const host = reqUrl.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
-        if (isBlockedHostname(host) || isPrivateIp(host)) {
+        if (deniesHost(host)) {
           return req.abort('accessdenied');
         }
 
@@ -704,11 +707,14 @@ export async function setupPageSecurity(
         const addresses = await dnsPromises.lookup(host, { all: true }).catch(() => []);
         if (addresses.length === 0) {
           // 名前を解決できない（失敗か、答えが空）。ブラウザが、手元で名前を引いて直接つなぐときは、検査を抜けさせない
-          if (browserResolvesLocally(host)) return req.abort('namenotresolved');
+          if (browserResolvesLocally(host)) {
+            countPrecheckDenied('dns');
+            return req.abort('namenotresolved');
+          }
           return proceed();
         }
         for (const addr of addresses) {
-          if (isBlockedHostname(addr.address) || isPrivateIp(addr.address)) {
+          if (deniesHost(addr.address)) {
             return req.abort('accessdenied');
           }
         }

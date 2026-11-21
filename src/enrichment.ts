@@ -1,5 +1,5 @@
 import { promises as dnsPromises } from 'dns';
-import { isBlockedHostname, isPrivateIp } from './browser_engine.js';
+import { countPrecheckDenied, deniesHost } from './net/precheck.js';
 import { envBool } from './config.js';
 import { scorePassage, extractTermsWithBigrams, dinkelbachOptimalWindow, type HeadingBlock } from './extractor/hierarchical_bm25.js';
 import { parseMarkdownSections, tokenizeAndSelectTerms } from './extractor/markdown_sections.js';
@@ -219,13 +219,17 @@ async function isSafeWebhookUrl(urlStr: string): Promise<boolean> {
     const u = new URL(urlStr);
     if (!['http:', 'https:'].includes(u.protocol)) return false;
     const h = u.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
-    if (isBlockedHostname(h) || isPrivateIp(h)) {
+    if (deniesHost(h)) {
       return false;
     }
-    const addresses = await dnsPromises.lookup(h, { all: true });
+    const addresses = await dnsPromises.lookup(h, { all: true }).catch(() => null);
+    if (!addresses) {
+      countPrecheckDenied('dns'); // 名前を解決できないときは、断る（宛先を確かめられない）
+      return false;
+    }
     for (const addr of addresses) {
       const a = addr.address.toLowerCase().trim().replace(/^\[|\]$/g, '');
-      if (isBlockedHostname(a) || isPrivateIp(a)) {
+      if (deniesHost(a)) {
         return false;
       }
     }
