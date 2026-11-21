@@ -274,6 +274,12 @@ describe('splitBundle（標準入力: inspect の JSON と、そのあとに続�
     expect(bundle.logs).toBe('log line');
   });
 
+  test('inspect が空（コンテナの設定を読めなかった）でも、ログは返す。inspect は undefined', () => {
+    const bundle = splitBundle(`\n${LOGS_MARKER}\nlog line`);
+    expect(bundle.inspect).toBeUndefined();
+    expect(bundle.logs).toBe('log line');
+  });
+
   test('ログの中に、マーカーと同じ行があっても、最初のマーカーで分ける', () => {
     const bundle = splitBundle(`${json}\n${LOGS_MARKER}\na\n${LOGS_MARKER}\nb`);
     expect(bundle.logs).toBe(`a\n${LOGS_MARKER}\nb`);
