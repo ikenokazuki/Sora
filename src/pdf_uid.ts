@@ -123,19 +123,28 @@ export function planPdfDrop(options: PdfDropPlanInput): { drop: PdfDrop | null; 
   return { drop: { baseUid: uid.uid, launcher }, warnings };
 }
 
-/** 起動用バイナリ経由の起動コマンドと環境変数。本物の実行ファイル（command の先頭）は、環境変数 SORA_LAUNCH_EXEC で伝える（起動用バイナリが、消してから exec する） */
+/**
+ * 落とした子の作業ディレクトリと HOME。bun は、起動のとき、作業ディレクトリの node_modules/.cache と $HOME/.bun の下に、キャッシュの置き場を作ろうとする
+ * （strace で確かめた）。落とした uid は、次の解析（別の利用者）にも使われるので、書ける場所にあると、前の解析が置いたものを、次の解析が読む経路になりうる。
+ * 運用者の設定（HOME・Sora の作業ディレクトリ）に頼らず、root の所有の / と、存在しない HOME にする（どちらも、落とした uid は書けない）。
+ */
+const DROPPED_CWD = '/';
+const DROPPED_HOME = '/nonexistent';
+
+/** 起動用バイナリ経由の起動コマンド・環境変数・作業ディレクトリ。本物の実行ファイル（command の先頭）は、環境変数 SORA_LAUNCH_EXEC で伝える（起動用バイナリが、消してから exec する） */
 export function droppedChild(
   command: readonly string[],
   launcher: string,
   uid: number,
   gid: number,
   source: Record<string, string | undefined> = process.env,
-): { command: string[]; env: Record<string, string> } {
+): { command: string[]; env: Record<string, string>; cwd: string } {
   const [exec, ...rest] = command;
   if (exec === undefined) throw new Error('起動するコマンドが空です');
   return {
     command: [launcher, ...rest],
-    env: pdfChildEnv(source, { SORA_LAUNCH_EXEC: exec, SORA_LAUNCH_UID: String(uid), SORA_LAUNCH_GID: String(gid) }),
+    env: pdfChildEnv(source, { SORA_LAUNCH_EXEC: exec, SORA_LAUNCH_UID: String(uid), SORA_LAUNCH_GID: String(gid), HOME: DROPPED_HOME }),
+    cwd: DROPPED_CWD,
   };
 }
 
@@ -246,12 +255,12 @@ export function resetPdfDropWarnings(): void {
 
 /**
  * 別プロセスを起動する側（run）に、起動コマンドと環境変数を渡して動かす。落とすときは、uid を 1 つ借りて、起動用バイナリ経由のコマンドを渡し、
- * 終わったら（run が失敗しても）、その uid のプロセスを片づけて返す。落とさないときは、コマンドをそのまま渡す（環境変数は指定しない）。
+ * 終わったら（run が失敗しても）、その uid のプロセスを片づけて返す。落とさないときは、コマンドをそのまま渡す（環境変数・作業ディレクトリは指定しない）。
  * strict で落とせないなら、run を呼ばずに失敗する（root のまま動かさない）。
  */
 export async function withPdfUid<T>(
   command: readonly string[],
-  run: (launch: { command: string[]; env?: Record<string, string> }) => Promise<T>,
+  run: (launch: { command: string[]; env?: Record<string, string>; cwd?: string }) => Promise<T>,
   /** 設定を読む環境（テスト用。省略すると、プロセスの環境） */
   env: Env = process.env,
 ): Promise<T> {

@@ -43,6 +43,8 @@ export interface RunPdfChildOptions {
   command: string[];
   /** 子に渡す環境変数。既定は PATH・HOME・TMPDIR・LD_LIBRARY_PATH・TZ だけ（pdfChildEnv） */
   env?: Record<string, string>;
+  /** 子の作業ディレクトリ。省略すると、親と同じ */
+  cwd?: string;
   /** 子を起動した直後に、pid を知らせる（テスト用） */
   onSpawn?: (pid: number) => void;
   /** 子の RSS（MB）を読む。読めなければ undefined。既定は /proc/<pid>/status（テスト用に替えられる） */
@@ -91,7 +93,7 @@ export function readChildRssMb(pid: number): number | undefined {
   }
 }
 
-const spawnChild = (command: string[], bytes: Uint8Array, env: Record<string, string>) => Bun.spawn(command, { stdin: bytes, stdout: 'pipe', stderr: 'pipe', env });
+const spawnChild = (command: string[], bytes: Uint8Array, env: Record<string, string>, cwd?: string) => Bun.spawn(command, { stdin: bytes, stdout: 'pipe', stderr: 'pipe', env, ...(cwd === undefined ? {} : { cwd }) });
 
 /** 動いている子。親が終わるとき（SIGTERM などで process.exit したとき）に、子を残さない */
 type Killable = Pick<ReturnType<typeof spawnChild>, 'kill'>;
@@ -170,7 +172,7 @@ export async function runPdfChild(
 ): Promise<PdfChildOutcome> {
   let proc: ReturnType<typeof spawnChild>;
   try {
-    proc = spawnChild(options.command, bytes, options.env ?? pdfChildEnv());
+    proc = spawnChild(options.command, bytes, options.env ?? pdfChildEnv(), options.cwd);
   } catch (error) {
     return { kind: 'killed', reason: 'crashed', detail: `起動できませんでした（${error instanceof Error ? error.message : String(error)}）`, stderrTail: '' };
   }

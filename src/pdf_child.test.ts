@@ -45,10 +45,21 @@ async function run(command: string[], limits: Partial<PdfChildLimits> = {}, byte
   return { outcome, events, pid };
 }
 
+/** 残っている子の状態（/proc/<pid>/status の State・PPid）。落ちたときの手がかり（全体試験で 1 度だけ落ちたが、再現しない） */
+function processState(pid: number): string {
+  try {
+    const status = readFileSync(`/proc/${pid}/status`, 'utf8');
+    return `State=${/^State:\s*(.*)$/m.exec(status)?.[1] ?? '?'} PPid=${/^PPid:\s*(.*)$/m.exec(status)?.[1] ?? '?'}`;
+  } catch {
+    return '/proc/<pid>/status を読めない';
+  }
+}
+
 /** 後始末の確認用: 子が止まったあと、少し待っても残っていない */
 async function expectGone(pid: number): Promise<void> {
   for (let i = 0; i < 50 && alive(pid); i++) await Bun.sleep(20);
-  expect(alive(pid)).toBe(false);
+  const remains = alive(pid);
+  expect(remains, remains ? `pid ${pid} が、1 秒待っても残っている（${processState(pid)}）` : undefined).toBe(false);
 }
 
 const secretNames: string[] = [];
@@ -436,6 +447,20 @@ describe('子が勝手に終わる・終わらない', () => {
   test('起動できないコマンドは、起動の失敗として返す（例外にしない）', async () => {
     const { outcome } = await run(['/nonexistent/definitely-not-a-binary']);
     expect(outcome).toMatchObject({ kind: 'killed', reason: 'crashed' });
+  });
+});
+
+describe('子の作業ディレクトリ', () => {
+  const cwdOf = async (cwd?: string): Promise<string> => {
+    const body = `${line({ t: 'open', numPages: 1, info: {} })}console.log(JSON.stringify({ t: 'page', n: 1, text: process.cwd() }));${line({ t: 'done', timeBudgetHit: false })}`;
+    const events: PdfChildEvent[] = [];
+    await runPdfChild(BYTES, PARAMS, LIMITS, (event) => events.push(event), { command: script(body), ...(cwd === undefined ? {} : { cwd }) });
+    return (events[1] as Extract<PdfChildEvent, { t: 'page' }>).text;
+  };
+
+  test('cwd を指定すると、子はそこで動く。指定しなければ、親の作業ディレクトリのまま', async () => {
+    expect(await cwdOf('/')).toBe('/');
+    expect(await cwdOf()).toBe(process.cwd());
   });
 });
 

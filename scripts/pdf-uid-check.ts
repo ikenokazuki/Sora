@@ -70,6 +70,11 @@ function probeScript(options: { parentPid: number; waitForPeer: boolean; stray: 
       signalParent: attempt(() => process.kill(${options.parentPid}, 0)),
       database: attempt(() => fs.readFileSync(${JSON.stringify(dbPath)})),
       rootDirWrite: attempt(() => fs.writeFileSync('/app/should-not-exist', 'x')),
+      cwd: process.cwd(),
+      home: process.env.HOME ?? '',
+      // bun が起動のときに作ろうとするキャッシュの置き場（作業ディレクトリの node_modules/.cache と、$HOME/.bun）。書けると、次の解析（同じ uid）に読まれうる
+      cwdCache: attempt(() => fs.mkdirSync('node_modules/.cache', { recursive: true })),
+      homeCache: attempt(() => fs.mkdirSync((process.env.HOME ?? '/') + '/.bun/install/cache', { recursive: true })),
       peer: null,
     };
     ${
@@ -115,6 +120,10 @@ type Observation = {
   signalParent: string;
   database: string;
   rootDirWrite: string;
+  cwd: string;
+  home: string;
+  cwdCache: string;
+  homeCache: string;
   peer: { signal: string; mem: string; environ: string; cwd: string } | null;
 };
 
@@ -182,6 +191,10 @@ if (canDrop) {
     check(o.signalParent === 'EPERM', `${who}: 本体にシグナルを送れる（${o.signalParent}）`);
     check(o.database === 'EACCES', `${who}: 運用者の DB（0600）を読める（${o.database}）`);
     check(o.rootDirWrite !== 'ok', `${who}: root の所有の /app に書ける`);
+    check(o.cwd === '/', `${who}: 作業ディレクトリが / でない（${o.cwd}）`);
+    check(o.home === '/nonexistent', `${who}: HOME が /nonexistent でない（${o.home}）`);
+    check(o.cwdCache !== 'ok', `${who}: 作業ディレクトリに node_modules/.cache を作れる（次の解析に読まれうる）`);
+    check(o.homeCache !== 'ok', `${who}: HOME の下に .bun のキャッシュを作れる（次の解析に読まれうる）`);
     check(o.peer !== null, `${who}: もう 1 件の解析のプロセスが見えなかった（同時に動いていない）`);
     if (o.peer) {
       check(o.peer.signal === 'EPERM', `${who}: もう 1 件の解析のプロセスにシグナルを送れる（${o.peer.signal}）`);

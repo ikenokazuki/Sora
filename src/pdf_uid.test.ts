@@ -171,6 +171,13 @@ describe('droppedChild（起動用バイナリ経由の起動コマンド）', (
     expect(JSON.stringify(env)).not.toContain('secret');
   });
 
+  test('作業ディレクトリは / で、HOME は無い場所（/nonexistent）。落とした uid は、次の解析（別の利用者）にも使われるので、運用者の設定に頼らず、書ける場所を持たせない', () => {
+    const launch = droppedChild(['/usr/local/bin/bun', 'x'], '/l', 65530, 65530, { ...source, HOME: '/tmp/writable-home' });
+    expect(launch.cwd).toBe('/');
+    expect(launch.env.HOME).toBe('/nonexistent');
+    expect(launch.env.HOME).not.toBe('/tmp/writable-home');
+  });
+
   test('元のコマンドの配列は書き換えない', () => {
     const command = ['/usr/local/bin/bun', 'x'];
     droppedChild(command, '/l', 65530, 65530, source);
@@ -361,6 +368,7 @@ describe('withPdfUid（計画 → uid を借りる → 起動 → 返す）', ()
     const seen = await withPdfUid(command, async (launch) => launch);
     expect(seen.command).toEqual([DEFAULT_LAUNCHER, '--no-env-file', '/app/pdf-parse.js', '--params', '{}']);
     expect(seen.env).toMatchObject({ SORA_LAUNCH_EXEC: '/usr/local/bin/bun', SORA_LAUNCH_UID: '65530', SORA_LAUNCH_GID: '65530' });
+    expect(seen.cwd).toBe('/');
     expect(reaped).toEqual([65530]);
   });
 
@@ -375,6 +383,7 @@ describe('withPdfUid（計画 → uid を借りる → 起動 → 返す）', ()
     const seen = await withPdfUid(command, async (launch) => launch);
     expect(seen.command).toEqual(command);
     expect(seen.env).toBeUndefined();
+    expect(seen.cwd).toBeUndefined();
     expect(reaped).toEqual([]);
   });
 
@@ -473,6 +482,14 @@ describe('parsePdfToMarkdown（起動用バイナリ経由で、本物の別プ�
     expect(result.metadata).toMatchObject({ totalPages: 2, pagesRead: 2 });
     expect(fake.launches()).toEqual([`uid=65530 gid=65530 exec=${process.execPath}`]);
     expect(fake.reaped).toEqual([65530]);
+  });
+
+  test('子は、作業ディレクトリ / と、書けない HOME（/nonexistent）で動く（運用者の HOME・作業ディレクトリに頼らない）', async () => {
+    const script = `process.stdout.write(JSON.stringify({ t: 'open', numPages: 1, info: {} }) + '\\n' + JSON.stringify({ t: 'page', n: 1, text: JSON.stringify({ cwd: process.cwd(), home: process.env.HOME }) }) + '\\n' + JSON.stringify({ t: 'done', timeBudgetHit: false }) + '\\n');`;
+    const result = await withEnv({ HOME: '/tmp/some-writable-home' }, () =>
+      parsePdfToMarkdown(makePdf([['x']]), 'https://x.example/a.pdf', 30_000, { child: { command: [process.execPath, '--no-env-file', '-e', script] } }),
+    );
+    expect(JSON.parse(result.content)).toEqual({ cwd: '/', home: '/nonexistent' });
   });
 
   test('2 件続けて読むと、返したあとの uid をまた使う', async () => {
