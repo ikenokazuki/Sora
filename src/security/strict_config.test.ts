@@ -72,6 +72,15 @@ describe('strictConfigProblems', () => {
     for (const value of ['auto', '65532', '70000']) expect(strictConfigProblems({ ...COMPLIANT, SORA_BROWSER_UID: value }, 'http')).toEqual([]);
   });
 
+  test('PDF の解析の別プロセスの uid を落とさない設定（SORA_PDF_UID=off）も、ほかの利用者のプロセスから離せないので断る。数や auto は受ける', () => {
+    for (const value of ['off', 'OFF', ' off ']) {
+      const problems = strictConfigProblems({ ...COMPLIANT, SORA_PDF_UID: value }, 'http');
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('SORA_PDF_UID');
+    }
+    for (const value of ['auto', '65530', '70000']) expect(strictConfigProblems({ ...COMPLIANT, SORA_PDF_UID: value }, 'http')).toEqual([]);
+  });
+
   test('stdio では使えない（利用者を分ける鍵が無い）。鍵ファイルの有無は重ねて言わない', () => {
     const problems = strictConfigProblems(without('SORA_AUTH_KEYS_FILE'), 'stdio');
     expect(problems).toHaveLength(1);

@@ -14,6 +14,7 @@
 #  11. Bun の fetch と、通信する子プロセス（同梱の Yahoo 検索バイナリ・住所データの構築）の通信を、出口のゲートウェイに通すと、内部の宛先は断られ、NO_PROXY でも迂回せず、名前はゲートウェイが解決し、許す宛先の一覧（SORA_EGRESS_ALLOW_HOSTS）に挙げた宛先だけが内部の IP でも届く（scripts/fetch-egress-check.ts）
 #  12. 本物のアプリ（認証のミドルウェア → MCP・REST）を、本物の Bun.serve に載せると、MCP の tenant は認証が決めたものだけ（同じ鍵はどの書き方でも同じ tenant・誤った Bearer と正しい X-API-Key は通らない・匿名は鍵を持つ利用者と別）で、ループバックからでも鍵が要り（鍵なしの通過は廃止）、鍵ファイル（SORA_AUTH_KEYS_FILE）は鍵ごとに別の tenant で、匿名を認めず、読めないときは 503。保存済みのセッションで得たページは、共有キャッシュ経由で別の tenant に返らず、ウォッチは、別の tenant の一覧に出ず、確認も削除もできない。map_site は、呼んだ tenant の保存済みのセッションで取り、結果を別の tenant に返さず、POST /cache/clear は、admin の鍵だけが全員分を消し、ほかの鍵は自分の tenant の分だけ消す。SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる。SORA_ISOLATION=strict では、増幅の上限（サイトマップ・パターン・セレクタ）を締め、ブラウザを利用者ごとに別のプロセスで動かす（セッションを持つ利用者は 4 人まで。5 人目は 429）（scripts/auth-check.ts）
 #  13. PDF の解析が、イメージに同梱の別プロセス（/app/pdf-parse.js）で動き、メモリの暴走（Flate で膨らむ PDF）を、その解析のプロセスだけで止める。コンテナのメモリを 1GB に絞る。既定の運用と、推奨の strict の運用（13b）の両方（scripts/pdf-isolation-check.ts）
+#  14. PDF の解析の別プロセスが、本体（root）と別の uid（65530・65531）に落ちて動き、権限を持たず、運用者の秘密（環境変数・DB）にも、同時に動くもう 1 件にも届かず、終わったあとにプロセスもファイルも残さない。推奨の strict の運用（14b）と、落とす capability が足りない運用（--cap-drop=ALL。standard は従来どおり動き、strict の起動の確認は断る。14c）も（scripts/pdf-uid-check.ts）
 #  15. 実機の確認スクリプト（scripts/vps-check.sh）を、推奨の運用（strict・--cap-drop=ALL に 5 つ・seccomp・no-new-privileges・メモリと PID の上限・読み取り専用・
 #      鍵のディレクトリを :ro）で動かした、本物の strict のコンテナに当てる。コンテナの設定（inspect）・起動のログ・HTTP（鍵の関所・内部の宛先の拒否・Chromium の起動）・
 #      コンテナの中のプロセスの確認が、FAIL なしで通る。ランナーの外の通信と、ホストのネットワークには依存しない（--offline・--skip-network）
@@ -127,6 +128,27 @@ docker run --rm --memory=1g --memory-swap=1g \
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/pdf-isolation-check.ts
+
+# 14. PDF の解析の別プロセスが、別の uid に落ちて動く。同時の 2 件が別々の uid で、お互いにも、本体の環境変数・メモリ・DB にも届かない。終わったあとに、プロセスもファイルも残らない
+#     SORA_API_KEY は、本体の環境変数に秘密がある状態の再現（偽の値）。子の環境にも、/proc/<本体>/environ からも読めてはいけない
+docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_API_KEY=sk-verify-image-fake-secret \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/pdf-uid-check.ts
+
+# 14b. 14 を、推奨の strict の運用（deploy/seccomp-sora.json・no-new-privileges・--cap-drop=ALL に 5 つだけ）でも確かめる。strict の起動の確認と同じ試し読みも通る
+docker run --rm \
+  --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --security-opt no-new-privileges \
+  --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_API_KEY=sk-verify-image-fake-secret \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/pdf-uid-check.ts
+
+# 14c. 落とす capability が足りない運用（--cap-drop=ALL）: standard は警告して従来どおり読め、strict の起動の確認は、足りない capability を挙げて断る
+docker run --rm --cap-drop=ALL \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/pdf-uid-check.ts
 
 # 15. 実機の確認スクリプトを、推奨の運用の strict のコンテナに当てる（イメージそのまま。src は重ねない）。
 #     鍵は、ハッシュだけを書いた鍵ファイル（管理者 1 つ・一般 2 つ）。確認用の使い捨てのコンテナは、Sora のコンテナのネットワークと PID の名前空間を共有する

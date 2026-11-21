@@ -45,10 +45,21 @@ async function run(command: string[], limits: Partial<PdfChildLimits> = {}, byte
   return { outcome, events, pid };
 }
 
+/** 残っている子の状態（/proc/<pid>/status の State・PPid）。落ちたときの手がかり（全体試験で 1 度だけ落ちたが、再現しない） */
+function processState(pid: number): string {
+  try {
+    const status = readFileSync(`/proc/${pid}/status`, 'utf8');
+    return `State=${/^State:\s*(.*)$/m.exec(status)?.[1] ?? '?'} PPid=${/^PPid:\s*(.*)$/m.exec(status)?.[1] ?? '?'}`;
+  } catch {
+    return '/proc/<pid>/status を読めない';
+  }
+}
+
 /** 後始末の確認用: 子が止まったあと、少し待っても残っていない */
 async function expectGone(pid: number): Promise<void> {
   for (let i = 0; i < 50 && alive(pid); i++) await Bun.sleep(20);
-  expect(alive(pid)).toBe(false);
+  const remains = alive(pid);
+  expect(remains, remains ? `pid ${pid} が、1 秒待っても残っている（${processState(pid)}）` : undefined).toBe(false);
 }
 
 const secretNames: string[] = [];
@@ -439,6 +450,20 @@ describe('子が勝手に終わる・終わらない', () => {
   });
 });
 
+describe('子の作業ディレクトリ', () => {
+  const cwdOf = async (cwd?: string): Promise<string> => {
+    const body = `${line({ t: 'open', numPages: 1, info: {} })}console.log(JSON.stringify({ t: 'page', n: 1, text: process.cwd() }));${line({ t: 'done', timeBudgetHit: false })}`;
+    const events: PdfChildEvent[] = [];
+    await runPdfChild(BYTES, PARAMS, LIMITS, (event) => events.push(event), { command: script(body), ...(cwd === undefined ? {} : { cwd }) });
+    return (events[1] as Extract<PdfChildEvent, { t: 'page' }>).text;
+  };
+
+  test('cwd を指定すると、子はそこで動く。指定しなければ、親の作業ディレクトリのまま', async () => {
+    expect(await cwdOf('/')).toBe('/');
+    expect(await cwdOf()).toBe(process.cwd());
+  });
+});
+
 describe('子に渡す環境変数（運用者の秘密は渡さない。bun を動かすのに要るものだけ）', () => {
   test('Sora の秘密・プロキシ（認証情報を含みうる）・証明書・ロケールは、子に届かない。PATH は届く', async () => {
     const names = ['SORA_API_KEY', 'SORA_AUTH_KEYS_FILE', 'OPENAI_API_KEY', 'PDF_TEST_SECRET', 'HTTPS_PROXY', 'http_proxy', 'ALL_PROXY', 'SSL_CERT_FILE', 'NODE_EXTRA_CA_CERTS', 'LANG'];
@@ -462,6 +487,12 @@ describe('子に渡す環境変数（運用者の秘密は渡さない。bun を
         else process.env[name] = saved[name];
       }
     }
+  });
+
+  test('pdfChildEnv: extra は足す（許可リストの外の名前でも。起動用バイナリへの伝言）。入力の許可リストの外は、足さない', () => {
+    const source = { PATH: '/bin', SORA_API_KEY: 'k' };
+    expect(pdfChildEnv(source, { SORA_LAUNCH_UID: '65530' })).toEqual({ PATH: '/bin', SORA_LAUNCH_UID: '65530' });
+    expect(pdfChildEnv(source)).toEqual({ PATH: '/bin' });
   });
 
   test('pdfChildEnv: PATH・HOME・TMPDIR・LD_LIBRARY_PATH・TZ だけを、あるものだけ渡す（入力を書き換えない）', () => {
