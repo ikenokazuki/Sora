@@ -188,9 +188,15 @@ groups:
 | MCP セッションの上限 | `sora_mcp_session_rejected_total`（新しい接続を断った）・`sora_mcp_session_evicted_total`（古い接続を閉じて空けた） |
 | ブラウザのページから来た REST 要求を、Host・Origin で断った | `sora_rest_origin_rejected_total` |
 | 出口のゲートウェイが断った（理由別） | `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`） |
+| URL の事前検査（取得の前に、内部の宛先を断る検査）が断った（理由別） | `sora_precheck_denied_<理由>_total`（理由は `private_ip`・`blocked_host`・`dns`。静的な取得〈リダイレクト先も〉・ブラウザのページの要求と遷移・`browser_action` の URL・webhook の宛先。静的な取得の分は、理由なしの合計 `sora_redirect_block_total` にも数えます） |
 | 鍵ファイルの読み直し | `sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total`・`sora_auth_keys_missing_total` |
 
-出口のゲートウェイが数えるのは、**ゲートウェイに届いた接続**だけです。その前の、URL の事前検査（プライベートな IP・クラウドのメタデータの名前）で断られた分は、数えていません（6 章）。
+内部の宛先を狙う試みは、**2 つを合わせて**見ます。取得の前の事前検査が断った分（`sora_precheck_denied_*`）と、出口のゲートウェイが断った分（`sora_egress_denied_*`）です。事前検査で断られた要求は、ゲートウェイに届かないので、二重には数えません。
+
+- 事前検査の理由は、`private_ip`（内部の IP。公開の名前が内部の IP に解決された場合も）、`blocked_host`（遮断する名前。`localhost`・`*.local`・`*.internal`・クラウドのメタデータの名前）、`dns`（名前を解決できず、宛先を確かめられないので断った。静的な取得とブラウザは、Sora が手元で名前を引いて直接つなぐときだけ。webhook は常に）です。
+- ゲートウェイの `private_ip`・`blocked_host` が増えるのは、事前検査を通った要求が、接続のときに内部の IP と分かった場合です（名前の答えが、検査と接続のあいだで変わった場合など）。
+- ブラウザは、断った**要求**ごとに数えます。ページが内部の宛先へ何本も要求を出せば、その本数だけ増えるので、1 回の取得で 1 つとは限りません（実機では、内部の IP を `mode=browser` で開くと 2 増えました）。静的な取得・`browser_action` の URL・webhook は、1 回につき 1 つです。
+- 数えないもの: `http`・`https` 以外の URL を断った分、広告・トラッカー・メディアの中止、`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true` で検査を外している間（断らないので）。
 
 コンテナの死活確認に使う `GET /health`（`detailed` なし）は、`strict` でも鍵なしで開きます（`cachedEntries`・`activeMcpSessions` の、全利用者の合計の数字は見えます）。
 
@@ -206,8 +212,6 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 - `detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は、コンテナの死活確認のために鍵なしで開き、全利用者の合計の数字が見えます。
 - 音声のデコーダーが破られたときは、同じ利用者のブラウザセッションの Cookie には届きえます（ほかの利用者のプロセスには、uid が違うので届きません）。
 - PDF の解析は、1 件ごとの別プロセスで動き、メモリ・時間・出力量の上限を超えたものだけが止まります（README 4.6）。ただし、**この別プロセスは Sora 本体と同じ uid（イメージは root）で動き、Chromium のようには分けていません。** pdf.js 自体の脆弱性を突かれると、root として、Sora の環境変数・DB・鍵ファイルに届き、**ほかの利用者のブラウザのプロファイル（別の uid の 0700）と Cookie にも届きます。同時に動く 2 件の別プロセスは同じ uid なので、相手に渡している PDF〔の中身〕も覗けます。** strict の利用者のあいだの隔離を、pdf.js の脆弱性 1 つで破りうる、ということです（同じプロセスで動かしていた以前と同じで、悪くはなっていません）。外向きの通信も、出口のゲートウェイを通りません（5 章のコンテナの外側の制限が要ります）。
-
-- 出口のゲートウェイが数える拒否（`sora_egress_denied_*`）は、ゲートウェイに届いた接続だけです。その前の、URL の事前検査（プライベートな IP・クラウドのメタデータの名前を、取得の前に断る検査）で断られた分は、数えていません。内部への取得の試みが続いているかは、拒否の応答を受けた利用者の側にしか見えません。
 
 これらが済むまでは、公開する範囲を、運用者が把握できる利用者に限ってください。
 

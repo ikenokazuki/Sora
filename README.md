@@ -807,7 +807,10 @@ sora_bot_retry_total 3
 | `sora_browser_launch_total` | ブラウザ起動回数 |
 | `sora_browser_recall_saved_total` | recall抽出でブラウザを省略した回数 |
 | `sora_credential_strip_total` | クロスオリジン除去回数 |
-| `sora_redirect_block_total` | redirect保護による拒否回数 |
+| `sora_redirect_block_total` | 静的な取得（最初の要求も、リダイレクト先も）が、事前検査で断られた回数（理由なしの合計。理由別は `sora_precheck_denied_*`） |
+| `sora_precheck_denied_private_ip_total` | URL の事前検査が、内部の IP（ループバック・プライベート・リンクローカル・クラウドのメタデータの IP）への取得を断った回数。公開の名前が内部の IP に解決された場合（DNS Rebinding）も。静的な取得・ブラウザのページの要求と遷移・`browser_action` の URL・webhook の宛先 |
+| `sora_precheck_denied_blocked_host_total` | 同じく、遮断する名前（`localhost`・`*.local`・`*.internal`・クラウドのメタデータの名前）を断った回数 |
+| `sora_precheck_denied_dns_total` | 同じく、名前を解決できず、宛先を確かめられないために断った回数（静的な取得とブラウザは、Sora が手元で名前を引いて直接つなぐときだけ。webhook は常に） |
 | `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
 | `sora_quota_exceeded_total` | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて 429 にした回数（認証のミドルウェアの 429 と、一括・crawl の件数で断った分） |
 
