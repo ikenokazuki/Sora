@@ -158,6 +158,8 @@ export class PdfUidPool {
   constructor(
     size: number,
     private readonly reap: (uid: number) => Promise<boolean>,
+    /** 片づかなかった uid を隔離したときに、運用者へ知らせる */
+    private readonly warn: (message: string) => void = () => {},
   ) {
     this.slots = new BrowserSlots(() => size);
   }
@@ -181,8 +183,12 @@ export class PdfUidPool {
         if (finished) return;
         finished = true;
         const clean = await this.safeReap(uid);
-        if (clean) this.slots.release(key);
-        else this.quarantined.set(key, uid);
+        if (clean) {
+          this.slots.release(key);
+          return;
+        }
+        this.quarantined.set(key, uid);
+        this.warn(`uid ${uid} のプロセスが、PDF の解析のあとも残り、終わらせられません。この uid を隔離し、渡しません（次に借りるときに、もう一度確かめます）。残りの uid だけで解析を続けます`);
       },
     };
   }
@@ -225,14 +231,14 @@ export const pdfDropProbe = {
   reap: (uid: number): Promise<boolean> => reapUid(uid),
 };
 
-const pool = new PdfUidPool(PDF_CONCURRENCY, (uid) => pdfDropProbe.reap(uid));
-
 const warned = new Set<string>();
 function warnOnce(message: string): void {
   if (warned.has(message)) return;
   warned.add(message);
   console.warn(`[Sora/PDF] ${message}`);
 }
+
+const pool = new PdfUidPool(PDF_CONCURRENCY, (uid) => pdfDropProbe.reap(uid), warnOnce);
 /** 試験用: 1 回だけ出す警告を、もう一度出せるようにする */
 export function resetPdfDropWarnings(): void {
   warned.clear();

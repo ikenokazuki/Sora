@@ -295,6 +295,19 @@ describe('PdfUidPool（同時に動く別プロセスどうしが、同じ uid �
     await b.done();
   });
 
+  test('片づかなかった uid を隔離したときは、運用者に知らせる（uid と、その後の動き）。片づいたときは、知らせない', async () => {
+    const warnings: string[] = [];
+    const pool = new PdfUidPool(2, async (uid) => uid !== 65530, (message) => warnings.push(message));
+    const clean = await pool.lease(65530); // 65530（片づかない）
+    const other = await pool.lease(65530); // 65531（片づく）
+    await other.done();
+    expect(warnings).toEqual([]);
+    await clean.done();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('65530');
+    expect(warnings[0]).toContain('隔離');
+  });
+
   test('確かめが例外になっても、片づいたとはみなさない（隔離する）。done は投げない', async () => {
     const pool = new PdfUidPool(1, async () => {
       throw new Error('boom');
