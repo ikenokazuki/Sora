@@ -42,11 +42,6 @@ running="$("$runtime" inspect -f '{{.State.Running}}' "$name" 2>/dev/null)" || {
 image="$("$runtime" inspect -f '{{.Config.Image}}' "$name")"
 
 dir="$(cd "$(dirname "$0")" && pwd)"
-logs="$(mktemp)"
-trap 'rm -f "$logs"' EXIT
-chmod 600 "$logs"
-# 起動のときの記録は、ログの先頭にある（長く動かしたコンテナのログの末尾には、無い）
-"$runtime" logs "$name" 2>&1 | head -n 400 >"$logs"
 
 envs=()
 for var in VPS_CHECK_ADMIN_KEY VPS_CHECK_KEY_A VPS_CHECK_KEY_B; do
@@ -57,12 +52,19 @@ done
 podman_args=()
 [ "$(basename "$runtime")" = podman ] && podman_args=(--http-proxy=false)
 
-"$runtime" inspect "$name" | "$runtime" run --rm -i "${podman_args[@]}" \
+# 標準入力で、inspect の JSON と、起動のときのログ（ログの先頭に、起動の確認の記録がある。長く動かしたコンテナのログの末尾には、無い）を渡す。
+# 確認用のコンテナは capability を落とす（DAC_OVERRIDE だけは、マウントした vps-check.ts を、所有者でなくても読めるように足す）
+{
+  "$runtime" inspect "$name"
+  printf '\n%s\n' '=====sora-vps-check-logs====='
+  "$runtime" logs "$name" 2>&1 | head -n 400
+} | "$runtime" run --rm -i "${podman_args[@]}" \
   --network="container:${name}" --pid="container:${name}" \
-  --cap-drop=ALL --security-opt no-new-privileges --memory=256m --pids-limit=128 \
+  --cap-drop=ALL --cap-add=DAC_OVERRIDE --security-opt no-new-privileges --memory=256m --pids-limit=128 \
   "${envs[@]}" \
-  -v "${dir}/vps-check.ts:/check.ts:ro" -v "${logs}:/logs.txt:ro" \
-  --entrypoint /usr/local/bin/bun "$image" /check.ts --inspect-stdin --logs-file /logs.txt "${args[@]}"
-code=$?
+  -v "${dir}/vps-check.ts:/check.ts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /check.ts --inspect-stdin "${args[@]}"
+# 確認用のコンテナの終了コード（左の { } の中の head が先に閉じて、docker logs が SIGPIPE になっても、確認の結果にしない）
+code="${PIPESTATUS[1]}"
 [ "$code" -le 1 ] || echo "確認用のコンテナを動かせませんでした（終了コード ${code}）。イメージ ${image} に bun が無い・--pid=container: を使えない環境の可能性があります" >&2
 exit "$code"

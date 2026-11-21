@@ -9,12 +9,14 @@ import {
   classifyConnect,
   defaultGateway,
   type Finding,
+  LOGS_MARKER,
   type Level,
   pageHas,
   parseProcStatus,
   type ProcInfo,
   renderFindings,
   scrapeOutcome,
+  splitBundle,
   summarize,
 } from './vps-check.js';
 
@@ -244,6 +246,37 @@ describe('auditIsolation（/health?detailed=true の isolation。管理者の鍵
     const missing = ok() as any;
     delete missing.isolation.authKeys;
     expect(of(auditIsolation(200, missing), 'WARN')).toContain('strict.keys-fresh');
+  });
+});
+
+describe('splitBundle（標準入力: inspect の JSON と、そのあとに続く起動のログ）', () => {
+  const json = JSON.stringify([{ State: { Running: true } }], null, 2);
+
+  test('マーカーの行の前を JSON として読み、あとをログとして返す', () => {
+    const bundle = splitBundle(`${json}\n${LOGS_MARKER}\n[Sora/Strict] 起動の確認が通りました\nStarting\n`);
+    expect(bundle.inspect).toEqual([{ State: { Running: true } }]);
+    expect(bundle.logs).toBe('[Sora/Strict] 起動の確認が通りました\nStarting\n');
+  });
+
+  test('マーカーが無ければ、全体を JSON として読み、ログは無い（undefined）', () => {
+    const bundle = splitBundle(json);
+    expect(bundle.inspect).toEqual([{ State: { Running: true } }]);
+    expect(bundle.logs).toBeUndefined();
+  });
+
+  test('ログが空でも、ログがある扱い（空の文字列）。起動の確認の記録が無いことを、FAIL にするため', () => {
+    expect(splitBundle(`${json}\n${LOGS_MARKER}\n`).logs).toBe('');
+  });
+
+  test('JSON が壊れていれば inspect は undefined（ログは返す）', () => {
+    const bundle = splitBundle(`{ broken\n${LOGS_MARKER}\nlog line`);
+    expect(bundle.inspect).toBeUndefined();
+    expect(bundle.logs).toBe('log line');
+  });
+
+  test('ログの中に、マーカーと同じ行があっても、最初のマーカーで分ける', () => {
+    const bundle = splitBundle(`${json}\n${LOGS_MARKER}\na\n${LOGS_MARKER}\nb`);
+    expect(bundle.logs).toBe(`a\n${LOGS_MARKER}\nb`);
   });
 });
 

@@ -607,13 +607,27 @@ async function checkPublicUrl(url: string): Promise<Finding[]> {
   return auditPublicUrl({ health: health.status, metricsWithoutKey: metrics.status, scrapeWithoutKey: scrape.status });
 }
 
+/** 標準入力は、inspect の JSON のあとに、この行、そのあとに起動のログを続けたもの（ファイルで渡すと、確認用のコンテナが capability を持たないとき、所有者でなければ読めない） */
+export const LOGS_MARKER = '=====sora-vps-check-logs=====';
+
+/** 標準入力を、inspect の JSON と、起動のログ（マーカーがあれば）に分ける。JSON が壊れていれば inspect は undefined。最初のマーカーで分ける */
+export function splitBundle(text: string): { inspect: unknown; logs?: string } {
+  const marker = `\n${LOGS_MARKER}\n`;
+  const at = text.indexOf(marker);
+  let inspect: unknown;
+  try {
+    inspect = JSON.parse(at >= 0 ? text.slice(0, at) : text);
+  } catch {}
+  return at >= 0 ? { inspect, logs: text.slice(at + marker.length) } : { inspect };
+}
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks).toString('utf8');
 }
 
-/** 使い方: bun vps-check.ts [--inspect-stdin] [--logs-file <ファイル>] [--port <ポート>] [--url <公開の URL>] [--offline] [--skip-network]。鍵は環境変数（VPS_CHECK_ADMIN_KEY・VPS_CHECK_KEY_A・VPS_CHECK_KEY_B） */
+/** 使い方: bun vps-check.ts [--inspect-stdin（標準入力: inspect の JSON〔と、マーカーのあとに起動のログ〕）] [--port <ポート>] [--url <公開の URL>] [--offline] [--skip-network]。鍵は環境変数（VPS_CHECK_ADMIN_KEY・VPS_CHECK_KEY_A・VPS_CHECK_KEY_B） */
 export async function main(argv: string[], env: Record<string, string | undefined>): Promise<number> {
   const option = (name: string): string | undefined => {
     const at = argv.indexOf(name);
@@ -625,22 +639,12 @@ export async function main(argv: string[], env: Record<string, string | undefine
 
   let port = Number(option('--port') ?? 0);
   if (argv.includes('--inspect-stdin')) {
-    let inspect: unknown;
-    try {
-      inspect = JSON.parse(await readStdin());
-    } catch {}
+    const { inspect, logs } = splitBundle(await readStdin());
     sections.push(['コンテナの起動の設定（inspect）', auditInspect(inspect)]);
+    if (logs !== undefined) sections.push(['起動のログ', auditLogs(logs)]);
     if (!port && Array.isArray(inspect) && isRecord(inspect[0]) && isRecord(inspect[0].Config)) port = Number(envTable(inspect[0].Config.Env).get('PORT') ?? 0);
   }
   if (!port) port = 8000;
-  const logsFile = option('--logs-file');
-  if (logsFile) {
-    let logs = '';
-    try {
-      logs = readFileSync(logsFile, 'utf8');
-    } catch {}
-    sections.push(['起動のログ', auditLogs(logs)]);
-  }
 
   sections.push(['HTTP（このコンテナのネットワークから）', await checkHttp(`http://127.0.0.1:${port}`, port, keys, offline)]);
   sections.push(['コンテナの中のプロセス（/proc）', auditProcesses(readProcesses(), process.pid)]);
