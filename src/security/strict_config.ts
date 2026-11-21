@@ -8,6 +8,7 @@
  *  - Chromium のサンドボックス有効（SORA_BROWSER_SANDBOX=on）: auto は、使えないと黙って --no-sandbox に戻る
  *  - 出口のゲートウェイ（SORA_EGRESS_GATEWAY=on）: 内部への取得を許す設定（SORA_FETCH_ALLOW_PRIVATE_NETWORK=true）と併せると、使われなくなる
  *  - Chromium の uid を落とす（SORA_BROWSER_UID が off でない）: tenant ごとのブラウザを、uid で分けるため
+ *  - PDF の解析の別プロセスの uid を落とす（SORA_PDF_UID が off でない）: 運用者の秘密とほかの利用者のプロセスから離すため
  * tenant ごとのブラウザ・tenant ごとの上限は、strict で自動的に有効になるので、設定を求めない。
  */
 import { envBool, envPath, envRaw, type Env } from '../config.js';
@@ -41,6 +42,10 @@ export function strictConfigProblems(env: Env, transport: 'http' | 'stdio'): str
 
   if (envRaw('SORA_BROWSER_UID', env)?.trim().toLowerCase() === 'off') {
     problems.push(strict('SORA_BROWSER_UID=off は使えません。tenant ごとの Chromium を、別の uid に落として分けるためです。auto にするか、数を指定してください'));
+  }
+
+  if (envRaw('SORA_PDF_UID', env)?.trim().toLowerCase() === 'off') {
+    problems.push(strict('SORA_PDF_UID=off は使えません。PDF の解析の別プロセスを、別の uid に落として、運用者の秘密とほかの利用者のプロセスから離すためです。auto にするか、数を指定してください'));
   }
 
   return problems;
