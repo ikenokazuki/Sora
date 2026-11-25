@@ -26,6 +26,7 @@ on:
       - deploy/seccomp-sora.json
       - native/chromium-launcher/**
       - src/browser_engine.ts
+      - src/browser_webrtc_udp.test.ts
       - src/browser_launch_plan.ts
       - src/browser_stealth.ts
       - src/http_fetcher.ts
