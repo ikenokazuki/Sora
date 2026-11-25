@@ -1553,6 +1553,8 @@ export interface CheckProductComplianceResult {
   cpsc?: CpscCertificateCheckResult;
   actionPlan: string[];
   disclaimer: string;
+  /** 商品ページ（url）を読めなかったときの知らせ */
+  warnings?: string[];
 }
 
 function buildIntegratedActionPlan(
@@ -1678,6 +1680,10 @@ export async function checkProductCompliance(
   }
 
   // 1. URL が指定されている場合はスクレイピングして商品情報を取得
+  /** 商品ページを読めなかったときの知らせ（判定は、渡された商品の情報だけで続ける） */
+  const warnings: string[] = [];
+  const pageUnread = (reason: string) => warnings.push(`商品ページを読めなかったので、ページの内容は判定に使っていません（${reason.slice(0, 200)}）。商品名・説明・素材を直接渡すと、判定できます`);
+  const notices = () => (warnings.length > 0 ? { warnings } : {});
   if (options.url) {
     try {
       const { scrapeUrl } = await import('../scraper.js');
@@ -1688,14 +1694,20 @@ export async function checkProductCompliance(
         maxChars: 5000,
       });
 
-      if (!productName && scrapeRes.title) {
-        productName = scrapeRes.title;
-      }
-      if (!description) {
-        description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
+      // 4xx・5xx のページ（scrape は投げずに unavailable で返す）の題名や本文は、商品のものではない
+      if (scrapeRes.contentStatus === 'unavailable') {
+        pageUnread('HTTP エラーか、本文のないページです');
+      } else {
+        if (!productName && scrapeRes.title) {
+          productName = scrapeRes.title;
+        }
+        if (!description) {
+          description = scrapeRes.description || scrapeRes.content?.slice(0, 1000);
+        }
       }
     } catch (err) {
       console.warn('[TradeCompliance] Scrape failed for url:', options.url, errorMessage(err));
+      pageUnread(errorMessage(err) || String(err));
     }
   }
 
@@ -1724,6 +1736,7 @@ export async function checkProductCompliance(
     htsPrediction,
     actionPlan: ['上記の質問にご回答いただいた上で、再度お問い合わせください。'],
     disclaimer: DISCLAIMER_COMPLIANCE,
+    ...notices(),
   });
 
   if (!combinedText) {
@@ -1863,5 +1876,6 @@ export async function checkProductCompliance(
     cpsc: cpscResult,
     actionPlan,
     disclaimer: DISCLAIMER_COMPLIANCE,
+    ...notices(),
   };
 }

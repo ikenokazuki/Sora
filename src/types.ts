@@ -2292,6 +2292,7 @@ export const CheckProductComplianceResultSchema = z.object({
   cpsc: CpscCertificateCheckResultSchema.optional().describe('CPSC 証明書・eFiling 義務化判定'),
   actionPlan: z.array(z.string()).describe('米国輸出・通関に向けた具体的な実務ToDoチェックリスト'),
   disclaimer: z.string().describe('法的免責事項文'),
+  warnings: z.array(z.string()).optional().describe('商品ページ (url) を読めず、ページの内容を判定に使っていない知らせ'),
 });
 
 export const GccItemSummarySchema = z.object({
