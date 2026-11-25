@@ -414,9 +414,10 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     // 悪化もない（誤差範囲でむしろ僅かに高速）。
     '--disable-blink-features=AutomationControlled',
     '--window-size=1920,1080',
-    // WebRTCがSTUN経由で実IPを漏らす対策（プロキシ運用時に致命的、実測でIP露出を確認済み）。
-    // 非プロキシ経由のUDP直接通信を無効化する。
-    '--force-webrtc-ip-handling-policy=disable_non_proxied_udp',
+    // WebRTC に、UDP を直接送らせない。ページは RTCPeerConnection（STUN・TURN・ICE の候補）で任意の宛先へ UDP を送れ、出口のゲートウェイ・
+    // プロキシ・ページの通信の検査のどれも通らない（内部の宛先への到達と、プロキシ運用の実 IP の漏れ）。以前の --force-webrtc-ip-handling-policy は、
+    // Chromium 148・156 では効かなかった（指定なしと同じ）。効くことは browser_webrtc_udp.test.ts が確かめる
+    '--webrtc-ip-handling-policy=disable_non_proxied_udp',
     // navigator.language(s)・Worker・別オリジンの iframe・Accept-Language（Chrome と同じ位置）まで Chromium 自身が揃える。
     // JS で上書きすると getter が native でなくなり、Worker や iframe には届かない。静的取得の ACCEPT_LANGUAGE と同じ並び。
     '--accept-lang=ja-JP,ja,en-US,en',

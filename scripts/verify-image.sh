@@ -20,6 +20,8 @@
 #      コンテナの中のプロセスの確認が、FAIL なしで通る。ランナーの外の通信と、ホストのネットワークには依存しない（--offline・--skip-network）
 #  16. 本文の抽出（rs-trafilatura）の別プロセスが、本体（root）と別の uid（64000〜。同時の抽出は 1 件ずつ別）に落ちて動き、秘密にも、もう 1 件にも届かず、
 #      本物の抽出の結果は落とす前と同じ。推奨の strict の運用（16b）と、落とす capability が足りない運用（16c。strict は抽出コマンドを動かさない）も（scripts/rs-uid-check.ts）
+#  17. Sora が起動する Chromium（イメージの版）の WebRTC は、UDP を直接送らない。対照の指定なしの Chromium からは届くことも確かめる（src/browser_webrtc_udp.test.ts。
+#      飛ばされたら何も確かめていないので、2 件とも実行されたことも確かめる）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -213,3 +215,12 @@ docker run --rm --cap-drop=ALL \
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/rs-uid-check.ts
+
+# 17. WebRTC の UDP（ネットワークのインターフェースが要るので、docker の既定のネットワークで動かす。受け口はコンテナの中の 127.0.0.1 で、外へは送らない）
+webrtc=$(docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" \
+  --entrypoint /usr/local/bin/bun "$image" test /app/src/browser_webrtc_udp.test.ts --timeout 60000 2>&1) || { echo "$webrtc" >&2; exit 1; }
+echo "$webrtc"
+grep -qE '^ *2 pass$' <<<"$webrtc" || { echo "WebRTC の確認の 2 件が、実行されていない（飛ばされた）" >&2; exit 1; }
+
