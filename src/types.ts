@@ -1332,6 +1332,7 @@ export const MapResponseSchema = z.object({
   links: z.array(z.string()).describe('発見されたサイトマップまたは巡回 URL リスト'),
   count: z.number().describe('取得 URL 総件数'),
   source: z.enum(['sitemap', 'links']).describe('検出ソース (sitemap.xml または HTML リンク解析)'),
+  warnings: z.array(z.string()).optional().describe('上限で打ち切って、一覧に含まれていない URL がありうる知らせ'),
   ...CACHE_META_SHAPE,
 });
 
@@ -1341,6 +1342,7 @@ export const CrawlResponseSchema = z.object({
   count: z.number().describe('クロール成功ページ数'),
   totalPages: z.number().describe('探索対象総ページ数'),
   pages: z.array(ScrapeResponseSchema).describe('クロールされた各ページのスクレイプ結果配列'),
+  warnings: z.array(z.string()).optional().describe('上限で打ち切って、取得できていないページがありうる知らせ'),
 });
 
 // --- 3. ブラウザ自動操作 レスポンススキーマ ---
@@ -1349,6 +1351,7 @@ export const BrowserActionResponseSchema = z.object({
   url: z.string().describe('操作完了後の最終到達 URL'),
   sessionId: z.string().optional().describe('対話セッション ID (セッション継続時)'),
   sessionClosed: z.boolean().optional().describe('セッションが終了・破棄されたか'),
+  warnings: z.array(z.string()).optional().describe('思っていたセッションと違うものになった知らせ (指定した sessionId のセッションが無くて新しく作った・数の上限で別のセッションを閉じた)'),
   markdown: z.string().optional().describe('操作後のページ本文 Markdown'),
   screenshot: z.string().optional().describe('操作後の画面スクリーンショット (Base64 PNG)'),
   html: z.string().optional().describe('操作後の HTML 本文'),
@@ -2289,6 +2292,7 @@ export const CheckProductComplianceResultSchema = z.object({
   cpsc: CpscCertificateCheckResultSchema.optional().describe('CPSC 証明書・eFiling 義務化判定'),
   actionPlan: z.array(z.string()).describe('米国輸出・通関に向けた具体的な実務ToDoチェックリスト'),
   disclaimer: z.string().describe('法的免責事項文'),
+  warnings: z.array(z.string()).optional().describe('商品ページ (url) を読めず、ページの内容を判定に使っていない知らせ'),
 });
 
 export const GccItemSummarySchema = z.object({

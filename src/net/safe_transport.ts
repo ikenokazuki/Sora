@@ -5,6 +5,9 @@ import { incrementSecurityCounter } from '../security/metrics.js';
 
 export const DEFAULT_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
+/** 本文が、読む上限を超えた（読み込みの失敗と見分ける） */
+export class BodyTooLargeError extends Error {}
+
 /** Read a response body with a streaming byte cap (RFC P0-SEC-04). */
 export async function readBodyWithLimit(
   response: Response,
@@ -22,7 +25,7 @@ export async function readBodyWithLimit(
       if (total > maxBytes) {
         try { await reader.cancel(); } catch {}
         incrementSecurityCounter('sora_response_size_abort_total');
-        throw new Error(`Response exceeds ${maxBytes} bytes`);
+        throw new BodyTooLargeError(`Response exceeds ${maxBytes} bytes`);
       }
       chunks.push(value);
     }

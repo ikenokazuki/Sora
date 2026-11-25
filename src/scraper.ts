@@ -113,7 +113,7 @@ import {
   fetchWithSafeRedirects,
   MAX_RESPONSE_BODY_BYTES,
 } from './http_fetcher.js';
-import { readBodyWithLimit } from './net/safe_transport.js';
+import { BodyTooLargeError, readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
 import { settleWithDeadline } from './scrape_deadline.js';
 import { isUnusableIntegratedSearch, summarizeContextSufficiency } from './context_sufficiency.js';
@@ -162,6 +162,7 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     markdown: sessionRes.content,
     screenshot: sessionRes.screenshot,
     html: sessionRes.html,
+    ...(sessionRes.warnings ? { warnings: sessionRes.warnings } : {}),
     actionOutputs: sessionRes.actionLogs?.map((l: any, idx: number) => ({
       step: idx + 1,
       type: l.type,
@@ -1234,9 +1235,29 @@ export interface SitemapContext {
   signal: AbortSignal;
   /** これまでに取ったサイトマップの数（robots.txt の行・索引の子・入れ子の全部。limits.sitemapFetches まで） */
   fetched: number;
+  /** 打ち切った上限（警告に書く） */
+  cuts?: Set<MapCut>;
 }
 
 const noteAmplificationLimit = () => incrementSecurityCounter('sora_amplification_limit_hit_total');
+
+/** map_site がサイトマップの取得を打ち切った上限 */
+type MapCut = 'robots' | 'children' | 'fetches' | 'size' | 'deadline';
+const MAP_CUT_REASONS: Record<MapCut, (lim: Readonly<Limits>) => string> = {
+  robots: (lim) => `robots.txt の Sitemap 行は先頭の ${lim.sitemapRobotsLines} 行まで`,
+  children: (lim) => `サイトマップの索引の子は先頭の ${lim.sitemapChildren} 件まで`,
+  fetches: (lim) => `取得するサイトマップは ${lim.sitemapFetches} 本まで`,
+  size: (lim) => `${lim.sitemapBytes >= 1024 * 1024 ? `${Math.round(lim.sitemapBytes / (1024 * 1024))}MB` : `${lim.sitemapBytes} バイト`}を超えるサイトマップは読まない`,
+  deadline: (lim) => `全体の時間は ${Math.round(lim.mapDeadlineMs / 1000)} 秒まで`,
+};
+const mapCutWarning = (cuts: ReadonlySet<MapCut>, lim: Readonly<Limits>): string =>
+  `サイトマップの取得が上限に達したので、一覧に含まれていない URL があることがあります（${[...cuts].map((cut) => MAP_CUT_REASONS[cut](lim)).join('・')}）`;
+
+/** 上限に当たったことを数えて、どの上限かを覚える */
+function noteMapCut(ctx: SitemapContext, cut: MapCut): void {
+  noteAmplificationLimit();
+  ctx.cuts?.add(cut);
+}
 
 export async function fetchSitemapEntries(
   sitemapUrl: string,
@@ -1248,7 +1269,7 @@ export async function fetchSitemapEntries(
   if (currentDepth > maxDepth || limit <= 0) return [];
   if (ctx.signal.aborted) return [];
   if (ctx.fetched >= ctx.limits.sitemapFetches) {
-    noteAmplificationLimit();
+    noteMapCut(ctx, 'fetches');
     return [];
   }
   ctx.fetched += 1;
@@ -1261,8 +1282,9 @@ export async function fetchSitemapEntries(
     let body: Uint8Array;
     try {
       body = await readBodyWithLimit(response, ctx.limits.sitemapBytes);
-    } catch {
-      noteAmplificationLimit();
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) noteMapCut(ctx, 'size');
+      else noteAmplificationLimit();
       return [];
     }
     const xml = new TextDecoder().decode(body);
@@ -1296,7 +1318,7 @@ export async function fetchSitemapEntries(
       // 結果は子の並びのまま足し、limit 件で切る（1 つずつ取るときと同じ結果）
       const childUrls = sitemaps.filter((sm: { loc?: unknown }) => sm.loc).map((sm: { loc?: unknown }) => String(sm.loc).trim());
       if (childUrls.length > ctx.limits.sitemapChildren) {
-        noteAmplificationLimit();
+        noteMapCut(ctx, 'children');
         childUrls.length = ctx.limits.sitemapChildren;
       }
       for (let i = 0, size = 1; i < childUrls.length; i += size, size = SITEMAP_CHILD_CONCURRENCY) {
@@ -1375,6 +1397,8 @@ type MapSiteResult = {
   count: number;
   source: 'sitemap' | 'links';
   cached?: boolean;
+  /** 上限で打ち切って、一覧が欠けうるときの知らせ */
+  warnings?: string[];
 };
 
 export async function mapSiteUrl(options: MapSiteOptions): Promise<MapSiteResult> {
@@ -1408,14 +1432,23 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   // 上限（水準）と、止める合図（全体の時間の期限と、クライアントの切断）
   const lim = options.limits ?? currentLimits();
   const deadline = AbortSignal.timeout(lim.mapDeadlineMs);
-  const ctx: SitemapContext = { tenantId, limits: lim, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline, fetched: 0 };
+  const cuts = new Set<MapCut>();
+  const ctx: SitemapContext = { tenantId, limits: lim, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline, fetched: 0, cuts };
+  /** 打ち切って、頼まれた件数に足りないときだけ、警告を付ける（足りていれば、結果は変わらない）。付いた結果を置く */
+  const finish = (result: MapSiteResult): MapSiteResult => {
+    if (deadline.aborted) cuts.add('deadline');
+    const out: MapSiteResult = cuts.size > 0 && result.count < limit ? { ...result, warnings: [mapCutWarning(cuts, lim)] } : result;
+    // 時間の上限で欠けた結果は、混み具合で変わるので、短い時間だけ置く
+    if (!options.noCache) setToTenantCache(tenantId, cacheKey, out, out.warnings && cuts.has('deadline') ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
+    return out;
+  };
 
   try {
     const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000, 5, undefined, undefined, undefined, tenantId, ctx.signal);
     if (robotsRes.response.ok) {
       const robotsText = new TextDecoder().decode(await readBodyWithLimit(robotsRes.response, ROBOTS_MAX_BYTES));
       const found: string[] | null = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
-      if (found && found.length > lim.sitemapRobotsLines) noteAmplificationLimit();
+      if (found && found.length > lim.sitemapRobotsLines) noteMapCut(ctx, 'robots');
       const sitemapMatches = found?.slice(0, lim.sitemapRobotsLines);
       if (sitemapMatches) {
         for (const match of sitemapMatches) {
@@ -1437,14 +1470,7 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
     if (entries.length > 0) {
       const filteredEntries = filterSitemapEntriesByDate(entries, options.since, options.until);
       const links = filteredEntries.map((e) => e.url).slice(0, limit);
-      const result = {
-        url,
-        links,
-        count: links.length,
-        source: 'sitemap' as const,
-      };
-      if (!options.noCache) setToTenantCache(tenantId, cacheKey, result);
-      return result;
+      return finish({ url, links, count: links.length, source: 'sitemap' });
     }
   }
 
@@ -1473,15 +1499,7 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
     }
   });
 
-  const result = {
-    url,
-    links: internalLinks.slice(0, limit),
-    count: Math.min(internalLinks.length, limit),
-    source: 'links' as const,
-  };
-
-  if (!options.noCache) setToTenantCache(tenantId, cacheKey, result);
-  return result;
+  return finish({ url, links: internalLinks.slice(0, limit), count: Math.min(internalLinks.length, limit), source: 'links' });
 }
 
 // ==========================================
@@ -1524,6 +1542,10 @@ interface CrawlMeter {
 /** crawl が試みる取得の数の上限は、最大ページ数のこの倍数（取れないリンクを大量に並べたサイトで、試みが際限なく続かないように） */
 const CRAWL_ATTEMPT_FACTOR = 3;
 
+/** crawl が上限で打ち切って、取得できていないページがありうるときの警告 */
+const CRAWL_PATTERN_WARNING = 'includePatterns・excludePatterns の照合が上限に達したので、途中から新しいリンクをたどっていません。取得できていないページがあることがあります';
+const CRAWL_ATTEMPT_WARNING = `取得を試みる回数の上限（最大ページ数の ${CRAWL_ATTEMPT_FACTOR} 倍）に達したので、残りのリンクはたどっていません。取得できていないページがあることがあります`;
+
 async function crawlSiteUrlCore(options: {
   url: string;
   maxPages?: number;
@@ -1555,6 +1577,8 @@ async function crawlSiteUrlCore(options: {
   count: number;
   totalPages: number;
   pages: CrawledPage[];
+  /** 上限で打ち切って、取得できていないページがありうるときの知らせ */
+  warnings?: string[];
 }> {
   assertCrawlInputs(options);
   const {
@@ -1687,12 +1711,18 @@ async function crawlSiteUrlCore(options: {
   // 起点そのものが取得できなかった（SSRF 遮断・接続失敗など）場合は、0 件の成功として返さずエラーを伝える
   if (pages.length === 0 && seedError !== undefined) throw seedError;
 
+  const warnings: string[] = [];
+  if (patternBudgetSpent) warnings.push(CRAWL_PATTERN_WARNING);
+  // ページが足りないのに、まだ見ていないリンクが残るのは、試みの回数の上限で止まったときだけ（ほかの終わり方は、リンクの待ち行列を使い切る）
+  if (pages.length < targetLimit && queue.some((item) => !visited.has(visitKey(item.url)))) warnings.push(CRAWL_ATTEMPT_WARNING);
+
   const result = {
     url: initialUrl,
     baseUrl: initialUrl,
     count: pages.length,
     totalPages: pages.length,
     pages: pages.map(shape),
+    ...(warnings.length > 0 ? { warnings } : {}),
   };
 
   if (webhookUrl) {

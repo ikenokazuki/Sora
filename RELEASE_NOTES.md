@@ -4,6 +4,11 @@
 
 ## 先に気づく変更（呼び出し側）
 
+- **結果が欠けうる・思っていたものと違うときは、応答の `warnings` で知らせます。** これまでは、次の場合に、応答からは分かりませんでした。
+  - `browser_action`: 指定した `sessionId` のセッションが無くて、新しく作ったとき（5 分の無操作・最長の時間・数の上限・サーバーの再起動で閉じたあとを含みます。前のセッションのログインの状態と開いていたページは引き継がれません）。数の上限で、自分の別のセッションを閉じたとき。
+  - `map_site`（`crawl_site` の `listOnly`）: サイトマップの取得の上限で打ち切って、件数が足りないとき。時間の上限で欠けた結果は、短い時間だけキャッシュします。
+  - `crawl_site`: URL パターンの照合の上限や、取得を試みる回数の上限（最大ページ数の 3 倍）で、リンクをたどるのをやめたとき。
+  - `check_product_compliance`: 商品ページ（`url`）を読めなかったとき。あわせて、**HTTP エラーなどで読めなかったページの題名と本文は、商品の情報に使わなくなりました**（以前は、エラーのページの内容を商品の情報として、判定まで進むことがありました）。
 - **MCP のツール名が 29 個なくなり、新しい名前 9 個（`search_media`・`search_keywords`・`lookup_address`・`get_place_info`・`get_disaster_info`・`watch`・`lookup_hts`・`check_regulations`・`get_youtube`）ができました。** 旧名の別名は残していません。旧名で呼ぶと、`isError` の `MCP error -32602: Tool <旧名> not found`（例: `MCP error -32602: Tool scrape_batch not found`）です。旧名と新しいツール・引数の対応は、README の「v5.0.0 への移行（旧ツール名 → 新ツール名）」の表にあります。`search_tools` で旧名を検索すると、新しいツールが見つかります（新しいツールの検索語に旧名を入れています）。
 - **ツールの統合では、REST を変えていません。** まとめたツールが呼ぶ REST の URL・リクエスト・レスポンスの欄は同じで（応答の文だけ、後の「REST の応答の文」のとおり変えたものがあります）、`GET /tools` の操作の名前（OpenAPI の `operationId`）も旧いツール名のままです。v4.2.0 からの REST の変更は、次の `GET /client` の廃止と `search_road_traffic` の `source`、「REST の応答の文」、「v4.2.0 以降に main に入った、そのほかの変更」（`GET /tools` の追加、エラー応答の形、地震の取得元など）のとおりです。
 - **`GET /client`・`GET /client/{path}` を廃止しました（v4.2.0 以降の変更で deprecated にしていました）。** 代わりは `GET /tools` と `GET /tools/{name}`、および各操作の REST の直接呼び出しです。リポジトリの `client/` も消しました（次の項目）。`GET /tools` の追加と合わせて、OpenAPI の操作の数は v4.2.0 と同じ 82 です。
