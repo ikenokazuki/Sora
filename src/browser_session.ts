@@ -132,6 +132,8 @@ export interface BrowserSessionResult {
     elapsedMs: number;
   }>;
   renderedWithBrowser: true;
+  /** 思っていたセッションと違うものになったことの知らせ（sessionId のセッションが無くて新しく作った・数の上限で別のセッションを閉じた） */
+  warnings?: string[];
 }
 
 // セッションの非アクティブ自動タイムアウト (5分)
@@ -149,6 +151,14 @@ export function assertSessionId(sessionId: string | undefined): void {
   // 制御文字（0x00〜0x1f・0x7f）
   if ([...sessionId].some((ch) => ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f)) throw new ScrapeInputError('sessionId に制御文字は使えません');
 }
+
+/** 指定した sessionId のセッションが無くて、新しく作ったときの警告。無かった理由（期限・数の上限・閉じた・再起動）は、区別しない */
+const sessionRecreatedWarning = (lim: Readonly<Limits>): string =>
+  `指定した sessionId のセッションが無かったので、新しく作りました。前に同じ sessionId で操作していた場合、ログインの状態と開いていたページは引き継がれていません（セッションは、${SESSION_TTL_MS / 60_000} 分使わないとき・作ってから ${lim.browserSessionMaxMs / 3_600_000} 時間たったとき・数の上限を超えたときに閉じ、サーバーの再起動でも消えます）`;
+
+/** 数の上限で、同じ利用者の別のセッションを閉じたときの警告。閉じたセッションの ID は書かない（同じ鍵を使う別の使い手に、見せない） */
+const sessionEvictedWarning = (lim: Readonly<Limits>): string =>
+  `ブラウザセッションの数の上限（1 人 ${lim.browserSessionsPerTenant} 件）に達したので、いちばん長く使っていないセッションを閉じました。閉じたセッションの sessionId をもう一度使うと、新しいセッションになります`;
 
 /** 作成から最長の時間を過ぎたか */
 const pastLifetime = (session: BrowserSession, lim: Readonly<Limits>): boolean => Date.now() - session.createdAt >= lim.browserSessionMaxMs;
@@ -225,7 +235,7 @@ export function getActiveSessionCount(): number {
  * 予約は同期（数の上限・同じ ID の作成中の検査と一緒）。自分の上限なら、自分の使っていない一番古いセッションを閉じる。
  * 全体がいっぱいなら、ほかの利用者のセッションは閉じずに、ここで断る。作成の途中で失敗したら、予約を取り消し、開いた文脈を閉じる（漏らさない）
  */
-async function createBrowserSession(options: BrowserSessionOptions, tenantId: string, id: string, needScreenshot: boolean, lim: Readonly<Limits>): Promise<BrowserSession> {
+async function createBrowserSession(options: BrowserSessionOptions, tenantId: string, id: string, needScreenshot: boolean, lim: Readonly<Limits>, warnings: string[]): Promise<BrowserSession> {
   const evicted = sessionRegistry.reserve(tenantId, id, { perTenant: lim.browserSessionsPerTenant, total: lim.browserSessionsTotal });
   let browserInstance: Browser | undefined;
   let context: BrowserContext | undefined;
@@ -234,6 +244,7 @@ async function createBrowserSession(options: BrowserSessionOptions, tenantId: st
     if (evicted) {
       console.log(`[Sora] Evicting least recently used browser session ${evicted.id} of ${tenantId} due to its session limit (${lim.browserSessionsPerTenant})`);
       await disposeSession(evicted);
+      warnings.push(sessionEvictedWarning(lim));
     }
     const browserRes = await getBrowser(undefined, tenantId);
     browserInstance = browserRes.browser;
@@ -619,6 +630,8 @@ export async function handleBrowserSessionAction(
     options.actions?.some((a) => a.type === 'screenshot')
   );
   const isStateful = Boolean(options.sessionId || options.createSession);
+  const warnings: string[] = [];
+  const notices = () => (warnings.length > 0 ? { warnings } : {});
   let session: BrowserSession | undefined;
   let isDedicated = false;
   let page: Page;
@@ -681,7 +694,12 @@ export async function handleBrowserSessionAction(
           existing.inUse++;
         }
       }
-      session = existing ?? (using = await createBrowserSession(options, tenantId, requestedId, needScreenshot, lim));
+      if (existing) session = existing;
+      else {
+        session = using = await createBrowserSession(options, tenantId, requestedId, needScreenshot, lim, warnings);
+        // 続きのつもりの呼び出し（sessionId を指定し、createSession を頼んでいない）が、新しいセッションになった
+        if (options.sessionId && !options.createSession) warnings.push(sessionRecreatedWarning(lim));
+      }
       page = session.page;
       refreshSessionTimer(session, lim);
     } catch (err) {
@@ -746,6 +764,7 @@ export async function handleBrowserSessionAction(
         title,
         actionLogs,
         renderedWithBrowser: true,
+        ...notices(),
       };
     }
 
@@ -830,6 +849,7 @@ export async function handleBrowserSessionAction(
       estimatedTokens,
       actionLogs,
       renderedWithBrowser: true,
+      ...notices(),
     };
   } finally {
     // ワンショット実行の場合は必ずクリーンアップ & セマフォ解放

@@ -1349,6 +1349,7 @@ export const BrowserActionResponseSchema = z.object({
   url: z.string().describe('操作完了後の最終到達 URL'),
   sessionId: z.string().optional().describe('対話セッション ID (セッション継続時)'),
   sessionClosed: z.boolean().optional().describe('セッションが終了・破棄されたか'),
+  warnings: z.array(z.string()).optional().describe('思っていたセッションと違うものになった知らせ (指定した sessionId のセッションが無くて新しく作った・数の上限で別のセッションを閉じた)'),
   markdown: z.string().optional().describe('操作後のページ本文 Markdown'),
   screenshot: z.string().optional().describe('操作後の画面スクリーンショット (Base64 PNG)'),
   html: z.string().optional().describe('操作後の HTML 本文'),
