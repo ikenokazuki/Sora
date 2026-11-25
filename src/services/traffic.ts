@@ -401,7 +401,8 @@ export async function fetchFlightStatus(options: {
   const fac = category === 'international' ? 2 : 1;
   const ad = type === 'arrival' ? 2 : 1;
 
-  const cacheKey = `traffic:flight:v2:${airportInfo.id}:${fac}:${ad}:${flightNumberFilter || ''}:${keywordFilter || ''}`;
+  // 便名とキーワードは自由な文字列なので、項目は JSON の配列にする
+  const cacheKey = `traffic:flight:v3:${JSON.stringify([airportInfo.id, fac, ad, flightNumberFilter || '', keywordFilter || ''])}`;
 
   if (!options.noCache) {
     const cached = getFromCache<FlightStatusResult>(cacheKey);

@@ -124,12 +124,12 @@ describe('サイトマップのインデックス（子のサイトマップを�
 });
 
 describe('キャッシュのキー', () => {
-  test('版は v3（以前の共有のキーの、状態で見える内容が入っているかもしれない行は、読まない）', async () => {
+  test('版は v4（以前の共有のキーの、状態で見える内容や、区切りの混ざった指定の行は、読まない）', async () => {
     const bob = tenant('bob');
     await map(bob);
-    const key = `map:v3:${base}/:10:false:::15000`;
+    const key = `map:v4:${JSON.stringify([`${base}/`, 10, false, '', '', 15000])}`;
     expect(getFromCache(key)).not.toBeNull();
-    expect(getFromCache(key.replace('map:v3:', 'map:v2:'))).toBeNull();
+    expect(getFromCache(`map:v3:${base}/:10:false:::15000`)).toBeNull();
   });
 });
 

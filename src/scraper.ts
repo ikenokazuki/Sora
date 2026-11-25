@@ -1433,8 +1433,9 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   const limit = Math.min(options.limit ?? 200, 1000);
   // v2: 日付で絞ってから件数で切るようにした（v1 は先に切っていたので、limit と since を併用した結果が違う）
   // v3: tenant の保存済みの状態で見えた内容を、tenant のキーに置くようにした（v2 の、状態で見える内容が入っているかもしれない共有のキーは、読まない）
+  // v4: since・until は自由な文字列なので、項目を JSON の配列にした（`:` でつなぐと、区切りの位置を変えた別の指定が同じキーになる）
   // 時間の予算は、サイトマップが無いときのページの取得に効くので、キーに入れる
-  const cacheKey = `map:v3:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}:${options.timeoutMs ?? DEFAULT_SCRAPE_TIMEOUT_MS}`;
+  const cacheKey = `map:v4:${JSON.stringify([url, limit, options.includeSubdomains || false, options.since || '', options.until || '', options.timeoutMs ?? DEFAULT_SCRAPE_TIMEOUT_MS])}`;
 
   if (!options.noCache) {
     const cached = getFromTenantCache<any>(tenantId, cacheKey);
