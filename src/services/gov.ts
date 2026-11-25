@@ -444,7 +444,8 @@ export async function searchDietMinutes(options: {
     throw new GovInputError('keyword, speaker, または nameOfMeeting のいずれかを指定してください');
   }
 
-  const cacheKey = `gov:diet:${keyword || ''}:${speaker || ''}:${nameOfHouse || ''}:${nameOfMeeting || ''}:${from || ''}:${until || ''}:${limit}`;
+  // 自由な文字列が並ぶので、項目は JSON の配列にする（`:` でつなぐと、区切りの位置を変えた別の指定が同じキーになる）
+  const cacheKey = `gov:diet:v2:${JSON.stringify([keyword || '', speaker || '', nameOfHouse || '', nameOfMeeting || '', from || '', until || '', limit])}`;
 
   if (!options.noCache) {
     const cached = getFromCache<DietMinutesSearchResult>(cacheKey);

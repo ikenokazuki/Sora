@@ -538,10 +538,13 @@ export interface YahooWebSearchDeps {
 }
 
 /** Yahoo Web 検索 (プレフィルタリング site: / -site: 対応 & 0件時スマートフォールバック) */
-/** Stable coalescing key for one Yahoo Web search. */
+/**
+ * Stable coalescing key for one Yahoo Web search（取得のまとめと、利用者をまたぐ保存のキー）。
+ * 区切りの文字が値の中にあっても、違う指定が同じキーにならないように、項目は JSON の配列にする
+ */
 export function yahooWebSearchFlightKey(options: YahooWebSearchOptions): string {
   const v = options.verbose === true ? 'verbose' : 'compact';
-  return 'yahooweb:v1:' + options.query + ':' + (normalizeDomainList(options.includeDomains) || []).join(',') + ':' + (normalizeDomainList(options.excludeDomains) || []).join(',') + ':' + (options.updated || 'all') + ':' + (options.disableFallback ? 'nofb' : 'fb') + ':' + v;
+  return `yahooweb:v2:${JSON.stringify([options.query, normalizeDomainList(options.includeDomains) ?? [], normalizeDomainList(options.excludeDomains) ?? [], options.updated || 'all', options.disableFallback ? 'nofb' : 'fb', v])}`;
 }
 
 /**

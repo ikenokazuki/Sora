@@ -120,5 +120,5 @@ describe('formats を付けない検索（ページを読まない）', () => {
 });
 
 test('キャッシュのキーの版は v3（以前の共有のキーの、状態で見える内容が入っているかもしれない行は、読まない）', () => {
-  expect(buildSearchWebCacheKey({ query: 'x' })).toStartWith('search:web:v3:');
+  expect(buildSearchWebCacheKey({ query: 'x' })).toStartWith('search:web:v4:');
 });

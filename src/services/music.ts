@@ -73,7 +73,8 @@ export async function searchMusic(options: {
   const attribute = options.attribute?.trim();
   const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
 
-  const cacheKey = `music:${query}:${country}:${entity}:${attribute || 'all'}:${limit}`;
+  // 検索語と国は自由な文字列なので、項目は JSON の配列にする
+  const cacheKey = `music:v2:${JSON.stringify([query, country, entity, attribute || 'all', limit])}`;
   if (!options.noCache) {
     const cached = getFromCache<MusicSearchResult>(cacheKey);
     if (cached) return cached;

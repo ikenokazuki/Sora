@@ -16,10 +16,11 @@ import { trackTenantState } from './security/tenant_state.js';
 export { SEARCH_WEB_INPUT_SHAPE, SearchWebRequestSchema, type SearchWebRequest };
 export interface SearchWebFormatDependencies { searchYahooWeb: typeof searchYahooWeb; scrapeUrl: typeof scrapeUrl; }
 const DEFAULT_DEPS: SearchWebFormatDependencies={searchYahooWeb,scrapeUrl};
+/** 自由な文字列を区切りの文字でつなぐと、区切りの位置を変えた別の指定が同じキーになるので、項目は JSON の配列にする */
 export function buildSearchWebCacheKey(o: SearchWebRequest): string {
-  const formats=o.formats?.slice().sort().join(',')||'none';
+  const formats=o.formats?.slice().sort()??[];
   const limit=o.limit ?? (o.formats&&o.formats.length>0?5:'provider');
-  return ['search:web:v3',o.query,(normalizeDomainList(o.includeDomains)||[]).join(','),(normalizeDomainList(o.excludeDomains)||[]).join(','),o.updated||'all',`formats=${formats}`,`limit=${limit}`,`maxChars=${o.maxChars??'default'}`,`main=${o.onlyMainContent!==false}`].join(':');
+  return `search:web:v4:${JSON.stringify([o.query,normalizeDomainList(o.includeDomains)??[],normalizeDomainList(o.excludeDomains)??[],o.updated||'all',formats,limit,o.maxChars??'default',o.onlyMainContent!==false])}`;
 }
 /**
  * 結果のページの読み取りが、順番・予算で断られた（ResourceBusyError）応答。断った利用者の欠けた結果（scrapeError つき）を、共有のキャッシュに入れると、
