@@ -122,6 +122,14 @@ describe('scrapeUrl with a TikTok video URL', () => {
     expect(r.content).toContain('最後まで見てね');
   });
 
+  test('tells which headers the browser could not send', async () => {
+    stubCaptionFetch();
+    stubBrowser(withCaptions);
+    const r = await scrapeUrl({ tenantId: 'legacy', url: 'https://www.tiktok.com/@test_user/video/7000000000000000004', headers: { TE: 'trailers' }, noCache: true });
+    expect(r.siteName).toBe('TikTok');
+    expect(r.warnings).toEqual([expect.stringContaining('"TE"')]);
+  });
+
   test('a TikTok page still on the challenge ("Please wait...") comes back unavailable', async () => {
     stubCaptionFetch();
     stubBrowser('<html><head><title>TikTok</title></head><body><p>Please wait...</p></body></html>', 200);

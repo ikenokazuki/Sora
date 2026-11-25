@@ -88,6 +88,9 @@ describe('本文の抽出が使えないことが、scrape の応答で分かる
       expect(result.renderedWithBrowser).toBe(true);
       expect(result.warnings?.join('\n')).toContain('Readability');
       expect(result.warnings).toHaveLength(1);
+      // ブラウザが送れないヘッダーの警告は、抽出の警告に足す（消さない）
+      const both = await scrape({ mode: 'browser', headers: { TE: 'trailers' } });
+      expect(both.warnings).toEqual([expect.stringContaining('Readability'), expect.stringContaining('"TE"')]);
     } finally {
       spy.mockRestore();
     }
