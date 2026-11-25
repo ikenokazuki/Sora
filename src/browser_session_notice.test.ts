@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, spyOn, test } from 'bun:test';
 import * as engine from './browser_engine.js';
 import { closeAllBrowserSessions, closeBrowserSession, handleBrowserSessionAction } from './browser_session.js';
+import { browserRoutes } from './routes/browser.js';
+import { executeBrowserActions } from './scraper.js';
 import { STANDARD_LIMITS } from './security/limits.js';
 import { within } from './test_fixtures/browser_slots.js';
 import { BrowserActionResponseSchema } from './types.js';
@@ -82,6 +84,20 @@ describe('数の上限で、別のセッションを閉じたとき', () => {
     const result = await act({ createSession: true, closeSession: true }, lim);
     expect(result.sessionClosed).toBe(true);
     expect(result.warnings?.[0]).toContain('数の上限');
+  });
+});
+
+describe('MCP と REST の応答まで届く（外側の関数は、返す欄を選んで組み立てる）', () => {
+  test('executeBrowserActions（MCP の browser_action が呼ぶ）', async () => {
+    const result = await within(executeBrowserActions({ sessionId: 'outer', tenantId: 'name:alice', actions: [], extract: { markdown: false } } as never));
+    expect(recreated(result.warnings)).toHaveLength(1);
+    expect((await within(executeBrowserActions({ sessionId: 'outer', tenantId: 'name:alice', actions: [], extract: { markdown: false } } as never))).warnings).toBeUndefined();
+  });
+
+  test('REST の POST /browser/action', async () => {
+    const response = await within(Promise.resolve(browserRoutes.request('/browser/action', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId: 'rest', extract: { markdown: false } }) })));
+    expect(response.status).toBe(200);
+    expect(recreated(((await response.json()) as { warnings?: string[] }).warnings)).toHaveLength(1);
   });
 });
 

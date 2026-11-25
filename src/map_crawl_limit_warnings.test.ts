@@ -124,6 +124,21 @@ describe('crawl の上限', () => {
     expect(result.warnings?.[0]).toContain('最大ページ数の 3 倍');
   }, 60_000);
 
+  const dead = (n: number) => Array.from({ length: n }, (_, i) => `http://127.0.0.1:1/dead-${i}`);
+
+  test('最大ページ数がそろえば、試みの回数を使い切っていても、付けない', async () => {
+    // 起点 + 失敗 4 件 + 成功 1 件で、試みは 6 回（2 ページの 3 倍）。リンクは残っている
+    handler = site([...dead(4), `${origin}/ok`, `${origin}/rest`]);
+    const result = await crawl({ maxPages: 2 });
+    expect(result.count).toBe(2);
+    expect(result.warnings).toBeUndefined();
+  }, 60_000);
+
+  test('試みの回数をちょうど使い切って、残りのリンクが無ければ、付けない', async () => {
+    handler = site(dead(5));
+    expect((await crawl({ maxPages: 2 })).warnings).toBeUndefined();
+  }, 60_000);
+
   test('取れないリンクがあっても、上限の前に全部試し終えたら、付けない', async () => {
     handler = site([`http://127.0.0.1:1/dead-0`]);
     expect((await crawl()).warnings).toBeUndefined();

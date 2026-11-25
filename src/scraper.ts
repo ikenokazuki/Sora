@@ -162,6 +162,7 @@ export async function executeBrowserActions(options: BrowserActionOptions): Prom
     markdown: sessionRes.content,
     screenshot: sessionRes.screenshot,
     html: sessionRes.html,
+    ...(sessionRes.warnings ? { warnings: sessionRes.warnings } : {}),
     actionOutputs: sessionRes.actionLogs?.map((l: any, idx: number) => ({
       step: idx + 1,
       type: l.type,
@@ -1712,7 +1713,8 @@ async function crawlSiteUrlCore(options: {
 
   const warnings: string[] = [];
   if (patternBudgetSpent) warnings.push(CRAWL_PATTERN_WARNING);
-  if (meter.attempts >= attemptLimit && pages.length < targetLimit && queue.some((item) => !visited.has(visitKey(item.url)))) warnings.push(CRAWL_ATTEMPT_WARNING);
+  // ページが足りないのに、まだ見ていないリンクが残るのは、試みの回数の上限で止まったときだけ（ほかの終わり方は、リンクの待ち行列を使い切る）
+  if (pages.length < targetLimit && queue.some((item) => !visited.has(visitKey(item.url)))) warnings.push(CRAWL_ATTEMPT_WARNING);
 
   const result = {
     url: initialUrl,
