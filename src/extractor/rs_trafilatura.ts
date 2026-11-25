@@ -6,6 +6,8 @@
  * undefined を返し、呼び出し側は Readability の経路に戻る。評価は docs/evaluations/main-content/results.md。
  * rs-trafilatura の本文の HTML には img が入らないので、記事以外のページで画像があるときは、画像の後ろに目印を置いた HTML で
  * もう一度取り出し、本文が 1 回目と同じときだけ目印を画像に戻す（rs_images.ts）。
+ * コマンドは信頼できない HTML を読むので、Sora 本体（root）とは別の uid に落として動かす（rs_uid.ts）。落とせない strict・uid が空かないときは動かさない。
+ * 別の uid が使えなかったことは、onUnavailable で呼び出し側に伝える（呼び出し側が、取得の結果の warnings に書く）。
  */
 import { existsSync } from 'node:fs';
 import * as cheerio from 'cheerio';
@@ -13,6 +15,8 @@ import { envPath } from '../config.js';
 import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { markImagesForRs, restoreRsImages } from './rs_images.js';
+import { ChildDropError } from '../child_uid.js';
+import { LAUNCHER_REFUSED_EXIT_CODE, type RsLaunch, rsLaunchRefused, withRsUid } from './rs_uid.js';
 
 export interface RsMainContent {
   pageType?: string;
@@ -24,24 +28,59 @@ export interface RsExtractOptions {
   removeSelectors?: string[];
   /** false なら画像を戻さない（2 回目を走らせない） */
   includeMedia?: boolean;
+  /** 別の uid が使えず、結果が変わるときに呼ぶ。content は本文の抽出が使えない、images は画像を戻す 2 回目だけが使えない */
+  onUnavailable?: (missed: 'content' | 'images') => void;
 }
 
 /** 1 回の取り出しの上限。rs-trafilatura は 1 ページ数十 ms なので、これを超えるのは異常なページだけ */
 const RS_TIMEOUT_MS = 5000;
+/** コマンドが終わったあと、標準出力の読みが終わる（EOF）のを待つ時間。孫プロセスがパイプを握っていると EOF が来ないので、打ち切る */
+const RS_DRAIN_GRACE_MS = 500;
 
-/** コマンドを 1 回走らせる。本文が空なら undefined。起動の失敗・壊れた出力は例外 */
+/** 起動する。落とすときは起動用バイナリ経由の環境変数と作業ディレクトリ、落とさないときは、いつもの許可リストの環境変数 */
+const spawnRs = (launch: RsLaunch, input: Uint8Array) =>
+  Bun.spawn(launch.command, { stdin: input, stdout: 'pipe', stderr: 'ignore', env: launch.env ?? childEnv(), ...(launch.cwd ? { cwd: launch.cwd } : {}) });
+
+/** 子の標準出力を読み、子が終わるのを待つ。子が終わっても、孫がパイプを握り続けるときは、少し待って打ち切り、読めた分を返す */
+async function readUntilExit(proc: ReturnType<typeof spawnRs>): Promise<{ stdout: string; code: number }> {
+  const reader = proc.stdout.getReader();
+  const chunks: Uint8Array[] = [];
+  const reading = (async () => {
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+      }
+    } catch {}
+  })();
+  const code = await proc.exited;
+  let grace: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([reading, new Promise<void>((resolve) => (grace = setTimeout(resolve, RS_DRAIN_GRACE_MS)))]);
+  if (grace) clearTimeout(grace);
+  reader.cancel().catch(() => {});
+  await reading;
+  return { stdout: new TextDecoder().decode(Buffer.concat(chunks)), code };
+}
+
+/** コマンドを 1 回走らせる。本文が空なら undefined。起動の失敗・壊れた出力は例外。別の uid が使えないときは ChildDropError（動かさない） */
 async function runRs(bin: string, html: string, url: string, pageType?: string): Promise<RsMainContent | undefined> {
   const args = [bin, '--url', url, '--hybrid', '--markdown', ...(pageType ? ['--page-type', pageType] : [])];
-  const proc = Bun.spawn(args, { stdin: new TextEncoder().encode(html), stdout: 'pipe', stderr: 'ignore', env: childEnv() });
-  const timer = setTimeout(() => proc.kill(), RS_TIMEOUT_MS);
-  try {
-    const [stdout, code] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
-    const out = code === 0 ? JSON.parse(stdout || '{}') : {};
-    if (typeof out.content_html !== 'string' || !out.content_html.trim()) return undefined;
-    return { contentHtml: out.content_html, ...(typeof out.page_type === 'string' ? { pageType: out.page_type } : {}) };
-  } finally {
-    clearTimeout(timer);
-  }
+  return withRsUid(args, async (launch) => {
+    const proc = spawnRs(launch, new TextEncoder().encode(html));
+    // 時間切れは SIGKILL（破られた子は、SIGTERM を無視できる）
+    const timer = setTimeout(() => proc.kill('SIGKILL'), RS_TIMEOUT_MS);
+    try {
+      const { stdout, code } = await readUntilExit(proc);
+      // 落とすとき（env がある）の 126 は、起動用バイナリが断った
+      if (launch.env && code === LAUNCHER_REFUSED_EXIT_CODE) throw rsLaunchRefused();
+      const out = code === 0 ? JSON.parse(stdout || '{}') : {};
+      if (typeof out.content_html !== 'string' || !out.content_html.trim()) return undefined;
+      return { contentHtml: out.content_html, ...(typeof out.page_type === 'string' ? { pageType: out.page_type } : {}) };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 }
 
 export async function extractMainContentWithRs(
@@ -61,8 +100,12 @@ export async function extractMainContentWithRs(
   let first: RsMainContent | undefined;
   try {
     first = await runRs(bin, input, url);
-  } catch {
-    try { incrementSecurityCounter('sora_main_content_rs_failed_total'); } catch {}
+  } catch (error) {
+    // 別の uid が使えないときは、rs_uid.ts が数えて知らせる。失敗とは数えない
+    if (error instanceof ChildDropError) options.onUnavailable?.('content');
+    else {
+      try { incrementSecurityCounter('sora_main_content_rs_failed_total'); } catch {}
+    }
     return undefined;
   }
   if (!first) {
@@ -77,7 +120,8 @@ export async function extractMainContentWithRs(
     const second = await runRs(bin, marked.html, url, first.pageType);
     const restored = second ? restoreRsImages(first.contentHtml, second.contentHtml, marked.images) : undefined;
     return restored ? { ...first, contentHtml: restored } : first;
-  } catch {
+  } catch (error) {
+    if (error instanceof ChildDropError) options.onUnavailable?.('images');
     return first;
   }
 }

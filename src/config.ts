@@ -259,6 +259,12 @@ export const SETTINGS = {
     defaultDoc: '*(未設定。公開イメージは `/usr/local/bin/rs-trafilatura`)*',
     doc: '本文の取り出しに使う [rs-trafilatura](https://github.com/Murrough-Foley/rs-trafilatura)（MIT OR Apache-2.0。イメージにはライセンスを `/usr/share/licenses/rs-trafilatura/` に同梱）の `extract_stdin` のパス。未設定・失敗のときは Readability で取り出します（`docs/search-scrape-mechanics.md`）',
   },
+  SORA_RS_TRAFILATURA_UID: {
+    area: 'fetch', kind: 'str', default: 'auto', pattern: /^\s*(?:auto|off|0*[1-9]\d{0,9})\s*$/i,
+    form: '`auto`・`off`・1 以上の整数（uid・gid）',
+    defaultDoc: '*(未設定 = auto)*',
+    doc: 'root で動く Sora 本体が、本文の抽出（rs-trafilatura）の別プロセスを起動するときの uid です。`auto`（未設定）は 64000 から落として起動し、`off` は従来どおり root のまま起動し、1 以上の数はその uid から落とします。同時に動く抽出は、1 件ごとに別の uid にします（基準から 256 個。既定では 64000〜64255。使い切ったら、その抽出は rs-trafilatura を使わず、Readability にします）。抽出が終わるたびに、その uid のプロセスが残っていないことを確かめて、残っていれば終わらせます。落とすには、`SORA_BROWSER_UID` と同じ起動用バイナリと capability が要ります。足りないときは、`auto` は警告を出して従来どおり Sora と同じ uid で動かし、数を明示したときは rs-trafilatura を使いません。Sora 本体が root でないときは、何もしません。信頼できない HTML を読む rs-trafilatura が破られても、運用者の秘密（環境変数・DB・鍵ファイル）と、ほかの利用者の抽出・PDF・Chromium に届きにくくなります。Chromium の uid と PDF の解析の uid（`SORA_PDF_UID`）とは重ならないようにしてください（重なると、standard は警告を出して落とさずに動かし、strict は起動しません）。`SORA_ISOLATION=strict` では、`off` も起動しません。落とせないときは rs-trafilatura を使いません（root のままでは動かしません）。別の uid が使えず（落とせない・uid が空かない・起動用バイナリが起動を断った）Readability にしたときは、取得の結果の `warnings` に書きます。`SORA_RS_TRAFILATURA_PATH` のコマンドと、その親のディレクトリは、落とした uid でも実行できる権限にしてください',
+  },
   SORA_FETCH_TRUST_STORE: {
     area: 'fetch', kind: 'enum', values: ['combined', 'mozilla', 'defaultPaths'],
     defaultDoc: '*(未設定 = wreq-js の既定)*',

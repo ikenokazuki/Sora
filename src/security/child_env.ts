@@ -60,3 +60,13 @@ export function childEnv(extra: Record<string, string | undefined> = {}, source:
   }
   return env;
 }
+
+/** 信頼できない入力を読む子（PDF の解析・本文の抽出）に渡す環境変数の名前。子は何も取得しないので、プロキシ（URL に認証情報を含みうる）・証明書・ロケールは要らない */
+const MINIMAL_CHILD_ENV_NAMES = ['PATH', 'HOME', 'TMPDIR', 'LD_LIBRARY_PATH', 'TZ'];
+
+/** 上の名前だけを `source` から取る（許可リスト childEnv を通す）。extra は足す（起動用バイナリへの伝言など） */
+export function minimalChildEnv(source: Record<string, string | undefined> = process.env, extra: Record<string, string> = {}): Record<string, string> {
+  const picked: Record<string, string | undefined> = {};
+  for (const name of MINIMAL_CHILD_ENV_NAMES) picked[name] = source[name];
+  return childEnv(extra, picked);
+}

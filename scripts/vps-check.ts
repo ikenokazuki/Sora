@@ -171,8 +171,8 @@ export function auditInspect(inspect: unknown): Finding[] {
   out.push(isOn(env.get('SORA_EGRESS_GATEWAY')) ? pass('config.gateway', 'SORA_EGRESS_GATEWAY=on') : fail('config.gateway', 'SORA_EGRESS_GATEWAY=on ではない', '外向きの通信を、出口のゲートウェイに通して、内部への接続を断つ'));
   out.push(keysFile ? pass('config.keys-file', 'SORA_AUTH_KEYS_FILE がある（名前つきの鍵）') : fail('config.keys-file', 'SORA_AUTH_KEYS_FILE が無い', '単一の鍵や鍵なしでは、利用者ごとに状態を分けられない（README 4.6）'));
   out.push(isOn(env.get('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) ? fail('config.private-network', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK=true', '内部のネットワークへの取得を許し、出口のゲートウェイも使われない') : pass('config.private-network', '内部のネットワークへの取得を許していない'));
-  const uidOff = ['SORA_BROWSER_UID', 'SORA_PDF_UID'].filter((name) => norm(env.get(name)) === 'off');
-  out.push(uidOff.length > 0 ? fail('config.uid-off', `${uidOff.join('・')}=off`, 'Chromium と PDF の解析を、別の uid に落として分けられない') : pass('config.uid-off', 'Chromium と PDF の解析の uid を落とす設定'));
+  const uidOff = ['SORA_BROWSER_UID', 'SORA_PDF_UID', 'SORA_RS_TRAFILATURA_UID'].filter((name) => norm(env.get(name)) === 'off');
+  out.push(uidOff.length > 0 ? fail('config.uid-off', `${uidOff.join('・')}=off`, 'Chromium・PDF の解析・本文の抽出を、別の uid に落として分けられない') : pass('config.uid-off', 'Chromium・PDF の解析・本文の抽出の uid を落とす設定'));
   out.push(env.get('SORA_ALLOWED_HOSTS') ? pass('config.allowed-hosts', 'SORA_ALLOWED_HOSTS がある') : warn('config.allowed-hosts', 'SORA_ALLOWED_HOSTS が無い', '公開ホスト名を書く（MCP の Host の検査。vps.md 2 章）'));
   out.push(env.has('SORA_API_KEY') ? warn('config.single-key', '単一の鍵（SORA_API_KEY）が設定されている', '名前つきの鍵（SORA_AUTH_KEYS_FILE）だけにする') : pass('config.single-key', '単一の鍵（SORA_API_KEY）は使っていない'));
   return out;
