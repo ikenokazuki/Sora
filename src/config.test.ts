@@ -119,8 +119,8 @@ function fastestOf3(fn: () => unknown): number {
 }
 
 describe('registry', () => {
-  test('counts match the design (53 + 12 settings, 13 standard names, 43 old names)', () => {
-    expect(Object.keys(SETTINGS)).toHaveLength(65);
+  test('counts match the design (53 + 13 settings, 13 standard names, 43 old names)', () => {
+    expect(Object.keys(SETTINGS)).toHaveLength(66);
     expect(Object.keys(EXTERNAL)).toHaveLength(13);
     expect(Object.keys(LEGACY)).toHaveLength(43);
     expect(Object.keys(LEGACY).filter((n) => LEGACY[n].policy === 'error').sort()).toEqual(Object.keys(REFUSED).sort());

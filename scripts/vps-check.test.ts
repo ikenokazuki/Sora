@@ -160,6 +160,7 @@ describe('auditInspect（コンテナの起動の設定。docker inspect・podma
     expect(of(auditInspect(changed((c) => c.Config.Env.push('SORA_FETCH_ALLOW_PRIVATE_NETWORK=true'))), 'FAIL')).toContain('config.private-network');
     expect(of(auditInspect(changed((c) => c.Config.Env.push('SORA_BROWSER_UID=off'))), 'FAIL')).toContain('config.uid-off');
     expect(of(auditInspect(changed((c) => c.Config.Env.push('SORA_PDF_UID=off'))), 'FAIL')).toContain('config.uid-off');
+    expect(of(auditInspect(changed((c) => c.Config.Env.push('SORA_RS_TRAFILATURA_UID=off'))), 'FAIL')).toContain('config.uid-off');
   });
 
   test('環境変数の書き方（大文字・on の別名・前後の空白）は、Sora と同じに読む', () => {

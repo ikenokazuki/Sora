@@ -81,6 +81,13 @@ describe('strictConfigProblems', () => {
     for (const value of ['auto', '65530', '70000']) expect(strictConfigProblems({ ...COMPLIANT, SORA_PDF_UID: value }, 'http')).toEqual([]);
   });
 
+  test('本文の抽出の uid を落とさない設定（SORA_RS_TRAFILATURA_UID=off）も断る。数や auto は受ける', () => {
+    const problems = strictConfigProblems({ ...COMPLIANT, SORA_RS_TRAFILATURA_UID: ' Off ' }, 'http');
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('SORA_RS_TRAFILATURA_UID');
+    for (const value of ['auto', '64000']) expect(strictConfigProblems({ ...COMPLIANT, SORA_RS_TRAFILATURA_UID: value }, 'http')).toEqual([]);
+  });
+
   test('stdio では使えない（利用者を分ける鍵が無い）。鍵ファイルの有無は重ねて言わない', () => {
     const problems = strictConfigProblems(without('SORA_AUTH_KEYS_FILE'), 'stdio');
     expect(problems).toHaveLength(1);
