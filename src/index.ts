@@ -15,6 +15,7 @@ import { restModuleGuard } from './routes/module_guard.js';
 import { envEnum, envList } from './config.js';
 import { runStrictStartup } from './browser_startup.js';
 import { installEgressFetch } from './net/egress_fetch.js';
+import { installUnhandledRejectionGuard } from './process_guard.js';
 import { checkStartupEnv } from './startup_check.js';
 
 // ドメイン別サブルーター
@@ -212,6 +213,8 @@ if (import.meta.main) {
     fetch: (req) => app.fetch(req),
   });
   console.log(`Starting Sora service on port ${PORT}...`);
+  // 待ち受けを始めた後に付ける（起動の失敗は、これまでどおり終了させる）
+  installUnhandledRejectionGuard();
 
   installShutdownHandlers(() => server.stop(true));
 
