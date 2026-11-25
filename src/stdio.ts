@@ -2,6 +2,7 @@
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { createMcpServer, slimToolsListMessage } from './mcp.js';
 import { installEgressFetch } from './net/egress_fetch.js';
+import { installUnhandledRejectionGuard } from './process_guard.js';
 import { setQuotaEnabled } from './security/quota.js';
 import { checkStartupEnv } from './startup_check.js';
 
@@ -22,6 +23,8 @@ async function main() {
   transport.send = (message) => send(slimToolsListMessage(message));
   await server.connect(transport);
   console.error('[Sora MCP] Stdio server connected and ready.');
+  // 接続した後に付ける（起動の失敗は、これまでどおり終了させる）。記録は標準エラーに書く（標準出力は JSON-RPC の流れ）
+  installUnhandledRejectionGuard();
 }
 
 main().catch((err) => {

@@ -53,7 +53,7 @@ Sora は **MCP (Model Context Protocol)** サーバーとして動作し、Docke
 
 ### ① Docker / Podman での起動
 ```bash
-docker run -d -p 3016:8000 --name sora ghcr.io/ikenokazuki/sora:latest
+docker run -d -p 3016:8000 --name sora --restart unless-stopped ghcr.io/ikenokazuki/sora:latest
 ```
 
 ### ② MCP 接続 (Claude Desktop / Cursor / Cline / Antigravity)
@@ -252,10 +252,13 @@ GitHub Container Registry (GHCR) から 1 コマンドで即座に起動でき�
 ```bash
 docker run -d \
   --name sora \
+  --restart unless-stopped \
   -p 3016:8000 \
   -e SORA_MODULES="all" \
   ghcr.io/ikenokazuki/sora:latest
 ```
+
+`--restart unless-stopped` は、Sora のプロセスが終了したときに、立ち上がり直すためです。受け止め忘れの失敗（unhandled rejection）では終了せず、記録して `sora_unhandled_rejection_total` を数えます（0 でなければ不具合です）。同期の例外では、状態が壊れているおそれがあるので終了します。
 
 APIキーによる認証は任意です。必要な場合のみ `-e SORA_API_KEY="..." ` を追加してください（設定時はキー必須、未設定時は認証なしで利用可能）。
 
@@ -813,6 +816,7 @@ sora_bot_retry_total 3
 | `sora_precheck_denied_dns_total` | 同じく、名前を解決できず、宛先を確かめられないために断った回数（静的な取得とブラウザは、Sora が手元で名前を引いて直接つなぐときだけ。webhook は常に） |
 | `sora_rest_origin_rejected_total` | ブラウザ上のページから来た REST 要求のうち、Host・Origin の許可外で拒否した回数 |
 | `sora_quota_exceeded_total` | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて 429 にした回数（認証のミドルウェアの 429 と、一括・crawl の件数で断った分） |
+| `sora_unhandled_rejection_total` | 受け止められなかった失敗の回数。サーバーは動き続けますが、0 でなければ不具合です（内容は、ログの「受け止められなかった失敗」の行） |
 
 #### `POST /cache/clear` (キャッシュ全削除)
 メモリキャッシュと SQLite 永続キャッシュを全て破棄します。取得内容を強制的に最新化したい場合に利用します。
