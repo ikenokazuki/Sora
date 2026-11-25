@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import * as browserEngine from './browser_engine.js';
 import { resolveChromiumPath } from './browser_engine.js';
 import { ResourceBusyError } from './errors.js';
 import { pdfSlots } from './pdf.js';
@@ -451,6 +452,57 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
       await scrapeUrl({ tenantId: 'legacy', url: `${base()}/ua-static`, mode: 'fast', headers: ua, noCache: true });
       expect(seen.find((entry) => entry.path === '/ua-static')?.headers.get('user-agent')).toBe('caller-agent/1.0');
     }, 60_000);
+
+    const unsendable = { Host: 'other.example', TE: 'trailers', 'Proxy-Authorization': 'Basic c2VjcmV0LXZhbHVl' };
+
+    browserTest('ブラウザが送れないヘッダー（Host・TE など）は外して開き、warnings で名前を知らせる（値は書かない）', async () => {
+      seen.length = 0;
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/unsendable-browser`, mode: 'browser', headers: { ...headers, ...unsendable }, noCache: true });
+      expect(result.renderedWithBrowser).toBe(true);
+      expect(result.content).toContain('静的に取れる');
+      const page = seen.find((entry) => entry.path === '/unsendable-browser');
+      expect(page?.headers.get('x-test-header')).toBe('sora-1');
+      expect(page?.headers.get('host')).toBe(`127.0.0.1:${server.port}`);
+      expect(page?.headers.get('te')).toBeNull();
+      expect(result.warnings).toHaveLength(1);
+      for (const name of Object.keys(unsendable)) expect(result.warnings?.[0]).toContain(`"${name}"`);
+      expect(result.warnings?.[0]).not.toContain('c2VjcmV0LXZhbHVl');
+    }, 60_000);
+
+    test('静的な取得は、これまでどおり送るので、警告を付けない', async () => {
+      seen.length = 0;
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/unsendable-static`, mode: 'fast', headers: { Host: 'other.example' }, noCache: true });
+      expect(seen.find((entry) => entry.path === '/unsendable-static')?.headers.get('host')).toBe('other.example');
+      expect(result.warnings).toBeUndefined();
+    });
+
+    test('ブラウザで本文を取ったとき・静的な本文に画像だけを足したときの、どちらも知らせる（偽の描画）', async () => {
+      const chromiumPath = spyOn(browserEngine, 'resolveChromiumPath').mockReturnValue('/test/chromium');
+      const browser = spyOn(browserStealth, 'fetchWithStealthBrowser').mockImplementation((async (target: string) => ({
+        html: `<!doctype html><html><head><title>描画</title></head><body><main><h1>描画</h1><p>${filler}</p></main></body></html>`, title: '描画', finalUrl: target, status: 200, screenshot: 'c2hvdA==',
+      })) as typeof browserStealth.fetchWithStealthBrowser);
+      try {
+        const rendered = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/unsendable-render`, mode: 'browser', headers: { TE: 'trailers' }, noCache: true });
+        expect(rendered.renderedWithBrowser).toBe(true);
+        expect(rendered.warnings).toEqual([expect.stringContaining('"TE"')]);
+        const shot = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/unsendable-shot`, formats: ['markdown', 'screenshot'], headers: { TE: 'trailers' }, noCache: true });
+        expect(shot.renderedWithBrowser).toBe(false);
+        expect(shot.screenshot).toBe('c2hvdA==');
+        expect(shot.warnings).toEqual([expect.stringContaining('"TE"')]);
+        const sendable = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/sendable-render`, mode: 'browser', headers, noCache: true });
+        expect(sendable.warnings).toBeUndefined();
+        // 画像を撮れなかったら、ブラウザを使っていないので、画像の警告だけ
+        browser.mockImplementation((async () => {
+          throw new Error('描画の失敗');
+        }) as typeof browserStealth.fetchWithStealthBrowser);
+        const noShot = await scrapeUrl({ tenantId: 'legacy', url: `${base()}/unsendable-noshot`, formats: ['markdown', 'screenshot'], headers: { TE: 'trailers' }, noCache: true });
+        expect(noShot.screenshot).toBeUndefined();
+        expect(noShot.warnings).toEqual([expect.stringContaining('formats に screenshot')]);
+      } finally {
+        browser.mockRestore();
+        chromiumPath.mockRestore();
+      }
+    });
 
     browserTest('headers を渡さない取得は、今までどおり（Accept-Language は日本語）', async () => {
       seen.length = 0;

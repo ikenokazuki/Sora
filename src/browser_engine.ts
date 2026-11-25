@@ -25,6 +25,7 @@ import { trimMap } from './security/bounded_map.js';
 import { countPrecheckDenied, deniesHost } from './net/precheck.js';
 import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
+import { HEADER_NAME, hasControlCharacter } from './net/egress_gateway.js';
 
 // 判定の本体は net/ip_policy.ts に移した。ここからも、これまでどおり import できるようにしておく
 export { isBlockedHostname, isPrivateIp, isPrivateIpUint32, parseIpv4ToUint32 } from './net/ip_policy.js';
@@ -637,6 +638,28 @@ export async function validateHostIpDns(hostname: string, options: { failClosed?
   return result;
 }
 
+/**
+ * Chromium がページの要求の書き換え（continue の headers）で断る名前（手元の 148 と、配布イメージの 156 の実測）。1 つでも混ざると、その要求が失敗する。
+ * このほか、proxy- で始まる名前、値が upgrade の connection、メソッドを書き換える系で値に CONNECT・TRACE・TRACK があるもの（156）も断る
+ */
+const BROWSER_REFUSED_HEADER_NAMES: ReadonlySet<string> = new Set(['content-length', 'cookie2', 'host', 'keep-alive', 'set-cookie', 'te', 'trailer', 'transfer-encoding', 'upgrade']);
+
+/** ブラウザの要求に付けられるヘッダーか。名前が token でないもの・タブ以外の制御文字を含む値も付けない（要求が失敗するか、値が壊れる） */
+function browserCanSendHeader(name: string, value: string): boolean {
+  const lower = name.toLowerCase();
+  return HEADER_NAME.test(name) && !hasControlCharacter(value)
+    && !BROWSER_REFUSED_HEADER_NAMES.has(lower) && !lower.startsWith('proxy-')
+    && !(lower === 'connection' && value.trim().toLowerCase() === 'upgrade')
+    && !(/^x-(http-method|http-method-override|method-override)$/.test(lower) && /(^|,)\s*(connect|trace|track)\s*(,|$)/i.test(value));
+}
+
+/** 呼び出し側のヘッダーのうち、ブラウザの要求から外すものの名前（User-Agent は、もともと付けないので数えない） */
+export function unsendableBrowserHeaderNames(headers: Record<string, string> | undefined): string[] {
+  return Object.entries(headers ?? {})
+    .filter(([name, value]) => name.toLowerCase() !== 'user-agent' && !browserCanSendHeader(name, value))
+    .map(([name]) => name);
+}
+
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
 export async function setupPageSecurity(
   page: Page,
@@ -645,17 +668,19 @@ export async function setupPageSecurity(
   /**
    * 呼び出し側が指定したヘッダー。origin と同じオリジンへの要求には全部付ける。
    * 別のオリジンには、本体のページの移動（転送・遷移）だけに、資格情報でないものを付ける（資格情報のヘッダーと、ほかのオリジンへの副要求には付けない）。
-   * User-Agent は付けない（navigator.userAgent と sec-ch-ua はステルスの値のままなので、要求のヘッダーだけ替えると食い違い、ボット対策に見分けられる）
+   * User-Agent は付けない（navigator.userAgent と sec-ch-ua はステルスの値のままなので、要求のヘッダーだけ替えると食い違い、ボット対策に見分けられる）。
+   * ブラウザが送れないもの（unsendableBrowserHeaderNames）も付けない
    */
   scopedHeaders?: { origin: string; headers: Record<string, string> },
 ): Promise<void> {
   const lowercased = (headers: [string, string][]) => Object.fromEntries(headers.map(([name, value]) => [name.toLowerCase(), value]));
-  const callerHeaders = Object.entries(scopedHeaders?.headers ?? {}).filter(([name]) => name.toLowerCase() !== 'user-agent');
+  const callerHeaders = Object.entries(scopedHeaders?.headers ?? {}).filter(([name, value]) => name.toLowerCase() !== 'user-agent' && browserCanSendHeader(name, value));
   const allHeaders = scopedHeaders && lowercased(callerHeaders);
   const navigationHeaders = scopedHeaders && lowercased(callerHeaders.filter(([name]) => !isSensitiveHeaderName(name)));
   try {
     await page.setRequestInterception(true);
     page.on('request', async (req) => {
+      // continue・abort は失敗することがある。必ず await して、下の catch で受ける（待たずに返すと try を抜け、受け止めない失敗になる）
       try {
         const reqUrlStr = req.url();
         const resourceType = req.resourceType();
@@ -669,40 +694,40 @@ export async function setupPageSecurity(
           /\.(gltf|glb|obj|fbx|mp4|webm|m4v|m4a|mp3|ogg|wav|flac)(\?.*)?$/i.test(reqUrlStr) ||
           BLOCKED_TRACKER_DOMAINS.some((d) => reqUrlStr.includes(d))
         ) {
-          return req.abort('blockedbyclient');
+          return await req.abort('blockedbyclient');
         }
 
         // スクリーンショット非要求時 (blockMedia=true) は画像・Webフォントも追加遮断
         if ((typeof blockMedia === 'function' ? blockMedia() : blockMedia) && ['image', 'font'].includes(resourceType)) {
-          return req.abort('blockedbyclient');
+          return await req.abort('blockedbyclient');
         }
 
         if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
-          return proceed();
+          return await proceed();
         }
 
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
-          return proceed();
+          return await proceed();
         }
         let reqUrl: URL;
         try {
           reqUrl = new URL(reqUrlStr);
         } catch {
-          return req.abort('blockedbyclient');
+          return await req.abort('blockedbyclient');
         }
         if (!['http:', 'https:'].includes(reqUrl.protocol)) {
-          return req.abort('blockedbyclient');
+          return await req.abort('blockedbyclient');
         }
         const host = reqUrl.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
         if (deniesHost(host)) {
-          return req.abort('accessdenied');
+          return await req.abort('accessdenied');
         }
 
         // キャッシュ付きホスト検証
         const now = Date.now();
         const cached = dnsValidationCache.get(host);
         if (cached && cached.expiresAt > now) {
-          return proceed();
+          return await proceed();
         }
 
         const addresses = await dnsPromises.lookup(host, { all: true }).catch(() => []);
@@ -710,19 +735,22 @@ export async function setupPageSecurity(
           // 名前を解決できない（失敗か、答えが空）。ブラウザが、手元で名前を引いて直接つなぐときは、検査を抜けさせない
           if (browserResolvesLocally(host)) {
             countPrecheckDenied('dns');
-            return req.abort('namenotresolved');
+            return await req.abort('namenotresolved');
           }
-          return proceed();
+          return await proceed();
         }
         for (const addr of addresses) {
           if (deniesHost(addr.address)) {
-            return req.abort('accessdenied');
+            return await req.abort('accessdenied');
           }
         }
         rememberDnsValidation(host, addresses.map((a) => a.address), now);
-        proceed();
+        await proceed();
       } catch {
-        req.abort('failed');
+        // 扱えていない要求は中止する。中止の失敗（ページが閉じた後など）も、ここで受ける
+        try {
+          await req.abort('failed');
+        } catch {}
       }
     });
   } catch (err) {

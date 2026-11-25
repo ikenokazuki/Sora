@@ -53,7 +53,7 @@ import {
   cleanRealtimeItem,
 } from './services/x_detail.js';
 
-import { resolveChromiumPath } from './browser_engine.js';
+import { resolveChromiumPath, unsendableBrowserHeaderNames } from './browser_engine.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import {
   searchYahooWeb,
@@ -317,6 +317,9 @@ async function readMainContent(html: string, url: string, { removeSelectors, inc
   const rsMain = await extractMainContentWithRs(html, url, undefined, { removeSelectors, includeMedia, onUnavailable: (missed) => warnings.push(RS_UNAVAILABLE_WARNINGS[missed]) });
   return { rsMain, warnings };
 }
+
+/** ブラウザが送れず、外して開いた headers を知らせる文。名前だけを書く（値は資格情報のこともある） */
+const unsendableHeaderWarning = (names: string[]) => `ブラウザが送れない headers は外して開きました: ${names.map((name) => JSON.stringify(name)).join('、')}`;
 
 const SCREENSHOT_UNAVAILABLE_WARNING =
   'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
@@ -844,6 +847,12 @@ export async function scrapeUrl(options: {
     const wantsScreenshot = formats.includes('screenshot');
     const isForcedBrowser = options.mode === 'browser' || options.renderJs === true || (tiktokVideo && !isFastMode && Boolean(resolveChromiumPath()));
     const fullPage = options.fullPage ?? true;
+    // ブラウザを使った結果（本文・画像）に足す警告。静的な取得は headers をそのまま送るので、付けない
+    const unsendableHeaders = unsendableBrowserHeaderNames(options.headers);
+    const withBrowserWarnings = (own: string[] = []): { warnings?: string[] } => {
+      const warnings = unsendableHeaders.length > 0 ? [...own, unsendableHeaderWarning(unsendableHeaders)] : own;
+      return warnings.length > 0 ? { warnings } : {};
+    };
     const renderInBrowser = (message: string) => {
       try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
       onProgress?.({ stage: 'render', message });
@@ -1020,6 +1029,7 @@ export async function scrapeUrl(options: {
             if (e instanceof ResourceBusyError) throw e;
             return undefined;
           }))?.screenshot;
+          if (staticResult.screenshot) Object.assign(staticResult, withBrowserWarnings(staticResult.warnings));
         }
         onProgress?.({ stage: 'enrich', message: 'Enriching content with metadata and summaries' });
         result = markHttpError(await finalizeScrapeResult(staticResult, { ...finalizeOpts, highlightSource: parsed.fullMarkdown }), response.status);
@@ -1060,7 +1070,8 @@ export async function scrapeUrl(options: {
     if (tiktokVideo && !((browserRes.status ?? 0) >= 400)) {
       const page = await getTiktokPage(browserRes.html, url, { title: browserRes.title });
       if (page) {
-        result = await finalizeScrapeResult(videoPageResult(url, page, 'TikTok', maxChars), finalizeOpts);
+        const video = videoPageResult(url, page, 'TikTok', maxChars);
+        result = await finalizeScrapeResult({ ...video, ...withBrowserWarnings(video.warnings) }, finalizeOpts);
         cacheResult(result);
         return result;
       }
@@ -1119,7 +1130,7 @@ export async function scrapeUrl(options: {
       qualityReasons: parsed.qualityReasons,
       missingFields: parsed.missingFields,
       evidence: parsed.evidence,
-      ...(extraction?.warnings.length ? { warnings: extraction.warnings } : {}),
+      ...withBrowserWarnings(extraction?.warnings),
     };
 
     onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });

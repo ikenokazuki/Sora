@@ -136,12 +136,13 @@ const REQUEST_LINE = /^([A-Z]+) (\S+) HTTP\/1\.[01]$/;
 const AUTHORITY = /^(?:\[([0-9A-Fa-f:.]+)\]|([A-Za-z0-9._-]+)):(\d{1,5})$/;
 // http:// の絶対 URI。資格情報（user:pw@）や、ホストの後ろの余計な文字は、ここで落ちる
 const ABSOLUTE_HTTP_URI = /^http:\/\/(?:\[([0-9A-Fa-f:.]+)\]|([A-Za-z0-9._-]+))(?::(\d{1,5}))?([/?][^\s#]*)?$/i;
-const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+/** HTTP のヘッダー名（token）。ブラウザのページに付けるヘッダーの判定にも使う */
+export const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 /** 転送側で付け直す、またはプロキシの向きだけのヘッダー */
 const NOT_FORWARDED_HEADERS: ReadonlySet<string> = new Set(['host', 'connection', 'keep-alive', 'proxy-connection', 'proxy-authorization']);
 
 /** ヘッダーの値に使えない文字（タブ以外の制御文字と DEL）を含むか */
-function hasControlCharacter(value: string): boolean {
+export function hasControlCharacter(value: string): boolean {
   for (let i = 0; i < value.length; i++) {
     const code = value.charCodeAt(i);
     if ((code < 0x20 && code !== 0x09) || code === 0x7f) return true;
