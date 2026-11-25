@@ -18,6 +18,8 @@
 #  15. 実機の確認スクリプト（scripts/vps-check.sh）を、推奨の運用（strict・--cap-drop=ALL に 5 つ・seccomp・no-new-privileges・メモリと PID の上限・読み取り専用・
 #      鍵のディレクトリを :ro）で動かした、本物の strict のコンテナに当てる。コンテナの設定（inspect）・起動のログ・HTTP（鍵の関所・内部の宛先の拒否・Chromium の起動）・
 #      コンテナの中のプロセスの確認が、FAIL なしで通る。ランナーの外の通信と、ホストのネットワークには依存しない（--offline・--skip-network）
+#  16. 本文の抽出（rs-trafilatura）の別プロセスが、本体（root）と別の uid（64000〜。同時の抽出は 1 件ずつ別）に落ちて動き、秘密にも、もう 1 件にも届かず、
+#      本物の抽出の結果は落とす前と同じ。推奨の strict の運用（16b）と、落とす capability が足りない運用（16c。strict は抽出コマンドを動かさない）も（scripts/rs-uid-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -191,3 +193,23 @@ if [ "$vps_ready" != true ]; then
   exit 1
 fi
 VPS_CHECK_ADMIN_KEY="$vps_admin" VPS_CHECK_KEY_A="$vps_a" VPS_CHECK_KEY_B="$vps_b" bash scripts/vps-check.sh "$vps_name" --offline --skip-network
+
+# 16. 本文の抽出の別プロセスが、別の uid に落ちて動く（14 と同じ形。SORA_API_KEY は、本体の環境変数に秘密がある状態の再現）
+docker run --rm \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_API_KEY=sk-verify-image-fake-secret \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/rs-uid-check.ts
+
+# 16b. 16 を、推奨の strict の運用でも
+docker run --rm \
+  --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --security-opt no-new-privileges \
+  --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' -e SORA_API_KEY=sk-verify-image-fake-secret \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/rs-uid-check.ts
+
+# 16c. 落とす capability が足りない運用（--cap-drop=ALL）: standard は従来どおり抽出でき、strict は抽出コマンドを動かさない
+docker run --rm --cap-drop=ALL \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/rs-uid-check.ts
