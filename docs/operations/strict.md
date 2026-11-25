@@ -29,7 +29,7 @@
 - **capability** `CHOWN`・`DAC_OVERRIDE`・`KILL`・`SETGID`・`SETUID`（Docker の既定にあります。`--cap-drop=ALL` の運用は、この 5 つを足します）。Chromium と PDF の解析の別プロセスを、別の uid に落とすのに要ります。
 - **uid 65532〜65535**（`SORA_BROWSER_UID` の基準 + 0〜3）は、Sora の Chromium 専用にします。利用者の入れ替えのときと、起動の確認のあとに、その uid で動いているプロセスを、Sora が終わらせます。ホストで直接動かすときは、別の用途に使わないでください（コンテナなら問題になりません）。
 - **uid 65530・65531**（`SORA_PDF_UID` の基準 + 0〜1）は、Sora の PDF の解析の別プロセス専用にします。同時に動く 2 件が別々の uid になり、解析が終わるたびに、その uid で動いているプロセスを、Sora が終わらせます。Chromium の uid と重ならないようにしてください（`SORA_BROWSER_UID` や `SORA_BROWSER_MAX_PROCESSES` を変えたとき。重なると、`strict` は PDF の解析を断ります）。rootless Podman や user namespace を使うときは、これらの uid が、コンテナの中で使えること（既定の 0〜65535 の範囲なら使えます）を確かめます。
-- **uid 64000〜64255**（`SORA_RS_TRAFILATURA_UID` の基準 + 0〜255）は、本文の抽出（rs-trafilatura）の別プロセス専用にします。同時に動く抽出は 1 件ずつ別の uid で、抽出が終わるたびに、その uid で動いているプロセスを、Sora が終わらせます。Chromium と PDF の解析の uid と重ならないようにしてください（重なると、`strict` は rs-trafilatura を使わず、代わりの抽出〔Readability〕にします）。
+- **uid 64000〜64255**（`SORA_RS_TRAFILATURA_UID` の基準 + 0〜255）は、本文の抽出（rs-trafilatura）の別プロセス専用にします。同時に動く抽出は 1 件ずつ別の uid で、抽出が終わるたびに、その uid で動いているプロセスを、Sora が終わらせます。Chromium と PDF の解析の uid と重ならないようにしてください（重なる設定では、`strict` は起動しません）。
 - **ユーザー名前空間を許す seccomp。** Docker の既定は止めているので、[`deploy/seccomp-sora.json`](../../deploy/seccomp-sora.json) を渡します（README 4.5）。rootless Podman の既定は、cap を落とさないなら、渡さなくても動きました。**`--cap-drop=ALL` と組むときは、Podman の既定の seccomp ではサンドボックスを有効にできず、`strict` は起動を断ります**（Podman 5.7.0 で確かめました。`no-new-privileges` の有無は関係ありません。同じファイルを渡すと通ります）。AppArmor は、Docker の既定のままにします。
 - 起動用バイナリ（`/usr/local/bin/sora-chromium-launch`。公開イメージに入っています）と、Chromium。
 - **stdio では使えません。** `strict` は共有のサービス（HTTP）用で、stdio には、利用者を分ける鍵がありません。
@@ -217,7 +217,7 @@ Sora の中の出口のゲートウェイは、Sora が通信の道筋を決め�
 
 - `detailed` なしの `/health`（`cachedEntries`・`activeMcpSessions`）は、コンテナの死活確認のために鍵なしで開き、全利用者の合計の数字が見えます。
 - 音声のデコーダーが破られたときは、同じ利用者のブラウザセッションの Cookie には届きえます（ほかの利用者のプロセスには、uid が違うので届きません）。
-- 本文の抽出（rs-trafilatura）は、信頼できない HTML を読むので、1 件ずつ、Sora 本体（root）とは別の uid で動きます。破られても、運用者の秘密・ほかの利用者の抽出・PDF・Chromium には届きません。使えないとき（落とせない・uid が空かない）は動かさず、Readability にします（`/metrics` の `sora_main_content_rs_uid_unavailable_total`）。**外向きの通信は、PDF の解析の別プロセスと同じく、止めていません**（5 章のコンテナの外側の制限が要ります）。Yahoo の検索バイナリと住所データの構築の子プロセスは、まだ本体と同じ uid（root）で動きます（どちらも、利用者が選んだページの内容は読みません）。
+- 本文の抽出（rs-trafilatura）は、信頼できない HTML を読むので、1 件ずつ、Sora 本体（root）とは別の uid で動きます。破られても、運用者の秘密・ほかの利用者の抽出・PDF・Chromium には届きません。使えないとき（落とせない・uid が空かない・起動用バイナリが起動を断った）は、root のままは動かさず、Readability にします。取得の結果の `warnings` に書くので、利用者にも分かります（運用者は、ログと `/metrics` の `sora_main_content_rs_uid_unavailable_total` で分かります）。**外向きの通信は、PDF の解析の別プロセスと同じく、止めていません**（5 章のコンテナの外側の制限が要ります）。Yahoo の検索バイナリと住所データの構築の子プロセスは、まだ本体と同じ uid（root）で動きます（どちらも、利用者が選んだページの内容は読みません）。
 - PDF の解析は、1 件ごとの別プロセスで動き、メモリ・時間・出力量の上限を超えたものだけが止まります（README 4.6）。この別プロセスは、Sora 本体（root）とは別の uid に落ちて動きます（同時に動く 2 件は別々の uid）。pdf.js 自体の脆弱性を突かれても、Sora の環境変数・DB・鍵ファイル・ほかの利用者のブラウザのプロファイル（別の uid の 0700）と Cookie・同時に動くもう 1 件の PDF には届きません。**ただし、この別プロセスの外向きの通信は、出口のゲートウェイを通らず、カーネルのレベルでは止めていません。** 破られた別プロセスが、コンテナから出られる先（内部のネットワーク・クラウドのメタデータ）へ、自分でつなげます（5 章のコンテナの外側の制限が要ります）。別プロセスの通信を断つこと（ネットワークの名前空間を分ける）は、まだ入れていません。
 
 これらが済むまでは、公開する範囲を、運用者が把握できる利用者に限ってください。
