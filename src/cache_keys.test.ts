@@ -65,6 +65,8 @@ describe('buildScrapeCacheKey', () => {
     ['annotateTemporal', { annotateTemporal: true }],
     ['maskPii', { maskPii: true }],
     ['url', { url: 'https://example.com/other' }],
+    ['timeoutMs（短い予算）', { timeoutMs: 900 }],
+    ['timeoutMs（長い予算）', { timeoutMs: 60_000 }],
   ];
 
   test('結果の中身を変える入力は、どれもキーを変える（互いにも重ならない）', () => {
@@ -91,7 +93,7 @@ describe('buildScrapeCacheKey', () => {
   test('結果の中身を変えない入力・既定値と同じ指定は、キーを変えない', () => {
     const same: Array<[string, Partial<ScrapeOptions>]> = [
       ['noCache', { noCache: true }],
-      ['timeoutMs', { timeoutMs: 1000 }],
+      ['timeoutMs の既定値', { timeoutMs: 15_000 }],
       ['tenantId', { tenantId: 'key:abc' }],
       ['onProgress', { onProgress: () => {} }],
       ['fullPage の既定値', { fullPage: true }],
