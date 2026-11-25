@@ -304,6 +304,19 @@ export function capHighlightItems<T extends { text: string }>(items: T[], maxCha
   return kept.filter((item): item is T => item !== undefined);
 }
 
+/** 本文の抽出（rs-trafilatura）が使えず、結果が変わりうるときに、応答の warnings に書く文。内部の設定は書かない（理由は、運用者向けのログに出る） */
+const RS_UNAVAILABLE_WARNINGS = {
+  content: '本文の抽出（rs-trafilatura）が使えなかったので、別の方式（Readability）で本文を取り出しました。ページの種類（一覧・掲示板など）によっては、いつもと違う結果になることがあります',
+  images: '本文の抽出（rs-trafilatura）の、画像を戻す処理が使えなかったので、本文の中の画像が抜けていることがあります',
+} as const;
+
+/** 本文の抽出。使えなかったときの、利用者向けの警告の文も返す */
+async function readMainContent(html: string, url: string, { removeSelectors, includeMedia }: { removeSelectors?: string[]; includeMedia?: boolean }) {
+  const warnings: string[] = [];
+  const rsMain = await extractMainContentWithRs(html, url, undefined, { removeSelectors, includeMedia, onUnavailable: (missed) => warnings.push(RS_UNAVAILABLE_WARNINGS[missed]) });
+  return { rsMain, warnings };
+}
+
 const SCREENSHOT_UNAVAILABLE_WARNING =
   'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
 
@@ -907,7 +920,7 @@ export async function scrapeUrl(options: {
 
       const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
       const html = decodeHtmlBuffer(buf, contentType);
-      const rsMain = onlyMainContent ? await extractMainContentWithRs(html, finalUrl, undefined, { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia }) : undefined;
+      const extraction = onlyMainContent ? await readMainContent(html, finalUrl, options) : undefined;
 
       const parsed = convertHtmlToMarkdown(
         html,
@@ -919,7 +932,7 @@ export async function scrapeUrl(options: {
         options.removeSelectors,
         options.stripLinks,
         options.keepDataImages,
-        rsMain,
+        extraction?.rsMain,
       );
 
       const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
@@ -994,6 +1007,7 @@ export async function scrapeUrl(options: {
         qualityReasons: parsed.qualityReasons,
         missingFields: parsed.missingFields,
         evidence: parsed.evidence,
+        ...(extraction?.warnings.length ? { warnings: extraction.warnings } : {}),
       };
 
       if (!isSpaOrBlank || recallSaved) {
@@ -1051,6 +1065,7 @@ export async function scrapeUrl(options: {
       }
     }
 
+    const extraction = onlyMainContent ? await readMainContent(browserRes.html, browserRes.finalUrl, options) : undefined;
     const parsed = convertHtmlToMarkdown(
       browserRes.html,
       browserRes.finalUrl,
@@ -1061,7 +1076,7 @@ export async function scrapeUrl(options: {
       options.removeSelectors,
       options.stripLinks,
       options.keepDataImages,
-      onlyMainContent ? await extractMainContentWithRs(browserRes.html, browserRes.finalUrl, undefined, { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia }) : undefined,
+      extraction?.rsMain,
     );
 
     result = {
@@ -1103,6 +1118,7 @@ export async function scrapeUrl(options: {
       qualityReasons: parsed.qualityReasons,
       missingFields: parsed.missingFields,
       evidence: parsed.evidence,
+      ...(extraction?.warnings.length ? { warnings: extraction.warnings } : {}),
     };
 
     onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });

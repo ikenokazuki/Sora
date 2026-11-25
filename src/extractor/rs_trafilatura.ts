@@ -7,6 +7,7 @@
  * rs-trafilatura の本文の HTML には img が入らないので、記事以外のページで画像があるときは、画像の後ろに目印を置いた HTML で
  * もう一度取り出し、本文が 1 回目と同じときだけ目印を画像に戻す（rs_images.ts）。
  * コマンドは信頼できない HTML を読むので、Sora 本体（root）とは別の uid に落として動かす（rs_uid.ts）。落とせない strict・uid が空かないときは動かさない。
+ * 別の uid が使えなかったことは、onUnavailable で呼び出し側に伝える（呼び出し側が、取得の結果の warnings に書く）。
  */
 import { existsSync } from 'node:fs';
 import * as cheerio from 'cheerio';
@@ -15,7 +16,7 @@ import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { markImagesForRs, restoreRsImages } from './rs_images.js';
 import { ChildDropError } from '../child_uid.js';
-import { type RsLaunch, withRsUid } from './rs_uid.js';
+import { LAUNCHER_REFUSED_EXIT_CODE, type RsLaunch, rsLaunchRefused, withRsUid } from './rs_uid.js';
 
 export interface RsMainContent {
   pageType?: string;
@@ -27,6 +28,8 @@ export interface RsExtractOptions {
   removeSelectors?: string[];
   /** false なら画像を戻さない（2 回目を走らせない） */
   includeMedia?: boolean;
+  /** 別の uid が使えず、結果が変わるときに呼ぶ。content は本文の抽出が使えない、images は画像を戻す 2 回目だけが使えない */
+  onUnavailable?: (missed: 'content' | 'images') => void;
 }
 
 /** 1 回の取り出しの上限。rs-trafilatura は 1 ページ数十 ms なので、これを超えるのは異常なページだけ */
@@ -69,6 +72,8 @@ async function runRs(bin: string, html: string, url: string, pageType?: string):
     const timer = setTimeout(() => proc.kill('SIGKILL'), RS_TIMEOUT_MS);
     try {
       const { stdout, code } = await readUntilExit(proc);
+      // 落とすとき（env がある）の 126 は、起動用バイナリが断った
+      if (launch.env && code === LAUNCHER_REFUSED_EXIT_CODE) throw rsLaunchRefused();
       const out = code === 0 ? JSON.parse(stdout || '{}') : {};
       if (typeof out.content_html !== 'string' || !out.content_html.trim()) return undefined;
       return { contentHtml: out.content_html, ...(typeof out.page_type === 'string' ? { pageType: out.page_type } : {}) };
@@ -97,7 +102,8 @@ export async function extractMainContentWithRs(
     first = await runRs(bin, input, url);
   } catch (error) {
     // 別の uid が使えないときは、rs_uid.ts が数えて知らせる。失敗とは数えない
-    if (!(error instanceof ChildDropError)) {
+    if (error instanceof ChildDropError) options.onUnavailable?.('content');
+    else {
       try { incrementSecurityCounter('sora_main_content_rs_failed_total'); } catch {}
     }
     return undefined;
@@ -114,7 +120,8 @@ export async function extractMainContentWithRs(
     const second = await runRs(bin, marked.html, url, first.pageType);
     const restored = second ? restoreRsImages(first.contentHtml, second.contentHtml, marked.images) : undefined;
     return restored ? { ...first, contentHtml: restored } : first;
-  } catch {
+  } catch (error) {
+    if (error instanceof ChildDropError) options.onUnavailable?.('images');
     return first;
   }
 }

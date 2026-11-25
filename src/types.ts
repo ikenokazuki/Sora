@@ -1304,7 +1304,7 @@ export const ScrapeResponseSchema = z.object({
   html: z.string().optional().describe('クリーン整形済み HTML 本文'),
   rawHtml: z.string().optional().describe('取得時の完全な生 HTML'),
   screenshot: z.string().optional().describe('スクリーンショット画像 (Base64 PNG)'),
-  warnings: z.array(z.string()).optional().describe('求めた形式を満たせなかった旨 (例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった)'),
+  warnings: z.array(z.string()).optional().describe('いつもの結果にできなかった旨 (本文の抽出を別の方式にした場合など。例: formats に screenshot があるのに、mode "fast" のため画像を取れなかった)'),
   quality: z.number().optional().describe('ページ品質スコア (0〜100)'),
   completeness: z.number().optional().describe('必須フィールド充足度 (0〜100)'),
   pageType: z.enum(['article', 'product', 'qa', 'generic']).optional().describe('自動判定されたページ種別'),

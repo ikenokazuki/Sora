@@ -193,6 +193,78 @@ describe('extractMainContentWithRs（起動用バイナリ経由）', () => {
   });
 });
 
+describe('使えなかったことを、呼び出し側に伝える（onUnavailable）', () => {
+  const run = async (bin: string, html = '<html><body><p>x</p></body></html>') => {
+    const missed: string[] = [];
+    const result = await extractMainContentWithRs(html, 'https://x.example/', bin, { onUnavailable: (what) => missed.push(what) });
+    return { result, missed };
+  };
+  const strictWithoutRoot = async () => {
+    const { childDropProbe } = await import('../child_uid.js');
+    childDropProbe.currentUid = () => 1000;
+  };
+
+  test('別の uid が使えないときは content を伝える', async () => {
+    await strictWithoutRoot();
+    const { result, missed } = await withEnv({ SORA_ISOLATION: 'strict' }, () => run(okRs()));
+    expect(result).toBeUndefined();
+    expect(missed).toEqual(['content']);
+  });
+
+  test('動いたとき・結果が空のとき・コマンドの失敗では、伝えない', async () => {
+    for (const bin of [okRs(), script('empty-rs', `cat > /dev/null\nprintf '{}'`), script('fail-rs', `cat > /dev/null\nexit 1`), script('broken-rs', `cat > /dev/null\nprintf 'not json'`)]) {
+      expect((await run(bin)).missed).toEqual([]);
+    }
+    expect(unavailable()).toBe(0);
+  });
+
+  test('起動用バイナリが終了コード 126（uid に落とせない・その uid で実行できない）なら、使えないと扱う: 数えて、知らせて、伝える', async () => {
+    const { childDropProbe } = await import('../child_uid.js');
+    const deny = script('deny-launch', 'cat > /dev/null\nexit 126');
+    childDropProbe.launcher = () => deny;
+    const { result, missed } = await run(okRs());
+    expect(result).toBeUndefined();
+    expect(missed).toEqual(['content']);
+    expect(unavailable()).toBe(1);
+    expect(getSecurityMetrics().sora_main_content_rs_empty_total ?? 0).toBe(0);
+    expect(getSecurityMetrics().sora_main_content_rs_failed_total ?? 0).toBe(0);
+    expect(warnings()).toContain('126');
+    expect(warnings()).toContain('Readability');
+    expect(fake.reaped).toEqual([64000]); // uid は片づけて返す
+  });
+
+  test('落とさないときの終了コード 126 は、ふつうの失敗（起動用バイナリを通っていない）', async () => {
+    const { childDropProbe } = await import('../child_uid.js');
+    childDropProbe.currentUid = () => 1000;
+    const { missed } = await run(script('own-126-rs', 'cat > /dev/null\nexit 126'));
+    expect(missed).toEqual([]);
+    expect(unavailable()).toBe(0);
+    expect(getSecurityMetrics().sora_main_content_rs_empty_total).toBe(1);
+  });
+
+  test('画像を戻す 2 回目が、ふつうの失敗（壊れた出力）のときは、伝えない', async () => {
+    const count = join(dir, 'broken-second.count');
+    const bin = script('broken-second-rs', `cat > /dev/null\nif [ -e '${count}' ]; then printf 'not json'; else touch '${count}'; printf '{"page_type":"listing","content_html":"<p>list</p>"}'; fi`);
+    const { result, missed } = await run(bin, '<html><body><p>list</p><img src="https://x.example/a.jpg" alt="a"></body></html>');
+    expect(result).toEqual({ pageType: 'listing', contentHtml: '<p>list</p>' });
+    expect(missed).toEqual([]);
+  });
+
+  test('画像を戻す 2 回目だけが使えないときは、1 回目の結果を返し、images を伝える', async () => {
+    const { childDropProbe } = await import('../child_uid.js');
+    // 1 回目が終わって uid を片づけたら、2 回目は落とせない環境にする
+    childDropProbe.reap = async () => {
+      childDropProbe.currentUid = () => 1000;
+      return true;
+    };
+    const bin = script('listing-rs', `cat > /dev/null\nprintf '{"page_type":"listing","content_html":"<p>list</p>"}'`);
+    const { result, missed } = await withEnv({ SORA_ISOLATION: 'strict' }, () => run(bin, '<html><body><p>list</p><img src="https://x.example/a.jpg" alt="a"></body></html>'));
+    expect(result).toEqual({ pageType: 'listing', contentHtml: '<p>list</p>' });
+    expect(missed).toEqual(['images']);
+    expect(unavailable()).toBe(1);
+  });
+});
+
 describe('抽出の子が、本体を待たせ続けない', () => {
   test('時間の上限で、SIGTERM を無視する子も止める', async () => {
     const bin = script('stubborn-rs', `trap '' TERM\ncat > /dev/null\nwhile :; do sleep 1; done`);

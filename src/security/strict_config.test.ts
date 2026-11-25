@@ -88,6 +88,29 @@ describe('strictConfigProblems', () => {
     for (const value of ['auto', '64000']) expect(strictConfigProblems({ ...COMPLIANT, SORA_RS_TRAFILATURA_UID: value }, 'http')).toEqual([]);
   });
 
+  test('本文の抽出の uid が、Chromium や PDF の解析の uid と重なる設定は断る（起動できても、毎回 Readability になるため）', () => {
+    const cases: Env[] = [
+      { SORA_PDF_UID: '64100' }, // PDF の解析（64100〜64101）が、抽出の範囲（64000〜64255）に入る
+      { SORA_BROWSER_UID: '64253' }, // Chromium（strict は 4 つ分の 64253〜64256）
+      { SORA_BROWSER_UID: '63998' }, // 1 つ分なら重ならないが、strict の 4 つ分（〜64001）は重なる
+      { SORA_RS_TRAFILATURA_UID: '65500' },
+    ];
+    for (const extra of cases) {
+      const problems = strictConfigProblems({ ...COMPLIANT, ...extra }, 'http');
+      expect(problems).toHaveLength(1);
+      expect(problems[0]).toContain('SORA_RS_TRAFILATURA_UID');
+      expect(problems[0]).toContain('重なる');
+    }
+    expect(strictConfigProblems({ ...COMPLIANT, SORA_BROWSER_UID: '63998', SORA_BROWSER_MAX_PROCESSES: '1' }, 'http')).toEqual([]);
+    expect(strictConfigProblems({ ...COMPLIANT, SORA_RS_TRAFILATURA_UID: '30000' }, 'http')).toEqual([]);
+  });
+
+  test('本文の抽出の uid が、uid の最大を超える設定は断る', () => {
+    const problems = strictConfigProblems({ ...COMPLIANT, SORA_RS_TRAFILATURA_UID: '4294967200' }, 'http');
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('uid の最大');
+  });
+
   test('stdio では使えない（利用者を分ける鍵が無い）。鍵ファイルの有無は重ねて言わない', () => {
     const problems = strictConfigProblems(without('SORA_AUTH_KEYS_FILE'), 'stdio');
     expect(problems).toHaveLength(1);

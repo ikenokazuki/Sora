@@ -9,10 +9,11 @@
  *  - 出口のゲートウェイ（SORA_EGRESS_GATEWAY=on）: 内部への取得を許す設定（SORA_FETCH_ALLOW_PRIVATE_NETWORK=true）と併せると、使われなくなる
  *  - Chromium の uid を落とす（SORA_BROWSER_UID が off でない）: tenant ごとのブラウザを、uid で分けるため
  *  - PDF の解析の別プロセスの uid を落とす（SORA_PDF_UID が off でない）: 運用者の秘密とほかの利用者のプロセスから離すため
- *  - 本文の抽出の別プロセスの uid を落とす（SORA_RS_TRAFILATURA_UID が off でない）: 同じ理由
+ *  - 本文の抽出の別プロセスの uid を落とす（SORA_RS_TRAFILATURA_UID が off でなく、Chromium・PDF の解析の uid と重ならない）: 同じ理由
  * tenant ごとのブラウザ・tenant ごとの上限は、strict で自動的に有効になるので、設定を求めない。
  */
 import { envBool, envPath, envRaw, type Env } from '../config.js';
+import { strictRsUidConfigProblem } from '../extractor/rs_uid.js';
 
 /** 問題の文は、変数の名前と、何にすればよいかを含める。すべてを返す（1 つ直すたびに起動し直させない） */
 export function strictConfigProblems(env: Env, transport: 'http' | 'stdio'): string[] {
@@ -49,9 +50,8 @@ export function strictConfigProblems(env: Env, transport: 'http' | 'stdio'): str
     problems.push(strict('SORA_PDF_UID=off は使えません。PDF の解析の別プロセスを、別の uid に落として、運用者の秘密とほかの利用者のプロセスから離すためです。auto にするか、数を指定してください'));
   }
 
-  if (envRaw('SORA_RS_TRAFILATURA_UID', env)?.trim().toLowerCase() === 'off') {
-    problems.push(strict('SORA_RS_TRAFILATURA_UID=off は使えません。信頼できない HTML を読む本文の抽出を、別の uid に落として、運用者の秘密とほかの利用者のプロセスから離すためです。auto にするか、数を指定してください'));
-  }
+  const rsUidProblem = strictRsUidConfigProblem(env);
+  if (rsUidProblem) problems.push(rsUidProblem);
 
   return problems;
 }
