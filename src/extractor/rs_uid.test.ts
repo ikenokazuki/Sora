@@ -146,6 +146,20 @@ describe('withRsUid', () => {
     await expect(withRsUid(command, async () => {}, { SORA_BROWSER_UID: '64253', SORA_ISOLATION: 'strict' })).rejects.toThrow(ChildDropError);
   });
 
+  test('ブラウザの uid の範囲は、standard は 1 つ分、strict はプロセスの数ぶんで調べる（抽出の範囲の手前に置いて、違いが出る位置で確かめる）', async () => {
+    // 基準 63998: 1 つ分なら 63998 だけ（重ならない）。strict の 4 つ分は 63998〜64001（抽出の 64000 と重なる）
+    const env = { SORA_BROWSER_UID: '63998' };
+    expect((await withRsUid(command, async (l) => l, env)).cwd).toBe('/');
+    expect(warnings()).toBe('');
+    await expect(withRsUid(command, async () => {}, { ...env, SORA_ISOLATION: 'strict' })).rejects.toThrow(ChildDropError);
+  });
+
+  test('渡した環境の SORA_RS_TRAFILATURA_UID を読む（プロセスの環境ではなく）', async () => {
+    const launch = await withRsUid(command, async (l) => l, { SORA_RS_TRAFILATURA_UID: '30000' });
+    expect(launch.env).toMatchObject({ SORA_LAUNCH_UID: '30000' });
+    expect(fake.reaped).toEqual([30000]);
+  });
+
   test('既定の組み合わせは、どれとも重ならず、警告もない', async () => {
     await withRsUid(command, async () => {}, { SORA_ISOLATION: 'strict' });
     expect(warnings()).toBe('');
