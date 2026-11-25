@@ -1332,6 +1332,7 @@ export const MapResponseSchema = z.object({
   links: z.array(z.string()).describe('発見されたサイトマップまたは巡回 URL リスト'),
   count: z.number().describe('取得 URL 総件数'),
   source: z.enum(['sitemap', 'links']).describe('検出ソース (sitemap.xml または HTML リンク解析)'),
+  warnings: z.array(z.string()).optional().describe('上限で打ち切って、一覧に含まれていない URL がありうる知らせ'),
   ...CACHE_META_SHAPE,
 });
 
@@ -1341,6 +1342,7 @@ export const CrawlResponseSchema = z.object({
   count: z.number().describe('クロール成功ページ数'),
   totalPages: z.number().describe('探索対象総ページ数'),
   pages: z.array(ScrapeResponseSchema).describe('クロールされた各ページのスクレイプ結果配列'),
+  warnings: z.array(z.string()).optional().describe('上限で打ち切って、取得できていないページがありうる知らせ'),
 });
 
 // --- 3. ブラウザ自動操作 レスポンススキーマ ---
