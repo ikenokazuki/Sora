@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, te
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import * as browserEngine from './browser_engine.js';
 import * as browserStealth from './browser_stealth.js';
 import * as cache from './cache.js';
 import { childDropProbe } from './child_uid.js';
@@ -75,6 +76,22 @@ describe('本文の抽出が使えないことが、scrape の応答で分かる
     expect(result.warnings?.[0]).toContain('rs-trafilatura');
     expect(result.warnings?.[0]).toContain('Readability');
     expect(result.warnings?.[0]).not.toMatch(/uid|SORA_|126|root/);
+  });
+
+  test('ブラウザが失敗して静的な結果を返すときも、抽出の警告は残り、代わりを返した警告を足す', async () => {
+    unusable();
+    const shell = Bun.serve({ port: 0, hostname: '127.0.0.1', fetch: () => new Response('<!doctype html><html><head><title>アプリ</title></head><body><div id="root">読み込んでいます。しばらくお待ちください。アプリケーションを準備しているので、内容はまもなく表示されます。</div><script src="/app.js"></script></body></html>', { headers: { 'content-type': 'text/html; charset=utf-8' } }) });
+    const chromium = spyOn(browserEngine, 'resolveChromiumPath').mockReturnValue('/test/chromium');
+    const browser = spyOn(browserStealth, 'fetchWithStealthBrowser').mockRejectedValue(new Error('browser down'));
+    try {
+      const result = await scrapeUrl({ tenantId: 'legacy', url: `http://127.0.0.1:${shell.port}/${Date.now()}`, noCache: true });
+      expect(result.renderedWithBrowser).toBe(false);
+      expect(result.warnings).toEqual([expect.stringContaining('Readability'), expect.stringContaining('ブラウザで描画できなかった')]);
+    } finally {
+      browser.mockRestore();
+      chromium.mockRestore();
+      shell.stop(true);
+    }
   });
 
   test('ブラウザの経路でも分かる。使えるときは、警告を付けない', async () => {

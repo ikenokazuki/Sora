@@ -321,6 +321,9 @@ async function readMainContent(html: string, url: string, { removeSelectors, inc
 /** ブラウザが送れず、外して開いた headers を知らせる文。名前だけを書く（値は資格情報のこともある） */
 const unsendableHeaderWarning = (names: string[]) => `ブラウザが送れない headers は外して開きました: ${names.map((name) => JSON.stringify(name)).join('、')}`;
 
+/** ブラウザで描画できず、静的な取得の結果を返したことを知らせる文（付いた結果は、短い時間だけキャッシュする） */
+const BROWSER_FALLBACK_WARNING = 'ブラウザで描画できなかった（時間切れなど）ので、静的な取得の結果を返しました。JavaScript で表示する内容が欠けていることがあります';
+
 const SCREENSHOT_UNAVAILABLE_WARNING =
   'formats に screenshot がありますが、画像を取れませんでした（mode "fast"・fastOnly はブラウザを使わないため撮れません。Chromium がない、PDF、撮影の失敗でも付きます）'
 
@@ -633,7 +636,10 @@ type ScrapeKeyIgnored =
   | 'url' // キーの先頭に別に置く
   | 'cookies' // 資格情報付きの要求は共有キャッシュを使わない
   | 'tenantId' // 公開ページの取得結果はテナントをまたいで共有する
-  | 'noCache' | 'onProgress' | 'timeoutMs'; // 取得の進め方で、結果の中身は変えない
+  | 'noCache' | 'onProgress'; // 取得の進め方で、結果の中身は変えない
+
+/** scrape の時間の予算（timeoutMs）の既定 */
+const DEFAULT_SCRAPE_TIMEOUT_MS = 15_000;
 
 /** キーに入れるヘッダー。資格情報を運ぶヘッダーを持つ要求は共有キャッシュを使わないので除く。名前は大文字小文字を区別しない。 */
 function headersForCacheKey(headers: Record<string, string> | undefined): Array<[string, string]> {
@@ -672,6 +678,8 @@ export function buildScrapeCacheKey(
     includeMedia: options.includeMedia !== false,
     contextTitle: options.contextTitle ?? '',
     snippet: options.snippet ?? '',
+    // 時間の予算は結果の中身を変える（描画の途中のページ・ブラウザの時間切れの代わりの静的な結果）。予算の違う取得とは、キャッシュを分ける
+    timeoutMs: options.timeoutMs ?? DEFAULT_SCRAPE_TIMEOUT_MS,
   });
   return `scrape:v11:${options.url}:${digest}`;
 }
@@ -746,7 +754,7 @@ export async function scrapeUrl(options: {
   const maxChars = options.maxChars ?? DEFAULT_MAX_CHARS;
   const formats = options.formats ?? ['markdown'];
   const onlyMainContent = options.onlyMainContent !== false;
-  const timeoutMs = options.timeoutMs ?? 15000;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_SCRAPE_TIMEOUT_MS;
   const onProgress = options.onProgress;
   const shouldExtractHighlights =
     options.extractHighlights ?? (Boolean(options.query?.trim()));
@@ -1059,7 +1067,8 @@ export async function scrapeUrl(options: {
       // ブラウザレンダリングがタイムアウト等で失敗した場合、初期HTTPで取得できていたコンテンツがあれば救済
       if (initialHttpResult) {
         onProgress?.({ stage: 'enrich', message: 'Browser timed out; falling back to initial HTTP content' });
-        result = markHttpError(await finalizeScrapeResult(initialHttpResult, { ...finalizeOpts, highlightSource: initialHttpFull }), initialHttpStatus);
+        const fallback = { ...initialHttpResult, warnings: [...(initialHttpResult.warnings ?? []), BROWSER_FALLBACK_WARNING] };
+        result = markHttpError(await finalizeScrapeResult(fallback, { ...finalizeOpts, highlightSource: initialHttpFull }), initialHttpStatus);
         cacheResult(result);
         return result;
       }
@@ -1424,7 +1433,8 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   const limit = Math.min(options.limit ?? 200, 1000);
   // v2: 日付で絞ってから件数で切るようにした（v1 は先に切っていたので、limit と since を併用した結果が違う）
   // v3: tenant の保存済みの状態で見えた内容を、tenant のキーに置くようにした（v2 の、状態で見える内容が入っているかもしれない共有のキーは、読まない）
-  const cacheKey = `map:v3:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}`;
+  // 時間の予算は、サイトマップが無いときのページの取得に効くので、キーに入れる
+  const cacheKey = `map:v3:${url}:${limit}:${options.includeSubdomains || false}:${options.since || ''}:${options.until || ''}:${options.timeoutMs ?? DEFAULT_SCRAPE_TIMEOUT_MS}`;
 
   if (!options.noCache) {
     const cached = getFromTenantCache<any>(tenantId, cacheKey);
@@ -1445,12 +1455,14 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
   const deadline = AbortSignal.timeout(lim.mapDeadlineMs);
   const cuts = new Set<MapCut>();
   const ctx: SitemapContext = { tenantId, limits: lim, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline, fetched: 0, cuts };
-  /** 打ち切って、頼まれた件数に足りないときだけ、警告を付ける（足りていれば、結果は変わらない）。付いた結果を置く */
-  const finish = (result: MapSiteResult): MapSiteResult => {
+  /** 打ち切り・描画の失敗で、頼まれた件数に足りないときだけ、警告を付ける（足りていれば、結果は変わらない）。付いた結果を置く */
+  const finish = (result: MapSiteResult, failures: string[] = []): MapSiteResult => {
     if (deadline.aborted) cuts.add('deadline');
-    const out: MapSiteResult = cuts.size > 0 && result.count < limit ? { ...result, warnings: [mapCutWarning(cuts, lim)] } : result;
-    // 時間の上限で欠けた結果は、混み具合で変わるので、短い時間だけ置く
-    if (!options.noCache) setToTenantCache(tenantId, cacheKey, out, out.warnings && cuts.has('deadline') ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
+    const warnings = result.count < limit ? [...(cuts.size > 0 ? [mapCutWarning(cuts, lim)] : []), ...failures] : [];
+    const out: MapSiteResult = warnings.length > 0 ? { ...result, warnings } : result;
+    // 時間の上限・描画の失敗で欠けた結果は、混み具合で変わるので、短い時間だけ置く
+    const shortLived = warnings.length > 0 && (cuts.has('deadline') || failures.length > 0);
+    if (!options.noCache) setToTenantCache(tenantId, cacheKey, out, shortLived ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
     return out;
   };
 
@@ -1510,7 +1522,10 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
     }
   });
 
-  return finish({ url, links: internalLinks.slice(0, limit), count: Math.min(internalLinks.length, limit), source: 'links' });
+  return finish(
+    { url, links: internalLinks.slice(0, limit), count: Math.min(internalLinks.length, limit), source: 'links' },
+    scraped.warnings?.includes(BROWSER_FALLBACK_WARNING) ? [BROWSER_FALLBACK_WARNING] : [],
+  );
 }
 
 // ==========================================

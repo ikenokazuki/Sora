@@ -127,7 +127,7 @@ describe('キャッシュのキー', () => {
   test('版は v3（以前の共有のキーの、状態で見える内容が入っているかもしれない行は、読まない）', async () => {
     const bob = tenant('bob');
     await map(bob);
-    const key = `map:v3:${base}/:10:false::`;
+    const key = `map:v3:${base}/:10:false:::15000`;
     expect(getFromCache(key)).not.toBeNull();
     expect(getFromCache(key.replace('map:v3:', 'map:v2:'))).toBeNull();
   });
