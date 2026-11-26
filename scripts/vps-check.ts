@@ -509,8 +509,11 @@ async function checkHttp(base: string, port: number, keys: Keys, offline: boolea
   const clear = await api(base, 'POST', '/cache/clear', keys.a, {});
   out.push(clear.status === 200 && clear.body?.scope === 'tenant' ? pass('http.cache-clear', '一般の鍵の /cache/clear は、自分の利用者の分だけ') : fail('http.cache-clear', `一般の鍵の /cache/clear が、自分の分だけではない（HTTP ${clear.status} scope ${String(clear.body?.scope)}）`, '全員分を消せるのは、管理者の鍵だけ'));
 
-  // ブラウザ: ネットワークなしで、Chromium を、このコンテナの設定で起動する（サンドボックス・uid・seccomp が、本物の環境で通るか）
-  const browser = await api(base, 'POST', '/browser/action', keys.a, { url: 'data:text/html,<title>vps-check</title><p>vps-check</p>', extract: { markdown: true } }, 120_000);
+  // ブラウザ: ネットワークなしで、Chromium を、このコンテナの設定で起動する（サンドボックス・uid・seccomp が、本物の環境で通るか）。
+  // url を渡さないセッションは、空のページを開いて中身を取り出す（ブラウザで開ける url は http・https だけで、内部の宛先は strict が断る）
+  const session = { sessionId: 'vps-check-browser' };
+  const browser = await api(base, 'POST', '/browser/action', keys.a, { ...session, createSession: true, extract: { markdown: true } }, 120_000);
+  if (browser.status === 200) await api(base, 'POST', '/browser/action', keys.a, { ...session, closeSession: true });
   out.push(browser.status === 200 ? pass('http.browser', 'Chromium が、この環境で起動して、ページを開けた') : fail('http.browser', `Chromium を起動して、ページを開けない（HTTP ${browser.status}）`, 'seccomp（Docker は deploy/seccomp-sora.json）・AppArmor・capability・/tmp の書き込みを確かめる'));
 
   if (offline) {
