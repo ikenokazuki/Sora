@@ -7,6 +7,8 @@ ARG WREQ_MAX_CHROME_PROFILE=154
 FROM docker.io/oven/bun:1 AS builder
 WORKDIR /app
 COPY package.json bun.lock* ./
+# 依存に当てるパッチ（package.json の patchedDependencies）は、bun install の前に要る
+COPY patches ./patches
 RUN bun install --frozen-lockfile
 COPY . .
 RUN bun build ./src/index.ts --target=bun --outfile=server.js
@@ -44,6 +46,7 @@ RUN cd /src/rust && cargo build --release --locked \
 FROM docker.io/oven/bun:1 AS prod-deps
 WORKDIR /app
 COPY package.json bun.lock* ./
+COPY patches ./patches
 RUN bun install --frozen-lockfile --production \
     && rm -rf node_modules/@wreq-js/binding-*-musl \
     && test -f node_modules/@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node

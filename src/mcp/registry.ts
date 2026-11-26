@@ -1,7 +1,9 @@
 import type { McpServer, RegisteredTool, ToolCallback } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AnySchema, ZodRawShapeCompat } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { envList } from '../config.js';
+import { usageError } from './args.js';
 import { runAsCaller } from '../security/caller.js';
+import { findOversizedInput } from '../security/input_limits.js';
 import { LEGACY_TENANT_ID } from '../security/tenant_context.js';
 import { EXPLICIT_ONLY_MODULES, type SoraModule } from '../modules.js';
 import type { XPostDetailProvider } from '../services/x_detail.js';
@@ -53,6 +55,17 @@ function inCallerScope<F extends (...args: never[]) => unknown>(server: McpServe
   return ((...args: Parameters<F>) => runAsCaller(SERVER_TENANTS.get(server) ?? LEGACY_TENANT_ID, () => handler(...args))) as F;
 }
 
+/**
+ * ツールの引数に、長さの上限を超える文字列があれば、ハンドラを呼ばずに入力の誤りを返す（security/input_limits.ts。REST は routes/input_limits.ts）。
+ * 引数のあるツールは (args, extra) で呼ばれる。引数の無いツール（extra だけ）は調べない
+ */
+export function withInputLimits<F extends (...args: never[]) => unknown>(handler: F): F {
+  return ((...args: Parameters<F>) => {
+    const problem = args.length > 1 ? findOversizedInput(args[0]) : undefined;
+    return problem ? usageError(problem) : handler(...args);
+  }) as F;
+}
+
 /** MCP の応答 JSON。字下げはトークンを約1割増やすので、verbose 指定時だけ付ける（search_deep・search_realtime と同じ）。 */
 export function toolJson(value: unknown, verbose?: boolean): string {
   return verbose === true ? JSON.stringify(value, null, 2) : JSON.stringify(value);
@@ -78,7 +91,7 @@ export function registerTool<Args extends ZodRawShapeCompat>(
   handler: ToolCallback<Args>,
   opts: { defaultEnabled: boolean; keywords?: string[] },
 ): RegisteredTool {
-  const scoped = inCallerScope(mcpServer, handler);
+  const scoped = withInputLimits(inCallerScope(mcpServer, handler));
   const handle = mcpServer.tool(name, description, schema, scoped);
   const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {
@@ -105,7 +118,7 @@ export function registerTool<Args extends ZodRawShapeCompat>(
 
 export function registerStructuredTool<Args extends ZodRawShapeCompat>(mcpServer: McpServer, toolCatalog: Map<string, ToolCatalogEntry>, sessionActivated: Set<string> = SHARED_ACTIVATED_TOOLS, name: string, category: SoraModule, description: string, schema: Args, outputSchema: AnySchema, handler: ToolCallback<Args>, opts: { defaultEnabled: boolean; keywords?: string[] }): RegisteredTool {
   const config = { description, inputSchema: schema, outputSchema, annotations: { readOnlyHint: true } };
-  const scoped = inCallerScope(mcpServer, handler as never) as never;
+  const scoped = withInputLimits(inCallerScope(mcpServer, handler as never)) as never;
   const handle = mcpServer.registerTool(name, config, scoped);
   const isEnabled = opts.defaultEnabled || sessionActivated.has(name);
   if (!isEnabled) {

@@ -3,6 +3,7 @@ import type { ProviderInput, AcquisitionItem, CountryIntelProvider } from '../pr
 import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
+import { stripTags as removeTags } from '../../../strip_tags.js';
 
 export const SO360_SEARCH_BASE = 'https://www.so.com/s';
 export const SO360_MAX_ITEMS = 10;
@@ -11,7 +12,7 @@ const SO360_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (
 export interface So360Entry { title: string; url: string; snippet: string; }
 
 function stripTags(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+  return removeTags(html).replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
 }
 
 /** SSR結果をパースする。発行者直URL (data-mdurl) のある項目のみ採用し、暗号リダイレクトだけの項目は捨てる。 */

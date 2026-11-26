@@ -36,6 +36,7 @@ import {
 import { envInt, envPath } from '../config.js';
 import { errorMessage, ResourceBusyError } from '../errors.js';
 import { splitQueryUrls } from '../html_parser.js';
+import { stripTags } from '../strip_tags.js';
 
 // Yahoo MCP バイナリのパス（SORA_YAHOO_MCP_PATH は読み込み時に 1 回だけ読む。そのファイルが無ければ、未設定と同じく既定の場所を探す）
 const configuredYahooMcpPath = envPath('SORA_YAHOO_MCP_PATH');
@@ -809,7 +810,7 @@ async function searchYahooWebUncached(options: YahooWebSearchOptions, deps: Yaho
 export interface YahooWebDirectItem { url: string; title?: string; snippet?: string; domain?: string; }
 
 function stripYahooTags(text: string): string {
-  return text.replace(/<[^>]*>/g, '').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&nbsp;/g, ' ').replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
+  return stripTags(text).replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&nbsp;/g, ' ').replace(/&middot;/g, '·').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/\s+/g, ' ').trim();
 }
 
 /** Yahooの縦断ナビ（画像・動画・地図・リアルタイム等）へのリンクか。結果候補にしない。 */

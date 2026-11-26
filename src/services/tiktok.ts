@@ -3,6 +3,7 @@ import { errorMessage } from '../errors.js';
 import { fetchWithSafeRedirects } from '../http_fetcher.js';
 import { readBodyWithLimit } from '../net/safe_transport.js';
 import { json3ToParagraphs, tLabel } from './youtube.js';
+import { stripTags } from '../strip_tags.js';
 
 /**
  * TikTok の動画を scrape の本文にする（説明文・投稿者・投稿日時・長さ・自動字幕）。
@@ -58,7 +59,7 @@ export function parseWebVtt(vtt: string): Array<{ startMs: number; text: string 
     const at = lines.findIndex((line) => line.includes('-->'));
     const m = at >= 0 ? lines[at].match(/^\s*(?:(\d+):)?(\d{2}):(\d{2})[.,](\d{3})\s*-->/) : null;
     if (!m) continue;
-    const text = lines.slice(at + 1).join(' ').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const text = stripTags(lines.slice(at + 1).join(' ')).replace(/\s+/g, ' ').trim();
     if (text) cues.push({ startMs: ((Number(m[1] ?? 0) * 60 + Number(m[2])) * 60 + Number(m[3])) * 1000 + Number(m[4]), text });
   }
   return cues;

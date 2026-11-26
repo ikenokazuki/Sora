@@ -361,6 +361,9 @@ export function dinkelbachOptimalWindow(
     return { passage: acc, withLead: acc };
   }
 
+  // 区間の長さは整数なので、maxChars までの L^alpha は一度だけ計算する（値は同じ）。短い文が大量に並ぶと、組み合わせが何千万にもなり、Math.pow が時間の大半になる
+  const powers = Float64Array.from({ length: maxChars + 1 }, (_, l) => Math.pow(l, alpha));
+
   // Dinkelbach 反復: max (W(i, j) / (L(i, j)^alpha))
   let lambda = 0;
   let bestI = 0;
@@ -383,7 +386,8 @@ export function dinkelbachOptimalWindow(
         }
 
         if (curL >= minChars || (i === 0 && j === m - 1)) {
-          const lCost = Math.pow(curL, alpha);
+          // maxChars を超えるのは、長い 1 文だけの区間（j == i）
+          const lCost = curL <= maxChars ? powers[curL] : Math.pow(curL, alpha);
           const val = curW - lambda * lCost;
           if (val > maxSubarrayVal) {
             maxSubarrayVal = val;

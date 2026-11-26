@@ -1315,7 +1315,8 @@ export async function predictHtsCode(options: PredictHtsOptions): Promise<Predic
   const clean = (v?: string) =>
     v
       ? stripNegations(v)
-          .replace(/\s+([,.;])/g, '$1')
+          // 後読みで、空白の並びの先頭からだけ試す（無いと、並びの途中の字ごとに最後まで読み、長い空白で二乗の時間になる。結果は同じ）
+          .replace(/(?<!\s)\s+([,.;])/g, '$1')
           .replace(/([,.;])[,.;]+/g, '$1')
           .replace(/\s+/g, ' ')
           .trim() || undefined

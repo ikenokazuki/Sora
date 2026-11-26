@@ -21,7 +21,10 @@ import {
   estimateTokens,
   safeTruncateMarkdown,
 } from './enrichment.js';
+import { MAX_COLSPAN, MAX_ROWSPAN, newTableBudget, plainMarkdownTable, spanValue, spanWithinBudget, takeMatrix, type TableBudget } from './extractor/table_limits.js';
 import { minimizeTableMatrix } from './extractor/table_minimizer.js';
+import { ATTRIBUTE_SELECTOR } from './css_selector_cost.js';
+import { stripMarkdownLinks } from './markdown_links.js';
 import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import { sortEventsByProximity } from './events.js';
 import type { RsMainContent } from './extractor/rs_trafilatura.js';
@@ -41,6 +44,15 @@ export const turndown = new TurndownService({
   strongDelimiter: '**',
 });
 
+/** turndown の 1 回の変換（文書）ごとの、表の予算 */
+const turndownTableBudgets = new WeakMap<object, TableBudget>();
+const tableBudgetOf = (node: { ownerDocument?: object | null }): TableBudget => {
+  const key = node.ownerDocument ?? node;
+  let budget = turndownTableBudgets.get(key);
+  if (!budget) turndownTableBudgets.set(key, (budget = newTableBudget()));
+  return budget;
+};
+
 // GFM Table サポート (HTML table -> Markdown table, colspan/rowspan グリッド正規化 & Smart Column Pruning)
 turndown.addRule('gfmTable', {
   filter: 'table',
@@ -55,6 +67,7 @@ turndown.addRule('gfmTable', {
     const rows = Array.from((node as any).querySelectorAll('tr')).filter((row: any) => ownTable(row) === node);
     if (rows.length === 0) return '';
 
+    const budget = tableBudgetOf(node as any);
     const grid: string[][] = [];
     rows.forEach((row: any, rIdx: number) => {
       let cIdx = 0;
@@ -64,8 +77,7 @@ turndown.addRule('gfmTable', {
           cIdx++;
         }
         const text = (cell.textContent || '').replace(/\s+/g, ' ').replace(/\|/g, '\\|').trim();
-        const colspan = parseInt(cell.getAttribute?.('colspan') || '1', 10) || 1;
-        const rowspan = parseInt(cell.getAttribute?.('rowspan') || '1', 10) || 1;
+        const [rowspan, colspan] = spanWithinBudget(spanValue(cell.getAttribute?.('rowspan'), MAX_ROWSPAN), spanValue(cell.getAttribute?.('colspan'), MAX_COLSPAN), text.length, budget);
 
         for (let r = 0; r < rowspan; r++) {
           const targetRow = rIdx + r;
@@ -81,12 +93,13 @@ turndown.addRule('gfmTable', {
     // セルの無い行（<tr></tr>）は行番号だけ進んで穴になるので、詰めてから使う（1 行目が空だと例外になっていた）
     const denseGrid = grid.filter((row) => row && row.length > 0);
     if (denseGrid.length === 0) return '';
+    if (!takeMatrix(denseGrid, budget)) return plainMarkdownTable(denseGrid);
 
     // Smart Table Minimizer: 空欄列・冗長プレースホルダー列・空行の自動パージ
     const minimizedGrid = minimizeTableMatrix(denseGrid);
     if (minimizedGrid.length === 0 || minimizedGrid[0].length === 0) return '';
 
-    const maxCols = Math.max(...minimizedGrid.map((r) => r.length));
+    const maxCols = minimizedGrid.reduce((max, r) => Math.max(max, r.length), 0);
     const normalizedMatrix = minimizedGrid.map((r) => {
       while (r.length < maxCols) r.push('');
       return r;
@@ -122,7 +135,7 @@ turndown.addRule('fencedCodeBlock', {
       (node.getAttribute?.('class') || '').match(/(?:language|lang|highlight)-([a-zA-Z0-9_+-]+)/i)?.[1] ||
       '';
     const code = (codeEl?.textContent || node.textContent || '').replace(/\r\n/g, '\n');
-    return `\n\n\`\`\`${lang.toLowerCase()}\n${code.replace(/\n+$/, '')}\n\`\`\`\n\n`;
+    return `\n\n\`\`\`${lang.toLowerCase()}\n${code.replace(/(?<!\n)\n+$/, '')}\n\`\`\`\n\n`;
   },
 });
 
@@ -281,7 +294,7 @@ export function extractWithSelectors(
     try {
       if (!selectorExpr || typeof selectorExpr !== 'string') continue;
 
-      const attrMatch = selectorExpr.match(/^(.*?)@([a-zA-Z0-9_-]+)$/);
+      const attrMatch = selectorExpr.match(ATTRIBUTE_SELECTOR);
       if (attrMatch) {
         const cssSel = attrMatch[1].trim();
         const attrName = attrMatch[2].trim();
@@ -465,17 +478,36 @@ export function uniqueTableHeaders(rawHeaders: string[]): string[] {
   return out;
 }
 
+/**
+ * 表の行と見出し（文書の順）。入れ子の表の中は見ない（入れ子の行・セルは、外の表のセルの文字に含まれる。gfmTable と同じ）。
+ * find して closest で絞ると、深い入れ子の表で三乗の時間になる
+ */
+function ownTableParts(table: any): { rows: any[]; caption?: any } {
+  const rows: any[] = [];
+  let caption: any;
+  const stack: any[] = [...(table.children ?? [])].reverse();
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node.type !== 'tag' || node.name === 'table') continue;
+    if (node.name === 'tr') rows.push(node);
+    else if (node.name === 'caption') caption ??= node;
+    for (let i = (node.children?.length ?? 0) - 1; i >= 0; i--) stack.push(node.children[i]);
+  }
+  return { rows, caption };
+}
+
 /** HTML から <table> データを抽出して構造化 JSON に変換 (colspan/rowspan グリッド正規化) */
 export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
   const tables: TableData[] = [];
+  const budget = newTableBudget();
   $('table').each((_, tableEl) => {
     const $t = $(tableEl);
     const id = $t.attr('id') || undefined;
-    const caption = $t.find('caption').first().text().trim() || undefined;
+    const own = ownTableParts(tableEl);
+    const caption = (own.caption && $(own.caption).text().trim()) || undefined;
 
     const grid: string[][] = [];
-    // 入れ子の表の行・セルは使わない（外の表のセルの文字に含まれる。gfmTable と同じ）
-    $t.find('tr').filter((_, tr) => $(tr).closest('table').get(0) === tableEl).each((rIdx, tr) => {
+    $(own.rows).each((rIdx, tr) => {
       let cIdx = 0;
       $(tr).children('th, td').each((_, cell) => {
         while (grid[rIdx]?.[cIdx] !== undefined) {
@@ -483,8 +515,7 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
         }
         const $cell = $(cell);
         const cellText = $cell.text().replace(/\s+/g, ' ').trim();
-        const colspan = parseInt($cell.attr('colspan') || '1', 10) || 1;
-        const rowspan = parseInt($cell.attr('rowspan') || '1', 10) || 1;
+        const [rowspan, colspan] = spanWithinBudget(spanValue($cell.attr('rowspan'), MAX_ROWSPAN), spanValue($cell.attr('colspan'), MAX_COLSPAN), cellText.length, budget);
 
         for (let r = 0; r < rowspan; r++) {
           const targetRow = rIdx + r;
@@ -499,7 +530,8 @@ export function extractTablesFromHtml($: cheerio.CheerioAPI): TableData[] {
 
     // セルの無い行（<tr></tr>）は行番号だけ進んで穴になるので、詰めてから使う（1 行目が空だと例外になっていた）
     const denseGrid = grid.filter((row) => row && row.length > 0);
-    if (denseGrid.length === 0) return;
+    // 行×列が大きすぎる表は、構造化した tables に入れない（本文の Markdown には残る）
+    if (denseGrid.length === 0 || !takeMatrix(denseGrid, budget)) return;
 
     // Smart Table Minimizer による空列・無情報列パージ
     const minimizedGrid = minimizeTableMatrix(denseGrid);
@@ -607,7 +639,8 @@ function trimQueryUrl(url: string): string {
     if (url[i] === '(') depth++;
     else if (url[i] === ')' && --depth < 0) return trimQueryUrl(url.slice(0, i));
   }
-  return url.replace(/[.,;:!?'*~！？：；…]+$/u, '');
+  // 後読みで、句読点の並びの先頭からだけ試す（無いと、並びの途中の字ごとに最後まで読み、長い並びで二乗の時間になる）
+  return url.replace(/(?<![.,;:!?'*~！？：；…])[.,;:!?'*~！？：；…]+$/u, '');
 }
 
 /** ホスト名に `.` がある URL だけを読む対象にする（「https://とは」や localhost は検索語のまま）。 */
@@ -982,6 +1015,28 @@ function selectMainContent($: cheerio.CheerioAPI, readabilityHtml: string): stri
  */
 const RS_ARTICLE_MIN_READ_CHARS = 200;
 
+/**
+ * 要素の入れ子がこれより深いページは、Readability を通さない（本文は main・article・body から取る）。Readability は要素ごとに中の文字を
+ * 取り直すので、時間が「深さ × 要素の数」になる（50KB の 512 段で 21 秒）。実際のページの深さは、ふつう 30〜60 段ほど
+ */
+const READABILITY_MAX_DEPTH = 100;
+
+/** 要素の入れ子が max より深いか（再帰にしない） */
+function isDeeperThan($: cheerio.CheerioAPI, max: number): boolean {
+  const stack: Array<[node: { type: string; children?: unknown[] }, depth: number]> = [[$.root()[0] as never, 0]];
+  while (stack.length > 0) {
+    const [node, depth] = stack.pop()!;
+    if (depth > max) return true;
+    for (const child of (node.children ?? []) as Array<{ type: string; children?: unknown[] }>) {
+      if (child.type === 'tag') stack.push([child, depth + 1]);
+    }
+  }
+  return false;
+}
+
+/** これより長い name・property の meta は、変換の前に除く（実際の名前は、長くても数十字） */
+const META_NAME_MAX_CHARS = 200;
+
 /** CSS セレクタとして読めない最初のものを返す（無ければ undefined）。removeSelectors は変換のときに cheerio で読むので、取得の前に同じ読み方で確かめる */
 export function findInvalidCssSelector(selectors: string[]): { selector: string; reason: string } | undefined {
   if (selectors.length === 0) return undefined;
@@ -1125,29 +1180,30 @@ export function convertHtmlToMarkdown(
   const brand = jsonLdMeta.brand || $('meta[property="og:brand"]').attr('content') || undefined;
   const sku = jsonLdMeta.sku || undefined;
 
-  // 3. リンク一覧の抽出
-  const links: string[] = [];
+  // 3. リンク一覧の抽出（重複は Set で除く。配列の中を毎回探すと、リンクの多いページで二乗の時間になる）
+  const linkSet = new Set<string>();
   $('a[href]').each((_, el) => {
     const href = $(el).attr('href');
     if (href) {
       try {
         const absUrl = new URL(href, targetUrl).href;
-        if (absUrl.startsWith('http') && !links.includes(absUrl)) {
-          links.push(absUrl);
-        }
+        if (absUrl.startsWith('http')) linkSet.add(absUrl);
       } catch {}
     }
   });
+  const links = [...linkSet];
 
   // 4. 画像一覧 & キャプション・メタデータの抽出
   const images: ImageItem[] = [];
+  const imageUrls = new Set<string>();
   $('img').each((_, el) => {
     const $img = $(el);
     const src = resolveImageUrl({ src: $img.attr('src'), dataSrc: $img.attr('data-src'), srcset: $img.attr('srcset'), dataSrcset: $img.attr('data-srcset') }, targetUrl);
     if (src) {
       try {
         const absUrl = new URL(src, targetUrl).href;
-        if (absUrl.startsWith('http') && !images.some((img) => img.url === absUrl)) {
+        if (absUrl.startsWith('http') && !imageUrls.has(absUrl)) {
+          imageUrls.add(absUrl);
           const alt = $img.attr('alt')?.trim() || undefined;
           const imgTitle = $img.attr('title')?.trim() || undefined;
           const widthStr = $img.attr('width');
@@ -1236,6 +1292,11 @@ export function convertHtmlToMarkdown(
     noiseSelectors.push(...removeSelectors);
   }
   $(noiseSelectors.join(', ')).remove();
+  // Readability は meta の name・property を正規表現で読み、長い空白の並びで二乗の時間になる。これほど長い名前の meta は、どの読み取りにも当たらない
+  $('meta').filter((_, el) => {
+    const { name = '', property = '' } = (el as { attribs?: Record<string, string> }).attribs ?? {};
+    return name.length > META_NAME_MAX_CHARS || property.length > META_NAME_MAX_CHARS;
+  }).remove();
 
   // 8.1 構造化データ（InStock / OutOfStock）および CSS セマンティクスに基づく非表示バッジの剪定
   if (availability === 'InStock') {
@@ -1265,16 +1326,20 @@ export function convertHtmlToMarkdown(
   // （一覧・予定・掲示板のページで rs-trafilatura が強く、古い記事のページでは Readability が強い。docs/evaluations/main-content/results.md）
   let contentHtml = '';
   if (onlyMainContent) {
-    const tryReadability = !rsMain || rsMain.pageType === 'article';
+    // 深すぎるページは Readability を通さない（rs-trafilatura の本文があれば、そちらを使う）
+    const tooDeep = isDeeperThan($, READABILITY_MAX_DEPTH);
+    const tryReadability = !rsMain || (rsMain.pageType === 'article' && !tooDeep);
     if (tryReadability) {
-      try {
-        const { document } = parseHTML($.html());
-        const reader = new Readability(document);
-        const article = reader.parse();
-        if (article?.content) {
-          contentHtml = selectMainContent($, article.content);
-        }
-      } catch {}
+      if (!tooDeep) {
+        try {
+          const { document } = parseHTML($.html());
+          const reader = new Readability(document);
+          const article = reader.parse();
+          if (article?.content) {
+            contentHtml = selectMainContent($, article.content);
+          }
+        } catch {}
+      }
       if (!contentHtml) {
         contentHtml = $('main').html() || $('article').html() || $('#content').html() || $('body').html() || '';
       }
@@ -1350,7 +1415,7 @@ export function convertHtmlToMarkdown(
   markdown = cleanMarkdownTokens(markdown, keepDataImages);
 
   if (stripLinks) {
-    markdown = markdown.replace(/(?<!!)\[([^\]]+)\]\([^)]+\)/g, '$1');
+    markdown = stripMarkdownLinks(markdown);
   }
 
   const isTruncated = markdown.length > maxChars;

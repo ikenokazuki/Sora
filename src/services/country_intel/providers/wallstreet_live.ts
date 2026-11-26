@@ -4,6 +4,7 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
+import { stripTags } from '../../../strip_tags.js';
 
 export const WALLSTREET_LIVE_URL = 'https://api-one.wallstcn.com/apiv1/content/lives?channel=global-channel&limit=30';
 export const WALLSTREET_LIVE_MAX_ITEMS = 30;
@@ -24,7 +25,7 @@ function asEpochSeconds(value: unknown): string | undefined {
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return stripTags(html, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /** live実測構造 data.items[].{id,title,content_text,display_time,uri}。 */

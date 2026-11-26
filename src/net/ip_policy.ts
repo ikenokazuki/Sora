@@ -185,7 +185,10 @@ export function isPrivateIp(ip: string): boolean {
  */
 const METADATA_HOSTNAMES: ReadonlySet<string> = new Set(['169.254.169.254', 'metadata.google.internal', 'metadata.internal', 'instance-data', '100.100.100.200', 'fd00:ec2::254']);
 
-const normalizeHostname = (hostname: string): string => hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+/** ホスト名の末尾の点。後読みで、点の並びの先頭からだけ試す（無いと、長い点の並びで二乗の時間になる） */
+export const TRAILING_DOTS = /(?<!\.)\.+$/;
+
+const normalizeHostname = (hostname: string): string => hostname.toLowerCase().trim().replace(/^\[|\]$/g, '').replace(TRAILING_DOTS, '');
 
 /** クラウドのメタデータの名前・IP か（IPv6 は、書き方が違っても、正規形で比べる） */
 export function isMetadataHostname(hostname: string): boolean {
@@ -226,7 +229,7 @@ export function ipLiteralVersion(host: string): 0 | 4 | 6 {
  * IPv6 は URL の正規形（0 の省略・小文字）にそろえる。IPv4 は 10 進のドット表記のまま（別の書き方は、そろえない。一覧には載らないので、挙げた宛先とは一致しない）。
  */
 export function canonicalHost(host: string): string {
-  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/\.+$/, '');
+  const h = host.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(TRAILING_DOTS, '');
   if (ipLiteralVersion(h) !== 6) return h;
   try {
     return new URL(`http://[${h}]/`).hostname.slice(1, -1);

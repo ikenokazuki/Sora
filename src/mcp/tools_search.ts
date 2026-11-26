@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { formatToolMatches, type ToolMatch } from './tool_search.js';
-import { searchCatalog } from './registry.js';
+import { searchCatalog, withInputLimits } from './registry.js';
 
 import type { ToolRegistrationContext } from './registry.js';
 
@@ -21,7 +21,7 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
       detail: z.enum(['names', 'summary', 'schema']).optional().describe('names=名前とカテゴリのみ / summary=説明の要約（既定） / schema=入力スキーマ付き（最大8件）。activate:false を付けないと、見つけたツールを有効にもする'),
       activate: z.boolean().optional().describe('false なら有効化せずに調べるだけ（既定 true）'),
     },
-    async ({ query, detail, activate }) => {
+    withInputLimits(async ({ query, detail, activate }) => {
       const matches = searchCatalog(toolCatalog, query);
       const found: ToolMatch[] = matches.map((entry) => {
         if (activate === false) return { entry, newlyEnabled: false };
@@ -65,6 +65,6 @@ export function registerToolSearch(context: ToolRegistrationContext, enabled: Re
       }
 
       return { content: [{ type: 'text', text: formatToolMatches(found, { detail, activate }) }] };
-    },
+    }),
   );
 }

@@ -1,0 +1,28 @@
+diff --git a/lib/turndown.cjs.js b/lib/turndown.cjs.js
+index e7a9dac80312b281fb51f40956412dd21f90aed9..18127dfa11d002b5d845cfb13d4b2256e7e8c8a8 100644
+--- a/lib/turndown.cjs.js
++++ b/lib/turndown.cjs.js
+@@ -724,7 +724,8 @@ function postProcess(output) {
+       join(output, rule.append(self.options));
+     }
+   });
+-  return output.join('').replace(/^[\t\r\n]+/, '').replace(/[\t\r\n\s]+$/, '');
++  // trimEnd は /[\t\r\n\s]+$/ と同じ文字を取り、空白の長い並びがあっても直線の時間で終わる（正規表現は並びの長さの二乗）
++  return output.join('').replace(/^[\t\r\n]+/, '').trimEnd();
+ }
+ 
+ /**
+diff --git a/lib/turndown.es.js b/lib/turndown.es.js
+index 8b3796e6d1e33771c0b6ff6234998ca88edbcd6f..2ff00c70affff3d29ad1889c8e62ee2538637f45 100644
+--- a/lib/turndown.es.js
++++ b/lib/turndown.es.js
+@@ -722,7 +722,8 @@ function postProcess(output) {
+       join(output, rule.append(self.options));
+     }
+   });
+-  return output.join('').replace(/^[\t\r\n]+/, '').replace(/[\t\r\n\s]+$/, '');
++  // trimEnd は /[\t\r\n\s]+$/ と同じ文字を取り、空白の長い並びがあっても直線の時間で終わる（正規表現は並びの長さの二乗）
++  return output.join('').replace(/^[\t\r\n]+/, '').trimEnd();
+ }
+ 
+ /**

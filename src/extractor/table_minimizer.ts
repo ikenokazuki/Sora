@@ -45,7 +45,8 @@ export function minimizeTableMatrix(
   const pruneEmptyRows = options.pruneEmptyRows !== false;
 
   const numRows = grid.length;
-  const numCols = Math.max(...grid.map((r) => r.length));
+  // 引数に展開しない（行が非常に多い表で、引数の数の上限を超える）
+  const numCols = grid.reduce((max, r) => Math.max(max, r.length), 0);
 
   // 列単位の生存フラグ判定
   const keepColumnFlags: boolean[] = [];

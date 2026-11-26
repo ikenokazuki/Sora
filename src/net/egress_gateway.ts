@@ -14,7 +14,7 @@ import tls from 'node:tls';
 import { SocksClient } from 'socks';
 import { errorMessage } from '../errors.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
-import { canonicalHost, isAllowableInternalIp, isBlockedHostname, isMetadataHostname, isPrivateIp as defaultIsPrivateIp } from './ip_policy.js';
+import { TRAILING_DOTS, canonicalHost, isAllowableInternalIp, isBlockedHostname, isMetadataHostname, isPrivateIp as defaultIsPrivateIp } from './ip_policy.js';
 
 /** 運用者の上流のプロキシ */
 export interface EgressUpstream {
@@ -396,7 +396,7 @@ export class EgressGateway {
     if (!match) throw new GatewayError(400, 'http:// の絶対 URI だけ対応（TLS は CONNECT）', 'bad_request');
     const port = match[3] === undefined ? 80 : Number(match[3]);
     if (port < 1 || port > 65535) throw new GatewayError(400, 'ポートが範囲外', 'bad_request');
-    const host = (match[1] ?? match[2]).toLowerCase().replace(/\.+$/, '');
+    const host = (match[1] ?? match[2]).toLowerCase().replace(TRAILING_DOTS, '');
     if (!host) throw new GatewayError(400, 'ホストが空', 'bad_request');
     const rest = match[4] ?? '/';
     return { host, port, path: rest.startsWith('?') ? `/${rest}` : rest };
@@ -443,7 +443,7 @@ export class EgressGateway {
     const port = Number(match[3]);
     if (port < 1 || port > 65535) throw new GatewayError(400, 'ポートが範囲外', 'bad_request');
     // 末尾のドット（FQDN）は外し、名前は小文字にして、以降の判定と解決に使う
-    const host = (match[1] ?? match[2]).toLowerCase().replace(/\.+$/, '');
+    const host = (match[1] ?? match[2]).toLowerCase().replace(TRAILING_DOTS, '');
     if (!host) throw new GatewayError(400, 'ホストが空', 'bad_request');
     return { host, port };
   }

@@ -43,7 +43,8 @@ import { INTENT_ATTRIBUTE_TERMS_LIST } from './retrieval/lexicons/temporal.js';
 
 import { estimateTokens } from './text_tokens.js';
 import { errorKind } from './errors.js';
-export { estimateTokens };
+import { MD_DEST, markdownLinkChars, removeJsLinks, replaceDataImages, replaceMarkdownImages } from './markdown_links.js';
+export { estimateTokens, replaceMarkdownImages };
 
 /** Markdown 構文（コードブロックやテーブル）を壊さずに安全に切り詰める */
 export function safeTruncateMarkdown(markdown: string, maxChars: number): string {
@@ -74,23 +75,13 @@ export function truncateMarkdownWithin(markdown: string, maxChars: number): stri
   return kept.length > maxChars ? safeTruncateMarkdown(markdown, Math.max(0, 2 * maxChars - kept.length)) : kept;
 }
 
-// Markdown の飛び先 (url "title") の中身と、画像の alt。URL の中の括弧は 1 段まで読み（filters:format(webp) など）、alt は \] のような逃がした字も読む。
-// どちらも「ほどいたループ」で書く（1 字ごとに選ぶループ (?:a|b)* は、JSC が 100 万字ほどの data URI で戻りの記録を使い切り、黙って一致しなくなる）
-const MD_DEST = String.raw`[^()]*(?:\([^()]*\)[^()]*)*`;
-const MD_ALT = String.raw`([^\]\\]*(?:\\.[^\]\\]*)*)`;
 const EMPTY_IMAGE_RE = new RegExp(String.raw`!\[(?:\s|&nbsp;)*\]\s*\(${MD_DEST}\)`, 'g');
 const EMPTY_LINK_RE = new RegExp(String.raw`\[(?:\s|&nbsp;)*\]\(${MD_DEST}\)`, 'g');
-// JS_LINK_RE は、Turndown が逃がした `\[`（地の文の [。直前の `\` が奇数個）からは始めない。逃がした `\[` が並ぶと、各 `[` が次の `]` まで読んで二乗の時間になる。
-// 直前の `\` が偶数個なら、`\\` が字の `\` で、続く `[a](javascript:x)` は生きたリンクなので外す。
-// 先頭の (?=\[) は、後読みを `[` の位置でだけ評価するため。無いと、`\` の長い並びで JSC が途中で諦めて（外すべきリンクが残り、0.7〜1 秒かかる）
-const JS_LINK_RE = new RegExp(String.raw`(?=\[)(?<!(?<!\\)(?:\\\\)*\\)\[([^\]]+)\]\(javascript:${MD_DEST}\)`, 'gi');
-const DATA_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(data:image\/${MD_DEST}\)`, 'g');
-const MARKDOWN_IMAGE_RE = new RegExp(String.raw`!\[${MD_ALT}\]\(${MD_DEST}\)`, 'g');
 
 /** 不要な空リンク、無効な JavaScript リンク、連続空行、巨大な base64 インライン画像をパージしてトークンを削減 */
 export function cleanMarkdownTokens(markdown: string, keepDataImages = false): string {
   if (!markdown) return '';
-  let cleaned = markdown
+  const withoutEmpty = markdown
     // 1. 空の画像タグの除去: ![](url), ![] (url)。空のリンクより先に消す（先に [](url) を消すと ! だけが残り、後ろのリンクと画像の記法になる）。
     // 前後がどちらも空白でないときは、前後の語がくっつかないように空白 1 字にする（Cocktail![](url)Friendsgiving）。
     // 前が `[`、または後ろが `]` のとき（リンクの文字の端）は足さない（[![](url)Text](url) が [ Text](url) にならないように）
@@ -100,18 +91,13 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
       return /\S/.test(before) && /\S/.test(after) && before !== '[' && after !== ']' ? ' ' : '';
     })
     // 2. 空の Markdown リンクの除去: [](url), [ ](url), [&nbsp;](url)
-    .replace(EMPTY_LINK_RE, '')
-    // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
-    .replace(JS_LINK_RE, '$1');
+    .replace(EMPTY_LINK_RE, '');
+  // 3. javascript: 疑似リンクのテキスト化: [Click](javascript:void(0)) -> Click
+  let cleaned = removeJsLinks(withoutEmpty);
 
   // 3.1. 巨大な base64 インライン画像の置換・パージ (LLM トークン浪費防止)
   // keepDataImages が false の場合、data:image/... を [画像: alt] に置換、alt が空なら完全除去
-  if (!keepDataImages) {
-    cleaned = cleaned.replace(DATA_IMAGE_RE, (_, alt) => {
-      const trimmedAlt = alt.trim();
-      return trimmedAlt ? `[画像: ${trimmedAlt}]` : '';
-    });
-  }
+  if (!keepDataImages) cleaned = replaceDataImages(cleaned);
 
   return cleaned
     // 4. 空白のみの行を完全な空行に統一
@@ -129,11 +115,6 @@ export function cleanMarkdownTokens(markdown: string, keepDataImages = false): s
     .replace(/\[(?:SYSTEM|SYSTEM[ _]MESSAGE|INSTRUCTION|DEVELOPER[ _]INSTRUCTION|PROMPT):/gi, (m) => `\\[${m.slice(1)}`)
     .replace(/<\/?(?:system|instruction|developer_instruction)>/gi, (m) => `\\<${m.slice(1, -1)}\\>`)
     .trim();
-}
-
-/** Markdown の画像を「[画像: alt]」に置き換える（alt が無ければ消す）。includeMedia: false の応答で使う */
-export function replaceMarkdownImages(markdown: string): string {
-  return markdown.replace(MARKDOWN_IMAGE_RE, (_m, alt: string) => (alt.trim() ? `[画像: ${alt.trim()}]` : ''));
 }
 
 /** Luhn アルゴリズムによるクレジットカード番号チェック */
@@ -844,9 +825,10 @@ export function computeAnswerability(item: { title?: string; snippet?: string; d
     const has = (re: RegExp) => re.test(text);
     const qHas = (...keys: string[]) => keys.some((k) => q.includes(k));
     if (qHas("\u4fa1\u683c", "\u6599\u91d1", "\u5024\u6bb5")) {
-      if (has(/[\u5186\uffe5$\uff04]/) || has(/\d[\d,]*\s*\u5186/)) { score += 2; signals.push("price"); }
+      // 数字と円の間は、最後の数字の後ろの , と空白だけを見る（\d[\d,]* は、長い数字の並びで二乗の時間になる。当たるかどうかは同じ）
+      if (has(/[\u5186\uffe5$\uff04]/) || has(/\d,*\s*\u5186/)) { score += 2; signals.push("price"); }
     }
-    if (has(/\d{1,2}:\d{2}/) || has(/\d{1,2}\u6642/) || has(/\d+\/\d+/)) { score += 0.5; if (!signals.includes("concrete")) signals.push("concrete"); }
+    if (has(/\d{1,2}:\d{2}/) || has(/\d{1,2}\u6642/) || has(/\d\/\d/)) { score += 0.5; if (!signals.includes("concrete")) signals.push("concrete"); }
     if (qHas("\u51fa\u6f14\u6642\u9593", "\u30bf\u30a4\u30c6", "\u55b6\u696d\u6642\u9593", "\u958b\u6f14")) {
       if (has(/\d{1,2}:\d{2}/) || has(/\d{1,2}\u6642/)) { score += 2; signals.push("time"); }
     }
@@ -1219,8 +1201,7 @@ export function calculateContentQuality(params: {
 
   // 6. リンク密度過多ペナルティ (本文がほぼリンク集・ナビゲーションの残り)
   if (textLen > 100) {
-    const linkMatches = markdown.match(/\[([^\]]+)\]\([^)]+\)/g) || [];
-    const linkTextLen = linkMatches.reduce((acc, m) => acc + m.length, 0);
+    const linkTextLen = markdownLinkChars(markdown);
     const linkDensity = linkTextLen / textLen;
     if (linkDensity > 0.6) {
       score -= 20;
