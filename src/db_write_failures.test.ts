@@ -85,7 +85,7 @@ const WRITES: Array<[string, () => unknown]> = [
   ['dbPurgeStaleSavedState', () => dbPurgeStaleSavedState()],
   ['dbSaveTenantCookies', () => dbSaveTenantCookies('t', 'a.example', [{ name: 'n', value: 'v' }])],
   ['dbSaveTenantStorage', () => dbSaveTenantStorage('t', 'a.example', { n: 'v' })],
-  ['dbDeleteTenantSession', () => dbDeleteTenantSession('t', 'a.example')],
+  ['dbDeleteTenantSession', () => dbDeleteTenantSession('t', 'a.example', 'a.example')],
   ['dbIncrementApiUsage', () => dbIncrementApiUsage('h', '2026-01-01')],
   ['dbAddApiUsage', () => dbAddApiUsage('h', '2026-01-01', 2)],
   ['dbUpdateWatchTargetCheck', () => dbUpdateWatchTargetCheck('w_1', 'hash')],
@@ -138,7 +138,7 @@ describe('成功した書き込みは、数えない', () => {
     dbPurgeStaleSavedState();
     dbSaveTenantCookies('t', 'a.example', [{ name: 'n', value: 'v' }]);
     dbSaveTenantStorage('t', 'a.example', { n: 'v' });
-    dbDeleteTenantSession('t', 'a.example');
+    dbDeleteTenantSession('t', 'a.example', 'a.example');
     dbIncrementApiUsage('h', '2026-01-01');
     dbAddApiUsage('h', '2026-01-01', 2);
     dbUpdateWatchTargetCheck('w_1', 'hash');

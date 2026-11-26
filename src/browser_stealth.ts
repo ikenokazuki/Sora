@@ -436,17 +436,21 @@ async function renderWithStealthBrowser(
         } catch {}
       }
 
-      const persistedStorage = useStoredSession ? dbGetTenantStorage(tenantId, domain) : undefined;
+      // localStorage は、オリジン（http・https とホストとポート）ごとに保存して戻す。Cookie は、ブラウザがドメインの範囲で送る
+      const storageOrigin = new URL(url).origin;
+      const persistedStorage = useStoredSession ? dbGetTenantStorage(tenantId, storageOrigin) : undefined;
       if (persistedStorage && Object.keys(persistedStorage).length > 0) {
         markTenantStateUsed();
         restoredSession = !carriesCredentials;
-        await page.evaluateOnNewDocument((data: Record<string, string>) => {
+        await page.evaluateOnNewDocument((origin: string, data: Record<string, string>) => {
           try {
+            // この処理は、すべての文書（別のオリジンの iframe や転送先も）で走るので、保存したオリジンの文書にだけ戻す。location は、ページの JavaScript が書き換えられない
+            if (location.origin !== origin) return;
             for (const [k, v] of Object.entries(data)) {
               localStorage.setItem(k, v);
             }
           } catch {}
-        }, persistedStorage);
+        }, storageOrigin, persistedStorage);
       }
 
       if (customCookies && customCookies.length > 0) {
@@ -547,7 +551,7 @@ async function renderWithStealthBrowser(
         expired.throwIfAborted(); // 時間の上限を超えたあとの残りの処理では、保存分を書き換えない
         if (!carriesCredentials && ((status ?? 0) >= 400 || blocked)) {
           // エラーの画面（ブロックなど）と確認の画面の Cookie・localStorage は保存せず、保存していた分も消す
-          dbDeleteTenantSession(tenantId, domain);
+          dbDeleteTenantSession(tenantId, domain, storageOrigin);
         } else if (!carriesCredentials) {
           try {
             const currentCookies = await page.cookies();
@@ -561,15 +565,17 @@ async function renderWithStealthBrowser(
           } catch {}
 
           try {
-            const currentStorage = await page.evaluate(() => {
+            // 指定した URL と同じオリジンのページの値だけを保存する（転送先の値で、元のオリジンの保存分を書き換えない）。
+            // location.origin は値を読むのと同じ文書のもの。返り値はページの側で作るので、ブラウザの知る URL でも確かめる
+            const current = await page.evaluate(() => {
               try {
-                return { ...localStorage };
+                return { origin: location.origin, items: { ...localStorage } };
               } catch {
                 return null;
               }
             });
-            if (currentStorage && Object.keys(currentStorage).length > 0) {
-              dbSaveTenantStorage(tenantId, domain, currentStorage);
+            if (current && current.origin === storageOrigin && new URL(page.url()).origin === storageOrigin && Object.keys(current.items).length > 0) {
+              dbSaveTenantStorage(tenantId, storageOrigin, current.items);
             }
           } catch {}
         }
