@@ -137,7 +137,7 @@ export async function downloadAudio(
     return { reason: 'not-audio', message: NOT_AUDIO };
   }
   try {
-    return { bytes: await readBodyWithLimit(response, MAX_URL_BYTES), contentType };
+    return { bytes: await readBodyWithLimit(response, MAX_URL_BYTES, { timeoutMs: DOWNLOAD_TIMEOUT_MS }), contentType };
   } catch (e) {
     if (/exceeds/.test(errorMessage(e) ?? '')) return { reason: 'too-large', message: TOO_LARGE };
     return { reason: 'download-failed', message: `音声の URL を読み切れませんでした（${errorMessage(e)}）。` };

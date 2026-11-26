@@ -124,7 +124,8 @@ describe('scrape（url・urls）の入力の経路（手元のサーバー）', 
     /** 同時 2 件を握り、tenant の待ちを、strict の上限（20 件）まで埋める。返す関数で、全部を放す */
     async function fill(tenantId: string): Promise<() => Promise<void>> {
       process.env.SORA_ISOLATION = 'strict';
-      const leases = [await pdfSlots.acquire('name:S'), await pdfSlots.acquire('name:S')];
+      // strict では 1 人が持てる枠は 1 つなので、別々の利用者で埋める
+      const leases = [await pdfSlots.acquire('name:S1'), await pdfSlots.acquire('name:S2')];
       const waiting = Array.from({ length: 20 }, () => pdfSlots.acquire(tenantId).then((release) => release(), () => undefined));
       return async () => {
         for (const release of leases) release();

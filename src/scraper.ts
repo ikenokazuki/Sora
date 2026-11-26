@@ -113,7 +113,7 @@ import {
   fetchWithSafeRedirects,
   MAX_RESPONSE_BODY_BYTES,
 } from './http_fetcher.js';
-import { BodyTooLargeError, readBodyWithLimit } from './net/safe_transport.js';
+import { BodyTimeoutError, BodyTooLargeError, readBodyWithLimit } from './net/safe_transport.js';
 import { extractQueryRequirements } from './retrieval/requirements.js';
 import { settleWithDeadline } from './scrape_deadline.js';
 import { isUnusableIntegratedSearch, summarizeContextSufficiency } from './context_sufficiency.js';
@@ -918,7 +918,7 @@ export async function scrapeUrl(options: {
         // 解析の順番が来てから、本体（最大 30MB）を読む（待っている間に、本体をメモリに持たない）。断られたら、読まずに、接続を閉じる
         let parsed: Awaited<ReturnType<typeof parsePdfToMarkdown>>;
         try {
-          parsed = await parsePdfToMarkdown(() => readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES), finalUrl, maxChars, { tenantId });
+          parsed = await parsePdfToMarkdown(() => readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES, { timeoutMs }), finalUrl, maxChars, { tenantId });
         } catch (e) {
           await response.body?.cancel().catch(() => {});
           throw e;
@@ -936,7 +936,7 @@ export async function scrapeUrl(options: {
         return result;
       }
 
-      const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES);
+      const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES, { timeoutMs });
       const html = decodeHtmlBuffer(buf, contentType);
       const extraction = onlyMainContent ? await readMainContent(html, finalUrl, options) : undefined;
 
@@ -1243,6 +1243,9 @@ const SITEMAP_CHILD_CONCURRENCY = 3;
 
 /** robots.txt の本文の大きさの上限（Google の規格と同じ 500KiB 超は、読めなかったことにする） */
 const ROBOTS_MAX_BYTES = 512 * 1024;
+/** robots.txt・サイトマップの取得の時間の上限（ミリ秒）。ヘッダーを待つ時間と、本文を読む時間の、それぞれに使う */
+const ROBOTS_TIMEOUT_MS = 5_000;
+const SITEMAP_TIMEOUT_MS = 10_000;
 
 /**
  * 1 回の map_site でサイトマップを取るあいだの共有の状態。上限（SORA_ISOLATION の水準）と、止める合図を持つ
@@ -1262,12 +1265,13 @@ export interface SitemapContext {
 const noteAmplificationLimit = () => incrementSecurityCounter('sora_amplification_limit_hit_total');
 
 /** map_site がサイトマップの取得を打ち切った上限 */
-type MapCut = 'robots' | 'children' | 'fetches' | 'size' | 'deadline';
+type MapCut = 'robots' | 'children' | 'fetches' | 'size' | 'time' | 'deadline';
 const MAP_CUT_REASONS: Record<MapCut, (lim: Readonly<Limits>) => string> = {
   robots: (lim) => `robots.txt の Sitemap 行は先頭の ${lim.sitemapRobotsLines} 行まで`,
   children: (lim) => `サイトマップの索引の子は先頭の ${lim.sitemapChildren} 件まで`,
   fetches: (lim) => `取得するサイトマップは ${lim.sitemapFetches} 本まで`,
   size: (lim) => `${lim.sitemapBytes >= 1024 * 1024 ? `${Math.round(lim.sitemapBytes / (1024 * 1024))}MB` : `${lim.sitemapBytes} バイト`}を超えるサイトマップは読まない`,
+  time: () => `サイトマップの本文の読み込みは ${SITEMAP_TIMEOUT_MS / 1000} 秒まで`,
   deadline: (lim) => `全体の時間は ${Math.round(lim.mapDeadlineMs / 1000)} 秒まで`,
 };
 const mapCutWarning = (cuts: ReadonlySet<MapCut>, lim: Readonly<Limits>): string =>
@@ -1295,15 +1299,16 @@ export async function fetchSitemapEntries(
   ctx.fetched += 1;
 
   try {
-    const { response } = await fetchWithSafeRedirects(sitemapUrl, 10000, 5, undefined, undefined, undefined, ctx.tenantId, ctx.signal);
+    const { response } = await fetchWithSafeRedirects(sitemapUrl, SITEMAP_TIMEOUT_MS, 5, undefined, undefined, undefined, ctx.tenantId, ctx.signal);
     if (!response.ok) return [];
 
     // 本文は上限まで（超えたら、このサイトマップは読めなかったことにする）
     let body: Uint8Array;
     try {
-      body = await readBodyWithLimit(response, ctx.limits.sitemapBytes);
+      body = await readBodyWithLimit(response, ctx.limits.sitemapBytes, { timeoutMs: SITEMAP_TIMEOUT_MS, signal: ctx.signal });
     } catch (error) {
       if (error instanceof BodyTooLargeError) noteMapCut(ctx, 'size');
+      else if (error instanceof BodyTimeoutError) noteMapCut(ctx, 'time');
       else noteAmplificationLimit();
       return [];
     }
@@ -1462,15 +1467,15 @@ async function mapSiteTracked(options: MapSiteOptions): Promise<MapSiteResult> {
     const warnings = result.count < limit ? [...(cuts.size > 0 ? [mapCutWarning(cuts, lim)] : []), ...failures] : [];
     const out: MapSiteResult = warnings.length > 0 ? { ...result, warnings } : result;
     // 時間の上限・描画の失敗で欠けた結果は、混み具合で変わるので、短い時間だけ置く
-    const shortLived = warnings.length > 0 && (cuts.has('deadline') || failures.length > 0);
+    const shortLived = warnings.length > 0 && (cuts.has('deadline') || cuts.has('time') || failures.length > 0);
     if (!options.noCache) setToTenantCache(tenantId, cacheKey, out, shortLived ? CACHE_TTL_EMPTY : CACHE_TTL_DEFAULT);
     return out;
   };
 
   try {
-    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, 5000, 5, undefined, undefined, undefined, tenantId, ctx.signal);
+    const robotsRes = await fetchWithSafeRedirects(`${origin}/robots.txt`, ROBOTS_TIMEOUT_MS, 5, undefined, undefined, undefined, tenantId, ctx.signal);
     if (robotsRes.response.ok) {
-      const robotsText = new TextDecoder().decode(await readBodyWithLimit(robotsRes.response, ROBOTS_MAX_BYTES));
+      const robotsText = new TextDecoder().decode(await readBodyWithLimit(robotsRes.response, ROBOTS_MAX_BYTES, { timeoutMs: ROBOTS_TIMEOUT_MS, signal: ctx.signal }));
       const found: string[] | null = robotsText.match(/^Sitemap:\s*(https?:\/\/[^\r\n]+)/gim);
       if (found && found.length > lim.sitemapRobotsLines) noteMapCut(ctx, 'robots');
       const sitemapMatches = found?.slice(0, lim.sitemapRobotsLines);

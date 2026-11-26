@@ -69,7 +69,7 @@ export async function fetchImageBuffer(
     throw new Error(`画像サイズが上限（${Math.round(maxBytes / 1024 / 1024)}MB）を超過しています: ${contentLength} bytes`);
   }
 
-  const arrayBuf = await readBodyWithLimit(res, maxBytes);
+  const arrayBuf = await readBodyWithLimit(res, maxBytes, { timeoutMs });
   if (arrayBuf.byteLength > maxBytes) {
     throw new Error(`画像サイズが上限を超過しています: ${arrayBuf.byteLength} bytes`);
   }

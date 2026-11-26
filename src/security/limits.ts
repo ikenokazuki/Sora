@@ -127,6 +127,8 @@ export interface Limits {
   pdfQueueTotal: number;
   /** PDF の解析の順番を待つ時間の上限（ミリ秒）。超えたら断る（429） */
   pdfQueueWaitMs: number;
+  /** 1 つの tenant が、同時に持てる PDF の解析の枠の割合（1〜100 のパーセント。枠の数 2 に掛けて切り捨て、最低 1 枠）。100 は制限なし。重い PDF や、本文が遅い PDF を並べても、ほかの tenant が使える枠を残す */
+  pdfTenantSharePercent: number;
   /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
   audioMaxDurationSec: number;
 }
@@ -192,6 +194,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueuePerTenant: 50,
   pdfQueueTotal: 200,
   pdfQueueWaitMs: 60_000,
+  pdfTenantSharePercent: 100,
   audioMaxDurationSec: 3600,
 });
 
@@ -254,6 +257,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueuePerTenant: 20,
   pdfQueueTotal: 80,
   pdfQueueWaitMs: 30_000,
+  pdfTenantSharePercent: 50,
   audioMaxDurationSec: 900,
 });
 
