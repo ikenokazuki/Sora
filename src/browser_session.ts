@@ -1,5 +1,6 @@
 import type { Page, Browser, BrowserContext } from 'puppeteer-core';
 import { randomUUID, createHash, timingSafeEqual } from 'crypto';
+import { browserDeadlineSettings, runWithBrowserDeadline } from './browser_deadline.js';
 import {
   getBrowser,
   convertHtmlToMarkdown,
@@ -195,13 +196,15 @@ function assertSessionsAllowed(tenantId: string): void {
   }
 }
 
-/** セッションの資源（タイマー・ページ・文脈・専用ブラウザ）を閉じる。登録簿からは外さない（外してから呼ぶ） */
+/**
+ * セッションの資源（タイマー・文脈・専用ブラウザ）を閉じる。登録簿からは外さない（外してから呼ぶ）。
+ * ページは文脈と一緒に閉じる。先に page.close() を呼ばない（撮影が残っていると返らない。browser_deadline.ts）
+ */
 async function disposeSession(session: BrowserSession): Promise<void> {
   if (session.timer) {
     clearTimeout(session.timer);
   }
   try {
-    await session.page.close().catch(() => {});
     if (session.dedicatedBrowser) {
       await session.dedicatedBrowser.close().catch(() => {});
     } else {
@@ -732,130 +735,142 @@ export async function handleBrowserSessionAction(
     }
   }
 
+  /**
+   * 時間の上限を超えたセッションを閉じる（文脈を閉じると、回り続ける renderer も終わる）。同じものがまだ登録されていれば、登録簿からも外す。
+   * 1 回きりの実行の文脈は、下の finally がすぐに閉じる
+   */
+  const closeHung = async () => {
+    if (!session) return;
+    if (sessionRegistry.get(session.tenantId, session.id) === session) await closeBrowserSession(session.id, session.tenantId);
+    else await disposeSession(session);
+  };
+
   try {
-    // 全体の時間の締め切り。ブラウザとページの用意が済んだあと、最初の URL への遷移の前から数える（枠を待った時間・ブラウザの用意の時間は数えない。最初の遷移は数える）
-    const deadline = Date.now() + lim.browserActionTotalMs;
-    // 初期 URL が指定されている場合、ページ遷移を実行
-    if (options.url) {
-      if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && deniesHost(new URL(options.url).hostname)) {
-        throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
+    // 操作の途中で呼び出しが返らないときも、全体の時間に猶予を足した時点で打ち切る（回り続けるページで、枠を握り続けない）
+    return await runWithBrowserDeadline(lim.browserActionTotalMs + browserDeadlineSettings.graceMs, closeHung, async () => {
+      // 全体の時間の締め切り。ブラウザとページの用意が済んだあと、最初の URL への遷移の前から数える（枠を待った時間・ブラウザの用意の時間は数えない。最初の遷移は数える）
+      const deadline = Date.now() + lim.browserActionTotalMs;
+      // 初期 URL が指定されている場合、ページ遷移を実行
+      if (options.url) {
+        if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && deniesHost(new URL(options.url).hostname)) {
+          throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
+        }
+        const currentUrl = page.url();
+        if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
+          await throttleDomain(new URL(options.url).hostname);
+          await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, deadline - Date.now())) });
+          await bypassCloudflareTurnstile(page);
+          // SPA hydration 安定化
+          await new Promise((r) => setTimeout(r, 400));
+        }
       }
-      const currentUrl = page.url();
-      if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
-        await throttleDomain(new URL(options.url).hostname);
-        await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, deadline - Date.now())) });
-        await bypassCloudflareTurnstile(page);
-        // SPA hydration 安定化
-        await new Promise((r) => setTimeout(r, 400));
+
+      // アクションの実行
+      const { actionLogs, finalUrl, title } = await runActionsOnPage(page, actions, timeoutMs, deadline);
+
+      // セッションクローズ指定があった場合は即座に閉じて返却
+      if (options.closeSession) {
+        if (session) await closeBrowserSession(session.id, session.tenantId);
+        return {
+          source: 'browser',
+          sessionId: session?.id,
+          sessionClosed: true,
+          url: finalUrl,
+          title,
+          actionLogs,
+          renderedWithBrowser: true,
+          ...notices(),
+        };
       }
-    }
 
-    // アクションの実行
-    const { actionLogs, finalUrl, title } = await runActionsOnPage(page, actions, timeoutMs, deadline);
+      if (session?.imagesStale && (await reloadBlockedImages(page))) session.imagesStale = false;
 
-    // セッションクローズ指定があった場合は即座に閉じて返却
-    if (options.closeSession) {
-      if (session) await closeBrowserSession(session.id, session.tenantId);
+      // データの抽出
+      let content: string | undefined;
+      let html: string | undefined;
+      let screenshot: string | undefined;
+
+      if (extract.html || extract.markdown !== false) {
+        await pruneInvisibleElements(page);
+      }
+
+      if (extract.html) {
+        html = await page.content().catch(() => '');
+      }
+
+      if (extract.markdown !== false) {
+        const rawHtml = html || (await page.content().catch(() => ''));
+        if (rawHtml) {
+          const { markdown } = convertHtmlToMarkdown(rawHtml, finalUrl, maxChars, true);
+          content = safeTruncateMarkdown(markdown, maxChars);
+        }
+      }
+
+      const estimatedTokens = content ? estimateTokens(content) : undefined;
+
+      if (extract.screenshot || extract.clipSelector) {
+        if (extract.clipSelector) {
+          try {
+            const el = await page.$(extract.clipSelector);
+            if (el) {
+              screenshot = (await el.screenshot({
+                type: 'png',
+                encoding: 'base64',
+              })) as string;
+            }
+          } catch {}
+        }
+        if (!screenshot && extract.screenshot) {
+          try {
+            const isFull = extract.screenshotFullPage ?? true;
+            if (isFull) {
+              await page.evaluate(async () => {
+                const maxScroll = Math.min(document.body.scrollHeight, 15000);
+                const step = 800;
+                for (let y = 0; y < maxScroll; y += step) {
+                  window.scrollTo(0, y);
+                  await new Promise((r) => setTimeout(r, 40));
+                }
+                window.scrollTo(0, 0);
+              });
+              await new Promise((r) => setTimeout(r, 150));
+            }
+            screenshot = (await page.screenshot({
+              fullPage: isFull,
+              type: 'png',
+              encoding: 'base64',
+            })) as string;
+          } catch {
+            try {
+              screenshot = (await page.screenshot({
+                fullPage: false,
+                type: 'png',
+                encoding: 'base64',
+              })) as string;
+            } catch {}
+          }
+        }
+      }
+
       return {
         source: 'browser',
         sessionId: session?.id,
-        sessionClosed: true,
+        sessionClosed: false,
         url: finalUrl,
         title,
+        content,
+        html,
+        screenshot,
+        estimatedTokens,
         actionLogs,
         renderedWithBrowser: true,
         ...notices(),
       };
-    }
-
-    if (session?.imagesStale && (await reloadBlockedImages(page))) session.imagesStale = false;
-
-    // データの抽出
-    let content: string | undefined;
-    let html: string | undefined;
-    let screenshot: string | undefined;
-
-    if (extract.html || extract.markdown !== false) {
-      await pruneInvisibleElements(page);
-    }
-
-    if (extract.html) {
-      html = await page.content().catch(() => '');
-    }
-
-    if (extract.markdown !== false) {
-      const rawHtml = html || (await page.content().catch(() => ''));
-      if (rawHtml) {
-        const { markdown } = convertHtmlToMarkdown(rawHtml, finalUrl, maxChars, true);
-        content = safeTruncateMarkdown(markdown, maxChars);
-      }
-    }
-
-    const estimatedTokens = content ? estimateTokens(content) : undefined;
-
-    if (extract.screenshot || extract.clipSelector) {
-      if (extract.clipSelector) {
-        try {
-          const el = await page.$(extract.clipSelector);
-          if (el) {
-            screenshot = (await el.screenshot({
-              type: 'png',
-              encoding: 'base64',
-            })) as string;
-          }
-        } catch {}
-      }
-      if (!screenshot && extract.screenshot) {
-        try {
-          const isFull = extract.screenshotFullPage ?? true;
-          if (isFull) {
-            await page.evaluate(async () => {
-              const maxScroll = Math.min(document.body.scrollHeight, 15000);
-              const step = 800;
-              for (let y = 0; y < maxScroll; y += step) {
-                window.scrollTo(0, y);
-                await new Promise((r) => setTimeout(r, 40));
-              }
-              window.scrollTo(0, 0);
-            });
-            await new Promise((r) => setTimeout(r, 150));
-          }
-          screenshot = (await page.screenshot({
-            fullPage: isFull,
-            type: 'png',
-            encoding: 'base64',
-          })) as string;
-        } catch {
-          try {
-            screenshot = (await page.screenshot({
-              fullPage: false,
-              type: 'png',
-              encoding: 'base64',
-            })) as string;
-          } catch {}
-        }
-      }
-    }
-
-    return {
-      source: 'browser',
-      sessionId: session?.id,
-      sessionClosed: false,
-      url: finalUrl,
-      title,
-      content,
-      html,
-      screenshot,
-      estimatedTokens,
-      actionLogs,
-      renderedWithBrowser: true,
-      ...notices(),
-    };
+    }, session ? '。セッションは閉じました' : '');
   } finally {
     // ワンショット実行の場合は必ずクリーンアップ & セマフォ解放
     if (!isStateful) {
       try {
-        await page.close().catch(() => {});
         if (isDedicated && browserInstance) {
           await browserInstance.close().catch(() => {});
         } else if (context) {

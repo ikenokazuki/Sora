@@ -7,6 +7,7 @@ import {
   resolveChromiumPath,
   setupPageSecurity,
 } from './browser_engine.js';
+import { browserDeadlineSettings, runWithBrowserDeadline } from './browser_deadline.js';
 import {
   dbDeleteTenantSession,
   dbGetTenantCookies,
@@ -477,137 +478,142 @@ async function renderWithStealthBrowser(
         if (response.request().isNavigationRequest() && response.frame() === page.mainFrame()) status = response.status();
       });
 
-      const deadline = Date.now() + timeoutMs;
-      const remaining = () => Math.max(0, deadline - Date.now());
-      let idleCap: ReturnType<typeof setTimeout> | undefined;
-      try {
-        // networkidle は計測・ロングポーリング等で永遠に来ない場合があり、本文が揃っていてもタイムアウトまで待ってしまう。
-        // load 後の静止待ちだけ NETWORK_IDLE_CAP_MS で打ち切り、現在の DOM で本文取得へ進む。
-        const idleCapped = new Promise<void>((resolve) => {
-          page.once('load', () => {
-            idleCap = setTimeout(resolve, Math.max(1, Math.min(NETWORK_IDLE_CAP_MS, remaining())));
-          });
-        });
-        const navigation = page.goto(url, { waitUntil, timeout: timeoutMs });
-        navigation.catch(() => {}); // 上限で先に進んだ後の goto 失敗は無視する
-        await Promise.race([navigation, idleCapped]);
-      } catch (gotoErr) {
-        // networkidle 等のネットワーク待機タイムアウト時でも、DOM（HTML）が読み込まれていれば処理を続行
-        const currentHtml = await page.content().catch(() => '');
-        if (!currentHtml || currentHtml.length <= 500) {
-          throw gotoErr;
-        }
-      } finally {
-        if (idleCap) clearTimeout(idleCap);
-      }
-
-      try {
-        const viewport = page.viewport();
-        const w = viewport?.width ?? 1920;
-        const h = viewport?.height ?? 1080;
-        const x1 = w * (0.2 + Math.random() * 0.3);
-        const y1 = h * (0.2 + Math.random() * 0.3);
-        const x2 = w * (0.5 + Math.random() * 0.3);
-        const y2 = h * (0.5 + Math.random() * 0.3);
-        await humanMouseMove(page, x1, y1, x2, y2);
-      } catch {}
-
-      await autoScrollPage(page);
-      await waitForDomStable(page, 800, Math.min(5000, remaining()));
-      const captureHtml = async () => {
-        await waitForTimeTreeResponses(timeTreePending, deadline);
-        await inlineShadowDomContent(page);
-        const visibleHtml = await pruneInvisibleElements(page, true) ?? await page.content();
-        await waitForTimeTreeResponses(timeTreePending, deadline);
-        return enrichTimeTreeHtml(visibleHtml, timeTreeResponses);
-      };
-      let html = await captureHtml();
-      const contentDeadline = Math.min(deadline, Date.now() + 2000);
-      let waiting = false;
-      while (readiness && !readiness.isContentReady(html, page.url()) && Date.now() < contentDeadline) {
-        if (!waiting) {
-          waiting = true;
-          readiness.onWait?.();
-        }
-        await page.waitForNetworkIdle({ idleTime: 200, concurrency: 0, timeout: Math.max(1, Math.min(1000, contentDeadline - Date.now())) }).catch(() => {});
-        await waitForDomStable(page, 200, Math.max(0, Math.min(1000, contentDeadline - Date.now())));
-        html = await captureHtml();
-      }
-      const finalUrl = page.url();
-      // 待っても本文が出ず、確認の画面（ボット対策）のままか
-      const blocked = Boolean(readiness && !readiness.isContentReady(html, finalUrl));
-      const title = await page.title();
-
-      if (!carriesCredentials && ((status ?? 0) >= 400 || blocked)) {
-        // エラーの画面（ブロックなど）と確認の画面の Cookie・localStorage は保存せず、保存していた分も消す
-        dbDeleteTenantSession(tenantId, domain);
-      } else if (!carriesCredentials) {
+      // ページを開いてからの全体の時間は、timeoutMs に猶予を足すまで。超えたら、文脈ごと閉じて失敗にする（回り続けるページで、枠を握り続けない）
+      return await runWithBrowserDeadline(timeoutMs + browserDeadlineSettings.graceMs, () => context.close(), async (expired) => {
+        const deadline = Date.now() + timeoutMs;
+        const remaining = () => Math.max(0, deadline - Date.now());
+        let idleCap: ReturnType<typeof setTimeout> | undefined;
         try {
-          const currentCookies = await page.cookies();
-          if (currentCookies.length > 0) {
-            const cookiesByDomain = groupCookiesByDomain(currentCookies as any, domain);
-            for (const [key, list] of cookiesByDomain) {
-              // 読み出し（dbGetTenantCookies）と同じテナントへ保存する。'legacy' 固定にすると他テナントへ漏れる
-              dbSaveTenantCookies(tenantId, key, list);
-            }
+          // networkidle は計測・ロングポーリング等で永遠に来ない場合があり、本文が揃っていてもタイムアウトまで待ってしまう。
+          // load 後の静止待ちだけ NETWORK_IDLE_CAP_MS で打ち切り、現在の DOM で本文取得へ進む。
+          const idleCapped = new Promise<void>((resolve) => {
+            page.once('load', () => {
+              idleCap = setTimeout(resolve, Math.max(1, Math.min(NETWORK_IDLE_CAP_MS, remaining())));
+            });
+          });
+          const navigation = page.goto(url, { waitUntil, timeout: timeoutMs });
+          navigation.catch(() => {}); // 上限で先に進んだ後の goto 失敗は無視する
+          await Promise.race([navigation, idleCapped]);
+        } catch (gotoErr) {
+          // networkidle 等のネットワーク待機タイムアウト時でも、DOM（HTML）が読み込まれていれば処理を続行
+          const currentHtml = await page.content().catch(() => '');
+          if (!currentHtml || currentHtml.length <= 500) {
+            throw gotoErr;
           }
-        } catch {}
+        } finally {
+          if (idleCap) clearTimeout(idleCap);
+        }
 
         try {
-          const currentStorage = await page.evaluate(() => {
-            try {
-              return { ...localStorage };
-            } catch {
-              return null;
-            }
-          });
-          if (currentStorage && Object.keys(currentStorage).length > 0) {
-            dbSaveTenantStorage(tenantId, domain, currentStorage);
-          }
+          const viewport = page.viewport();
+          const w = viewport?.width ?? 1920;
+          const h = viewport?.height ?? 1080;
+          const x1 = w * (0.2 + Math.random() * 0.3);
+          const y1 = h * (0.2 + Math.random() * 0.3);
+          const x2 = w * (0.5 + Math.random() * 0.3);
+          const y2 = h * (0.5 + Math.random() * 0.3);
+          await humanMouseMove(page, x1, y1, x2, y2);
         } catch {}
-      }
 
-      let screenshot: string | undefined = undefined;
-      if (needScreenshot || clipSelector) {
-        if (clipSelector) {
+        await autoScrollPage(page);
+        await waitForDomStable(page, 800, Math.min(5000, remaining()));
+        const captureHtml = async () => {
+          await waitForTimeTreeResponses(timeTreePending, deadline);
+          await inlineShadowDomContent(page);
+          const visibleHtml = await pruneInvisibleElements(page, true) ?? await page.content();
+          await waitForTimeTreeResponses(timeTreePending, deadline);
+          return enrichTimeTreeHtml(visibleHtml, timeTreeResponses);
+        };
+        let html = await captureHtml();
+        const contentDeadline = Math.min(deadline, Date.now() + 2000);
+        let waiting = false;
+        while (readiness && !readiness.isContentReady(html, page.url()) && Date.now() < contentDeadline) {
+          if (!waiting) {
+            waiting = true;
+            readiness.onWait?.();
+          }
+          await page.waitForNetworkIdle({ idleTime: 200, concurrency: 0, timeout: Math.max(1, Math.min(1000, contentDeadline - Date.now())) }).catch(() => {});
+          await waitForDomStable(page, 200, Math.max(0, Math.min(1000, contentDeadline - Date.now())));
+          html = await captureHtml();
+        }
+        const finalUrl = page.url();
+        // 待っても本文が出ず、確認の画面（ボット対策）のままか
+        const blocked = Boolean(readiness && !readiness.isContentReady(html, finalUrl));
+        const title = await page.title();
+
+        expired.throwIfAborted(); // 時間の上限を超えたあとの残りの処理では、保存分を書き換えない
+        if (!carriesCredentials && ((status ?? 0) >= 400 || blocked)) {
+          // エラーの画面（ブロックなど）と確認の画面の Cookie・localStorage は保存せず、保存していた分も消す
+          dbDeleteTenantSession(tenantId, domain);
+        } else if (!carriesCredentials) {
           try {
-            const el = await page.$(clipSelector);
-            if (el) {
-              const buf = await el.screenshot({ encoding: 'base64' });
-              screenshot = buf as string;
+            const currentCookies = await page.cookies();
+            if (currentCookies.length > 0) {
+              const cookiesByDomain = groupCookiesByDomain(currentCookies as any, domain);
+              for (const [key, list] of cookiesByDomain) {
+                // 読み出し（dbGetTenantCookies）と同じテナントへ保存する。'legacy' 固定にすると他テナントへ漏れる
+                dbSaveTenantCookies(tenantId, key, list);
+              }
             }
           } catch {}
-        } else {
+
           try {
-            if (fullPage) {
+            const currentStorage = await page.evaluate(() => {
               try {
-                await page.evaluate(async () => {
-                  const scrollH = Math.min(document.body?.scrollHeight || document.documentElement?.scrollHeight || 0, 15000);
-                  if (scrollH > 1000) {
-                    window.scrollTo(0, scrollH);
-                    await new Promise((r) => setTimeout(r, 60));
-                    window.scrollTo(0, 0);
-                  }
-                });
+                return { ...localStorage };
+              } catch {
+                return null;
+              }
+            });
+            if (currentStorage && Object.keys(currentStorage).length > 0) {
+              dbSaveTenantStorage(tenantId, domain, currentStorage);
+            }
+          } catch {}
+        }
+
+        let screenshot: string | undefined = undefined;
+        if (needScreenshot || clipSelector) {
+          if (clipSelector) {
+            try {
+              const el = await page.$(clipSelector);
+              if (el) {
+                const buf = await el.screenshot({ encoding: 'base64' });
+                screenshot = buf as string;
+              }
+            } catch {}
+          } else {
+            try {
+              if (fullPage) {
+                try {
+                  await page.evaluate(async () => {
+                    const scrollH = Math.min(document.body?.scrollHeight || document.documentElement?.scrollHeight || 0, 15000);
+                    if (scrollH > 1000) {
+                      window.scrollTo(0, scrollH);
+                      await new Promise((r) => setTimeout(r, 60));
+                      window.scrollTo(0, 0);
+                    }
+                  });
+                } catch {}
+              }
+              const buf = await page.screenshot({ encoding: 'base64', fullPage });
+              screenshot = buf as string;
+            } catch {
+              try {
+                const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
+                screenshot = buf as string;
               } catch {}
             }
-            const buf = await page.screenshot({ encoding: 'base64', fullPage });
-            screenshot = buf as string;
-          } catch {
-            try {
-              const buf = await page.screenshot({ encoding: 'base64', fullPage: false });
-              screenshot = buf as string;
-            } catch {}
           }
         }
-      }
 
-      return { html, title, screenshot, finalUrl, status, restoredSession, blocked };
+        return { html, title, screenshot, finalUrl, status, restoredSession, blocked };
+      });
     } finally {
+      // 時間の上限で閉じた文脈を閉じ直すと失敗する。その失敗で、元の失敗を置き換えない
       if (isDedicated) {
-        await browser.close();
+        await browser.close().catch(() => {});
       } else {
-        await context.close();
+        await context.close().catch(() => {});
       }
     }
   } finally {
