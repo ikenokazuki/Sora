@@ -248,7 +248,7 @@ export const SETTINGS = {
   // --- 静的取得 ---
   SORA_FETCH_ALLOW_PRIVATE_NETWORK: {
     area: 'fetch', kind: 'bool', default: false, legacy: ['ALLOW_LOCAL_FETCH'], legacyOnly: 'warn',
-    doc: '`true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**。`SORA_ISOLATION=strict` では使えません。この設定のとき、出口のゲートウェイは使われません）',
+    doc: '`true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。ブラウザが開く URL を http・https に限る確認は、外れません。**テスト用途のみ**。`SORA_ISOLATION=strict` では使えません。この設定のとき、出口のゲートウェイは使われません）',
   },
   SORA_FETCH_DEFAULT_REFERER: {
     area: 'fetch', kind: 'bool', default: true, legacy: ['SORA_DEFAULT_REFERER'], legacyOnly: 'error',

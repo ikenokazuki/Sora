@@ -86,7 +86,8 @@ export function createProdSessionOpener(tenantId?: string): WeiboSessionOpener {
 export function createProdMetaBrowser(tenantId?: string): MetaBrowser {
   return {
     async readPage(url, timeoutMs, signal) {
-      const { getBrowser, browserSemaphore, recordBrowserUsage } = await import('../../browser_engine.js');
+      const { getBrowser, browserSemaphore, recordBrowserUsage, toBrowserUrl } = await import('../../browser_engine.js');
+      const target = toBrowserUrl(url); // ブラウザで開くのは http・https だけ。枠もブラウザも使う前に断る
       const { applyStealthEvasions } = await import('../../browser_stealth.js');
       const { setupPageSecurity } = await import('../../browser_engine.js');
       // ブラウザの枠の下で開く（呼んだ利用者の枠として数える。待っている間に中止されたら、待ちから外れる）
@@ -99,7 +100,7 @@ export function createProdMetaBrowser(tenantId?: string): MetaBrowser {
           const page = await context.newPage();
           await applyStealthEvasions(page);
           await setupPageSecurity(page, true);
-          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+          await page.goto(target, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
           if (signal.aborted) throw signal.reason;
           const html = await page.content();
           return { finalUrl: page.url(), html, title: await page.title() };

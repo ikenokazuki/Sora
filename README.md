@@ -849,6 +849,7 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 - **REST だけの引数**: `selectors`（ピンポイント抽出。結果は `extracted`）・`clipSelector`（`formats` に `screenshot` があるとき、ページ全体の代わりに要素だけの画像を返す。`mode: "fast"`・`fastOnly` では撮れない）・`removeSelectors`（Markdown 変換前に消す要素）・`renderJs`・`fastOnly`（`mode` の `browser`・`fast` と同じ）。MCP の `scrape`（`url`・`urls` とも）には出しません（LLM はページの HTML を見ずに呼ぶので、正しいセレクタをほとんど書けないため）。`/scrape/batch` には `selectors`・`clipSelector`・`removeSelectors` があります。
 - **`formats` の `screenshot`**: `mode` が `auto` でも、静的に取ったあとでブラウザを開いて撮ります。静的に取れたページ（JS 必須・確認画面でないページ）は、本文と HTTP の状態を静的な取得のまま返し、ブラウザからは画像だけを使います（ブラウザだけが 403 などの画面に飛ばされても、本文は替えません。ブラウザが失敗したときは画像なしで `warnings` を付けます）。本文が 50 字未満の SPA の殻でも、`screenshot` を求めていてブラウザが失敗したときは、例外にせず静的な結果に `warnings` を付けて返します（`screenshot` を求めていない SPA の失敗は、今までどおりエラー）。`warnings` の付いた結果のキャッシュは 1 分です。`search_web`・`search_deep` の `formats` で取った結果にも `warnings` が残ります。`mode: "fast"`（`fastOnly`）を明示したとき、Chromium がないとき、PDF・画像などのファイルのときは切り替えず、本文はそのままで、`warnings` に画像を取れなかった旨を付けます。
 - **`timeoutMs`**（デフォルト 15000、最大 120000）: ブラウザを使わない取得では、応答のヘッダーを待つ時間（リダイレクトは 1 回ごと）と、本文を読む時間の、それぞれの上限です。PDF の解析の順番を待つ時間は含みません。超えると失敗します（REST は 408）。大きな PDF や遅いサイトでは、延ばしてください。ブラウザを使う描画は、ページを開き始めてから、`timeoutMs` に 15 秒を足した時点で打ち切ります。
+- **ブラウザで開ける URL**: `http`・`https` だけです。`mode: "browser"` などで、ほかの種類の URL を指定すると、ブラウザを使う前に断ります（REST は 400）。
 - **ブラウザが失敗したとき**: `mode` が `auto` でブラウザに切り替えた取得が、時間切れなどで失敗すると、静的な取得の結果を返し、`warnings` で知らせます（この結果は 1 分だけキャッシュします）。`timeoutMs` は結果の中身を変えうるので、値の違う取得は、キャッシュを分けます（`map_site` も同じです）。
 - **入力の誤り**: `renderJs` と `fastOnly` の同時指定や、CSS セレクタとして読めない `removeSelectors` は、取得の前に 400（`INVALID_INPUT`、`retryable: false`）で断ります（`/scrape/batch` の `removeSelectors` も同じ）。
 - **`responseMode`**: `"full"`（デフォルト）または `"evidence"`。`"evidence"` は、`query` に合うハイライトがあれば、`content` をハイライトに置き換えます。本文に合う節が無いときは、ページの説明文を補完の証拠として返します（`/scrape/batch`・`/crawl` と MCP の `scrape`（`url`・`urls`）・`crawl_site` も同じ）。
@@ -1018,6 +1019,8 @@ curl -X POST http://127.0.0.1:3016/cache/clear
 ### 3.3 対話型ブラウザ自動操作 (`POST /browser/action` または `POST /action`)
 
 Web ページを開き、クリック・テキスト入力・スクロール・待機・スクリーンショット撮影などの一連のアクションを順次実行して最終結果を取得します。**ワンショット実行** と、チャットで対話しながら操作を進める **ステートフル・マルチターン対話セッション (`sessionId`)** の両方に対応しています。
+
+`url` と `navigate` の URL は、`http`・`https` だけです（ほかの種類は断ります。`url` は REST で 400）。
 
 #### ① ワンショット実行（1回完結）
 - **リクエスト (POST)**:
@@ -2626,7 +2629,7 @@ Sora は 12-Factor App 原則に基づき、環境変数によってすべての
 
 | 環境変数名 | デフォルト値 | 説明 |
 |---|---|---|
-| `SORA_FETCH_ALLOW_PRIVATE_NETWORK` | `false` | `true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。**テスト用途のみ**。`SORA_ISOLATION=strict` では使えません。この設定のとき、出口のゲートウェイは使われません） |
+| `SORA_FETCH_ALLOW_PRIVATE_NETWORK` | `false` | `true` の場合、`localhost` / プライベート IP への取得を許可します（SSRF の防御（DNS の検査・ブラウザの要求・遷移・Webhook）をすべて外します。ブラウザが開く URL を http・https に限る確認は、外れません。**テスト用途のみ**。`SORA_ISOLATION=strict` では使えません。この設定のとき、出口のゲートウェイは使われません） |
 | `SORA_FETCH_DEFAULT_REFERER` | `true` | `scrape` の静的取得の 1 回目に、検索経由の閲覧に見せる `Referer: https://www.google.com/`（と `Sec-Fetch-Site: cross-site`）を付ける。`off` で無効。呼び出し側が `Referer` を指定したとき、Cookie などの資格情報を運ぶときは付けない。robots.txt・sitemap・画像・JSON API には付けない。有料記事の「Google 経由は無料」を装う形になり、アクセス解析には検索流入として数えられるため、気になる場合は `off` |
 | `SORA_FETCH_MAX_CHROME_PROFILE` | `149`（公開イメージは `154`） | 静的取得が使う Chrome プロファイル（`chrome_<版>`）の上限。ブラウザも、この版までしか名乗りません（UA・TLS・ヘッダを、静的取得と同じにするため）。実際の Chromium がこれより新しければ、この版になります。3 桁の Chrome の版（136 以上）で、未設定は 149（npm の wreq-js の native が持つ最新）。公開イメージは、Containerfile で自前にビルドした native（上流の wreq-util の Chrome 150〜154 のプロファイルを持つ）に合わせて 154 にしています。**値を下げれば、UA・TLS・ヘッダがその版のものに戻ります**（例: `149`。イメージの作り直しは要りません）。native が持たない版を指定すると、最初の静的取得で、native が持つ最大まで下げて警告を出します。起動のときに読みます |
 | `SORA_FETCH_TRUST_STORE` | *(未設定 = wreq-js の既定)* | 静的取得（wreq-js）が TLS の検証に使う root。`combined`（同梱の Mozilla の root + システムの root。wreq-js の既定）・`mozilla`（同梱の root だけ）・`defaultPaths`（システムの root だけ。`SSL_CERT_FILE` か `/etc/ssl/certs/ca-certificates.crt` など）。**公開イメージは `defaultPaths`** で、`/etc/ssl/certs/ca-certificates.crt` を、イメージのビルドで作った一覧（Debian の root と、Bun の最新の root から、信頼を外した root を除いたもの）に置き換えてあります。理由: wreq-js の同梱の root は、wreq-js を作った時点（3.2.0 は 2026-08）のままで、2026-10 に秘密鍵が漏れた eMudhra の中間 CA に連なる `emSign ECC Root CA - G3` を信頼します（経路上の攻撃者が、どのサーバーにもなりすませる）。自分でビルドする場合は、`bun scripts/build-ca-bundle.ts <システムの root の PEM の束> <出力>` で一覧を作り、`SSL_CERT_FILE` で渡して、この変数を `defaultPaths` にします（native の読む環境変数は起動時に決まるので、プロセスの起動前に設定します）。ブラウザ（Chromium）の root は、この設定の対象外です |
