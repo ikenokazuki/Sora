@@ -6,6 +6,7 @@ import {
   recordBrowserUsage,
   resolveChromiumPath,
   setupPageSecurity,
+  toBrowserUrl,
 } from './browser_engine.js';
 import { browserDeadlineSettings, runWithBrowserDeadline } from './browser_deadline.js';
 import {
@@ -366,8 +367,10 @@ export async function fetchWithStealthBrowser(
   /** 呼び出し側が指定した HTTP ヘッダー。取得先と同じオリジンへの要求にだけ付ける */
   headers?: Record<string, string>,
 ): Promise<{ html: string; title: string; screenshot?: string; finalUrl: string; status?: number }> {
+  // ブラウザで開くのは http・https だけ。枠もブラウザも使う前に断る
+  const target = toBrowserUrl(url);
   const render = (useStoredSession: boolean) =>
-    renderWithStealthBrowser(url, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, headers, useStoredSession);
+    renderWithStealthBrowser(target, timeoutMs, clipSelector, customCookies, waitUntil, needScreenshot, fullPage, tenantId, readiness, headers, useStoredSession);
   const { restoredSession, blocked, ...first } = await render(true);
   // 保存していた Cookie・localStorage を戻して開いたページが、エラーか、待っても確認の画面のままなら（保存分は消してある）、
   // 戻さずに 1 回だけ開き直す。エラーや確認の画面（TikTok の "Please wait..."）から保存した札を戻し続けて、毎回 403 か

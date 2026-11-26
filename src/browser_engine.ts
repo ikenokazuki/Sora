@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
 import { totalmem } from 'os';
 import { envBool, envInt, envPath, envRaw, envStr, type Env } from './config.js';
+import { ScrapeInputError } from './errors.js';
 import {
   browserProxyArgs,
   createProfileDir,
@@ -660,6 +661,24 @@ export function unsendableBrowserHeaderNames(headers: Record<string, string> | u
     .map(([name]) => name);
 }
 
+/**
+ * 利用者の指定した URL を、ブラウザで開いてよい形にする。通すのは http・https だけ。ほかの種類の URL は、ブラウザの内部の画面（chrome:・devtools: など）や
+ * サーバー側のファイル（file:）を読んだり、任意の JavaScript の実行の禁止を抜けたり（javascript:）できる。chrome: と javascript: は、ページの要求の割り込み
+ * （setupPageSecurity）を通らないので、goto の前にここで断る。返すのは読み直した形で、goto にはこれを渡す（確かめた URL と、ブラウザが読む URL をそろえる）
+ */
+export function toBrowserUrl(url: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new ScrapeInputError('ブラウザで開く url が、URL として読めません（http・https の URL を指定してください）');
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ScrapeInputError(`ブラウザで開けるのは http・https の URL だけです（指定された種類: ${parsed.protocol}）`);
+  }
+  return parsed.href;
+}
+
 /** Headless Chromium のページ内サブリクエストに対する SSRF 防御 & 不要リソース高速遮断 */
 export async function setupPageSecurity(
   page: Page,
@@ -702,10 +721,6 @@ export async function setupPageSecurity(
           return await req.abort('blockedbyclient');
         }
 
-        if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
-          return await proceed();
-        }
-
         if (reqUrlStr.startsWith('data:') || reqUrlStr.startsWith('blob:') || reqUrlStr.startsWith('about:')) {
           return await proceed();
         }
@@ -717,6 +732,10 @@ export async function setupPageSecurity(
         }
         if (!['http:', 'https:'].includes(reqUrl.protocol)) {
           return await req.abort('blockedbyclient');
+        }
+        // 内部の宛先を許す設定で外すのは、宛先の検査だけ（http・https のほかは通さない）
+        if (envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
+          return await proceed();
         }
         const host = reqUrl.hostname.toLowerCase().trim().replace(/^\[|\]$/g, '');
         if (deniesHost(host)) {

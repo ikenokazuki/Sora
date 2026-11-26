@@ -1,6 +1,7 @@
 import type { Page, Browser, BrowserContext } from 'puppeteer-core';
 import { randomUUID, createHash, timingSafeEqual } from 'crypto';
 import { browserDeadlineSettings, runWithBrowserDeadline } from './browser_deadline.js';
+import { toBrowserUrl } from './browser_engine.js';
 import {
   getBrowser,
   convertHtmlToMarkdown,
@@ -507,19 +508,12 @@ export async function runActionsOnPage(
         }
         case 'navigate': {
           if (!action.url) throw new Error('Navigate action requires url');
-          let parsedUrl: URL;
-          try {
-            parsedUrl = new URL(action.url);
-          } catch {
-            throw new Error(`Invalid URL: ${action.url}`);
-          }
-          if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-            throw new Error(`Forbidden protocol: ${parsedUrl.protocol}`);
-          }
+          const navigateTo = toBrowserUrl(action.url);
           if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK')) {
-            await validateHostIpDns(parsedUrl.hostname, { failClosed: browserResolvesLocally(parsedUrl.hostname) });
+            const { hostname } = new URL(navigateTo);
+            await validateHostIpDns(hostname, { failClosed: browserResolvesLocally(hostname) });
           }
-          await page.goto(action.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, remaining())) });
+          await page.goto(navigateTo, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, remaining())) });
           await bypassCloudflareTurnstile(page);
           await new Promise((r) => setTimeout(r, 300));
           break;
@@ -594,6 +588,8 @@ export async function handleBrowserSessionAction(
 
   // 1.0 入力の上限（設計 6。穴 23）。ブラウザも枠も使う前に断る
   assertBrowserActionInputs(options, lim);
+  // ブラウザで開くのは http・https だけ。goto には読み直した形を渡す
+  const targetUrl = options.url ? toBrowserUrl(options.url) : undefined;
 
   // 1.1 evaluate アクションの事前検証 (SORA_BROWSER_ALLOW_EVALUATE が真でないときの早期防御)
   if (!envBool('SORA_BROWSER_ALLOW_EVALUATE') && actions.some((a) => a.type === 'evaluate')) {
@@ -751,14 +747,14 @@ export async function handleBrowserSessionAction(
       // 全体の時間の締め切り。ブラウザとページの用意が済んだあと、最初の URL への遷移の前から数える（枠を待った時間・ブラウザの用意の時間は数えない。最初の遷移は数える）
       const deadline = Date.now() + lim.browserActionTotalMs;
       // 初期 URL が指定されている場合、ページ遷移を実行
-      if (options.url) {
-        if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && deniesHost(new URL(options.url).hostname)) {
+      if (targetUrl) {
+        if (!envBool('SORA_FETCH_ALLOW_PRIVATE_NETWORK') && deniesHost(new URL(targetUrl).hostname)) {
           throw new Error(`Access to private or blocked host is forbidden: ${options.url}`);
         }
         const currentUrl = page.url();
         if (!currentUrl || currentUrl === 'about:blank' || currentUrl !== options.url) {
-          await throttleDomain(new URL(options.url).hostname);
-          await page.goto(options.url, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, deadline - Date.now())) });
+          await throttleDomain(new URL(targetUrl).hostname);
+          await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: Math.max(1, Math.min(timeoutMs, deadline - Date.now())) });
           await bypassCloudflareTurnstile(page);
           // SPA hydration 安定化
           await new Promise((r) => setTimeout(r, 400));
