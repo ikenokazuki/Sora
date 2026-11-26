@@ -8,18 +8,43 @@ export const DEFAULT_MAX_BODY_BYTES = 30 * 1024 * 1024;
 /** 本文が、読む上限を超えた（読み込みの失敗と見分ける） */
 export class BodyTooLargeError extends Error {}
 
-/** Read a response body with a streaming byte cap (RFC P0-SEC-04). */
+/** 本文の読み込みが、時間の上限を超えた。文に「タイムアウト」を含める（REST で 408 に分類される） */
+export class BodyTimeoutError extends Error {}
+
+export interface BodyReadOptions {
+  /** 読み始めからの時間の上限（ミリ秒） */
+  timeoutMs: number;
+  /** 中止されたら、読むのをやめて、その理由で失敗する（全体の時間の期限・クライアントの切断） */
+  signal?: AbortSignal;
+}
+
+/**
+ * Read a response body with a streaming byte cap (RFC P0-SEC-04) and a time limit.
+ * 取得に渡す中止の信号は、wreq-js では、ヘッダーを受けるまでしか効かない（受けると、信号の登録を外す。本文は wreq-js の内部の上限の 300 秒まで待つ）。
+ * 本文が終わらない応答が、共有の枠（PDF の解析など）を握り続けないように、ここで切る。時間は読み始めから数える（順番を待った時間は含めない）
+ */
 export async function readBodyWithLimit(
   response: Response,
-  maxBytes: number = DEFAULT_MAX_BODY_BYTES,
+  maxBytes: number,
+  options: BodyReadOptions,
 ): Promise<Uint8Array> {
   const reader = response.body?.getReader();
   if (!reader) return new Uint8Array();
+  const deadline = AbortSignal.timeout(options.timeoutMs);
+  const stop = options.signal ? AbortSignal.any([deadline, options.signal]) : deadline;
+  // 読み込みを中止すると、待っている read は done で返る（Streams の仕様）ので、下で、中止されたかを確かめる
+  const cancel = () => { reader.cancel().catch(() => {}); };
+  if (stop.aborted) cancel();
+  else stop.addEventListener('abort', cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
+      if (stop.aborted) {
+        if (deadline.aborted && stop.reason === deadline.reason) throw new BodyTimeoutError(`本文の読み込みがタイムアウトしました（${options.timeoutMs}ms）`);
+        throw stop.reason;
+      }
       if (done) break;
       total += value.byteLength;
       if (total > maxBytes) {
@@ -30,6 +55,7 @@ export async function readBodyWithLimit(
       chunks.push(value);
     }
   } finally {
+    stop.removeEventListener('abort', cancel);
     try { reader.releaseLock(); } catch {}
   }
   const out = new Uint8Array(total);
@@ -73,6 +99,7 @@ export async function safeFetch(
 ): Promise<{ finalUrl: string; body: Uint8Array; response: Response }> {
   const maxRedirects = options.maxRedirects ?? 5;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BODY_BYTES;
+  const timeoutMs = options.timeoutMs ?? 15000;
   let currentUrl = input;
   let headers = { ...(options.headers ?? {}) };
   let redirects = 0;
@@ -85,7 +112,7 @@ export async function safeFetch(
       headers,
       body: options.body,
       redirect: 'manual',
-      signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const len = res.headers.get('content-length');
     if (len && parseInt(len, 10) > maxBytes) {
@@ -94,7 +121,7 @@ export async function safeFetch(
     }
     if ([301, 302, 303, 307, 308].includes(res.status)) {
       const location = res.headers.get('location');
-      if (!location) return { finalUrl: currentUrl, body: await readBodyWithLimit(res, maxBytes), response: res };
+      if (!location) return { finalUrl: currentUrl, body: await readBodyWithLimit(res, maxBytes, { timeoutMs }), response: res };
       const next = new URL(location, currentUrl);
       await options.validate(next);
       if (next.origin !== parsed.origin) {
@@ -106,6 +133,6 @@ export async function safeFetch(
       if (++redirects > maxRedirects) throw new Error(`Redirect limit exceeded (${maxRedirects})`);
       continue;
     }
-    return { finalUrl: currentUrl, body: await readBodyWithLimit(res, maxBytes), response: res };
+    return { finalUrl: currentUrl, body: await readBodyWithLimit(res, maxBytes, { timeoutMs }), response: res };
   }
 }

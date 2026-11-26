@@ -15,9 +15,9 @@ describe('safe_transport (P0-SEC-03/04)', () => {
   test('readBodyWithLimit aborts oversized chunked bodies', async () => {
     resetSecurityMetrics();
     const big = new Uint8Array(100);
-    await expect(readBodyWithLimit(chunkedResponse([big, big]), 150)).rejects.toThrow();
+    await expect(readBodyWithLimit(chunkedResponse([big, big]), 150, { timeoutMs: 5000 })).rejects.toThrow();
     expect(getSecurityMetrics()['sora_response_size_abort_total'] ?? 0).toBeGreaterThanOrEqual(1);
-    const ok = await readBodyWithLimit(chunkedResponse([big]), 150);
+    const ok = await readBodyWithLimit(chunkedResponse([big]), 150, { timeoutMs: 5000 });
     expect(ok.byteLength).toBe(100);
   });
   test('safeFetch revalidates redirect targets and strips cross-origin auth', async () => {

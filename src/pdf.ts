@@ -13,6 +13,7 @@ import { type ScrapeResult, DEFAULT_MAX_CHARS, HIGHLIGHT_SOURCE_MAX_CHARS } from
 /**
  * PDF の解析（pdf.js）の順番（設計 6。穴 26）。同時に動かすのは 2 件までで、全員で共有する。
  * 待っている tenant を順番に回して公平に渡し、待つ数（利用者ごと・全体）と待ち時間に上限を置く（limits.ts の pdf*）。
+ * strict では、1 人が同時に持てる枠は 1 つ（pdfTenantSharePercent）。本文は枠を取ってから読むので、読み込みには timeoutMs の上限がある（safe_transport.ts）。
  * 解析そのものは、1 件ごとに別プロセス（pdf_child.ts・pdf_child_main.ts）で動かし、時間・メモリ・出力量の上限を超えたら、そのプロセスだけを止める。
  * 別プロセスは、本体と別の uid に落として動かす（pdf_uid.ts。同時の 2 件が別の uid になるよう、数 PDF_CONCURRENCY はそちらで定める）。
  */
@@ -20,7 +21,7 @@ export { PDF_CONCURRENCY };
 
 export function pdfQueuePolicy(): QueuePolicy {
   const current = limits();
-  return { perTenant: current.pdfQueuePerTenant, total: current.pdfQueueTotal, waitMs: current.pdfQueueWaitMs, sharePercent: 100 };
+  return { perTenant: current.pdfQueuePerTenant, total: current.pdfQueueTotal, waitMs: current.pdfQueueWaitMs, sharePercent: current.pdfTenantSharePercent };
 }
 
 export const pdfSlots = new SimpleSemaphore(PDF_CONCURRENCY, { resource: 'pdf', policy: pdfQueuePolicy });

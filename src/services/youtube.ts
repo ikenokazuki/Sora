@@ -111,13 +111,13 @@ async function fetchPlayer(videoId: string, fetchFn: typeof fetch): Promise<Play
     signal: AbortSignal.timeout(PLAYER_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`player HTTP ${res.status}`);
-  return JSON.parse(new TextDecoder().decode(await readBodyWithLimit(res, PLAYER_MAX_BYTES))) as PlayerResponse;
+  return JSON.parse(new TextDecoder().decode(await readBodyWithLimit(res, PLAYER_MAX_BYTES, { timeoutMs: PLAYER_TIMEOUT_MS }))) as PlayerResponse;
 }
 
 async function defaultFetchWatchPage(url: string): Promise<string> {
   const { response } = await fetchWithSafeRedirects(url, WATCH_TIMEOUT_MS, 3);
   if (!response.ok) throw new Error(`watch page HTTP ${response.status}`);
-  return new TextDecoder().decode(await readBodyWithLimit(response, WATCH_MAX_BYTES));
+  return new TextDecoder().decode(await readBodyWithLimit(response, WATCH_MAX_BYTES, { timeoutMs: WATCH_TIMEOUT_MS }));
 }
 
 /** 動画ページの `var ytInitialPlayerResponse = {...};` を取り出す。文字列の中の括弧は数えない。 */
@@ -206,7 +206,7 @@ async function fetchCaptions(url: URL, fetchFn: typeof fetch): Promise<CaptionOu
     const res = await fetchFn(url.toString(), { headers: { 'User-Agent': ANDROID_UA }, redirect: 'error', signal: AbortSignal.timeout(CAPTION_TIMEOUT_MS) });
     if (res.status === 403 || res.status === 429) return { failed: 'blocked' };
     if (!res.ok) return { failed: 'request-failed' };
-    body = new TextDecoder().decode(await readBodyWithLimit(res, CAPTION_MAX_BYTES));
+    body = new TextDecoder().decode(await readBodyWithLimit(res, CAPTION_MAX_BYTES, { timeoutMs: CAPTION_TIMEOUT_MS }));
   } catch {
     return { failed: 'request-failed' };
   }
@@ -658,7 +658,7 @@ async function defaultFetchChannelPage(url: string): Promise<string | undefined>
     if (response.status === 404) return undefined;
     throw new Error(consent ? 'consent page redirect' : `channel page HTTP ${response.status}`);
   }
-  return new TextDecoder().decode(await readBodyWithLimit(response, CHANNEL_PAGE_MAX_BYTES));
+  return new TextDecoder().decode(await readBodyWithLimit(response, CHANNEL_PAGE_MAX_BYTES, { timeoutMs: WATCH_TIMEOUT_MS }));
 }
 
 async function fetchChannelFeed(channelId: string, fetchFn: typeof fetch): Promise<string | undefined> {
@@ -672,7 +672,7 @@ async function fetchChannelFeed(channelId: string, fetchFn: typeof fetch): Promi
     if (res.status === 404) return undefined;
     throw new Error(`feed HTTP ${res.status}`);
   }
-  return new TextDecoder().decode(await readBodyWithLimit(res, CHANNEL_FEED_MAX_BYTES));
+  return new TextDecoder().decode(await readBodyWithLimit(res, CHANNEL_FEED_MAX_BYTES, { timeoutMs: CHANNEL_FEED_TIMEOUT_MS }));
 }
 
 // 属性（views）を読むので ignoreAttributes を切り、数字だけの題名や ID を数にしないよう parseTagValue も切る。entry が 1 件でも配列にする

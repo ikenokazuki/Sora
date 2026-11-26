@@ -148,7 +148,8 @@ describe('文書情報（Title・Author など）は、決まった項目だけ�
 
 describe('解析の順番（同時 2 件。利用者ごとに公平。待つ数に上限）', () => {
   const tiny = () => makePdf([['tiny']]);
-  const hold = async (n: number) => { for (let i = 0; i < n; i++) held.push(await pdfSlots.acquire('name:S')); };
+  // 枠は別々の利用者が持つ（strict では、1 人が持てるのは 1 つ）
+  const hold = async (n: number) => { for (let i = 0; i < n; i++) held.push(await pdfSlots.acquire(`name:S${i}`)); };
   const parse = (tenantId: string): Promise<string> => {
     const promise = parsePdfToMarkdown(tiny(), URL_OF, 30_000, { tenantId }).then(() => tenantId);
     promise.catch(() => undefined);
@@ -238,11 +239,11 @@ describe('解析の順番（同時 2 件。利用者ごとに公平。待つ数�
     await Promise.all([...waiting, outside]);
   });
 
-  test('水準ごとの既定の方針: standard は 1 人 50・全体 200・60 秒、strict は 20・80・30 秒（同時 2 件）', () => {
+  test('水準ごとの既定の方針: standard は 1 人 50・全体 200・60 秒、strict は 20・80・30 秒で 1 人の枠は 1 つ（同時 2 件）', () => {
     expect(pdfQueuePolicy()).toEqual({ perTenant: 50, total: 200, waitMs: 60_000, sharePercent: 100 });
     expect(pdfSlots.max).toBe(2);
     process.env.SORA_ISOLATION = 'strict';
-    expect(pdfQueuePolicy()).toEqual({ perTenant: 20, total: 80, waitMs: 30_000, sharePercent: 100 });
+    expect(pdfQueuePolicy()).toEqual({ perTenant: 20, total: 80, waitMs: 30_000, sharePercent: 50 });
   });
 });
 

@@ -95,7 +95,7 @@ async function fetchCaptionText(url: string): Promise<string> {
     await response.body?.cancel().catch(() => {});
     throw new Error(`HTTP ${response.status}`);
   }
-  return new TextDecoder().decode(await readBodyWithLimit(response, CAPTION_MAX_BYTES));
+  return new TextDecoder().decode(await readBodyWithLimit(response, CAPTION_MAX_BYTES, { timeoutMs: CAPTION_TIMEOUT_MS }));
 }
 
 /**
