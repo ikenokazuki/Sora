@@ -739,12 +739,12 @@ export function dbSaveDomainCookies(domain: string, cookies: PersistedCookie[]):
   dbSaveTenantCookies('legacy', domain, cookies);
 }
 
-/** そのサイトの保存した Cookie と localStorage を消す（エラーの画面から保存した札を、次に戻さないため）。 */
-export function dbDeleteTenantSession(tenantId: string, domain: string, scope = 'default'): void {
+/** そのサイトの保存した Cookie（ホスト名ごと）と localStorage（オリジンごと）を消す（エラーの画面から保存した札を、次に戻さないため）。 */
+export function dbDeleteTenantSession(tenantId: string, domain: string, origin: string, scope = 'default'): void {
   try {
     const db = getDb();
-    for (const table of ['domain_cookies_v2', 'domain_storage_v2']) {
-      db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, domain, scope);
+    for (const [table, key] of [['domain_cookies_v2', domain], ['domain_storage_v2', origin]]) {
+      db.query(`DELETE FROM ${table} WHERE tenant_id = ? AND domain = ? AND scope = ?`).run(tenantId, key, scope);
     }
   } catch {
     countWriteFailure();
@@ -767,25 +767,27 @@ export function dbGetDomainCookies(domain: string): PersistedCookie[] | undefine
   return dbGetTenantCookies('legacy', domain);
 }
 
-export function dbSaveTenantStorage(tenantId: string, domain: string, storage: Record<string, string>, scope = 'default', lim: Limits = limits()): void {
-  saveSavedState('domain_storage_v2', tenantId, domain, scope, storage, lim);
+// localStorage の鍵（表の domain の列）は、オリジン（例 https://example.com・http://127.0.0.1:8080）。localStorage は、オリジンごとのもの。
+// 以前のホスト名だけの鍵の行は読まない（期限が来たら、定期の掃除が消す）
+export function dbSaveTenantStorage(tenantId: string, origin: string, storage: Record<string, string>, scope = 'default', lim: Limits = limits()): void {
+  saveSavedState('domain_storage_v2', tenantId, origin, scope, storage, lim);
 }
 
-export function dbSaveDomainStorage(domain: string, storage: Record<string, string>): void {
-  dbSaveTenantStorage('legacy', domain, storage);
+export function dbSaveDomainStorage(origin: string, storage: Record<string, string>): void {
+  dbSaveTenantStorage('legacy', origin, storage);
 }
 
-export function dbGetTenantStorage(tenantId: string, domain: string, scope = 'default', lim: Limits = limits()): Record<string, string> | undefined {
+export function dbGetTenantStorage(tenantId: string, origin: string, scope = 'default', lim: Limits = limits()): Record<string, string> | undefined {
   try {
-    const json = readSavedState('domain_storage_v2', tenantId, domain, scope, lim);
+    const json = readSavedState('domain_storage_v2', tenantId, origin, scope, lim);
     return json === undefined ? undefined : JSON.parse(json);
   } catch {
     return undefined;
   }
 }
 
-export function dbGetDomainStorage(domain: string): Record<string, string> | undefined {
-  return dbGetTenantStorage('legacy', domain);
+export function dbGetDomainStorage(origin: string): Record<string, string> | undefined {
+  return dbGetTenantStorage('legacy', origin);
 }
 
 /** サーバー終了時の SQLite データベース安全クローズ */

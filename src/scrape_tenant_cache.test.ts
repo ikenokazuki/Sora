@@ -170,7 +170,7 @@ describe('保存済みのセッションで得た結果は、別の tenant に�
 
   browserTest('localStorage だけの状態（Cookie なし）でも、別の tenant に返さない', async () => {
     const alice = tenant('alice');
-    dbSaveTenantStorage(alice, '127.0.0.1', { who: 'ALICE' });
+    dbSaveTenantStorage(alice, new URL(urlOf('storage/page')).origin, { who: 'ALICE' });
     const [bob, carol] = [tenant('bob'), tenant('carol')];
     expect(await scrape(alice, 'storage/page', { mode: 'browser' })).toMatchObject({ private: true, public: false });
     expect(await scrape(bob, 'storage/page', { mode: 'browser' })).toMatchObject({ private: false, public: true, cached: false });

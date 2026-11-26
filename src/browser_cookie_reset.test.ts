@@ -38,13 +38,13 @@ describe.skipIf(!resolveChromiumPath())('stored cookies and error pages', () => 
         : new Response(page(`${'本文の段落です。'.repeat(20)}`), { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     });
     dbSaveTenantCookies('legacy', '127.0.0.1', [{ name: 'waf', value: 'blocked', domain: '127.0.0.1', path: '/' }]);
-    dbSaveTenantStorage('legacy', '127.0.0.1', { waf_state: 'blocked' });
+    dbSaveTenantStorage('legacy', base, { waf_state: 'blocked' });
     const r = await scrapeUrl({ tenantId: 'legacy', url: `${base}/video`, mode: 'browser', timeoutMs: 8000, noCache: true });
     expect(r.contentStatus).toBe('body');
     expect(r.content).toContain('本文の段落です');
     expect(requests).toBe(2);
     expect((dbGetTenantCookies('legacy', '127.0.0.1') ?? []).map((c) => c.name)).not.toContain('waf');
-    expect(dbGetTenantStorage('legacy', '127.0.0.1')?.waf_state).toBeUndefined();
+    expect(dbGetTenantStorage('legacy', base)?.waf_state).toBeUndefined();
   }, 30000);
 
   // TikTok は確認の画面（"Please wait..."、HTTP 200）も返す。その画面の札を戻すと、毎回確認の画面になった（2026-10-26、本番）

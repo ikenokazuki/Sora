@@ -2019,14 +2019,14 @@ describe('Sora REST & MCP Endpoints', () => {
 
     const restoreLocalFetch = setLocalFetch('true');
     try {
-      const url = `http://127.0.0.1:${server.port}/storage-persist`;
-      const domain = '127.0.0.1';
-      dbSaveDomainStorage(domain, {}); // 他テストの残留分をクリア
+      const origin = `http://127.0.0.1:${server.port}`;
+      const url = `${origin}/storage-persist`;
+      dbSaveDomainStorage(origin, {}); // 他テストの残留分をクリア
 
       // 1回目: localStorageは空。ページ側で値をセットする。DBに永続化されるはず
       const first = await scrapeUrl({ tenantId: 'legacy', url, renderJs: true, noCache: true });
       expect(first.content).toContain('seen-storage:none');
-      const saved = dbGetDomainStorage(domain);
+      const saved = dbGetDomainStorage(origin);
       expect(saved?.sora_storage_test).toBe('persisted_value');
 
       // 2回目: 保存済みlocalStorageがページロード前に復元されているはず
