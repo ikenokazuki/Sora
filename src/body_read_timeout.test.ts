@@ -9,27 +9,10 @@ import { limits } from './security/limits.js';
 import * as tenantCache from './security/tenant_cache.js';
 import { installFakePdfLauncher } from './test_fixtures/pdf_launcher.js';
 import { makePdf } from './test_fixtures/pdf.js';
+import { failureOf, waitFor, within } from './test_fixtures/wait.js';
 
 // 取得の時間の上限（timeoutMs）は、応答のヘッダーを受けた後の本文の読み込みにも効く。本文が終わらない応答が、
 // 全員で共有する PDF の解析の枠などを、握り続けないことを確かめる（手元のサーバーだけ）
-
-/** 終わらなかったら失敗にする（expect().rejects は、終わらない Promise で時間切れが効かない） */
-async function within<T>(ms: number, promise: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${ms}ms 以内に終わらなかった`)), ms); })]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-const failureOf = (promise: Promise<unknown>) => promise.then(() => undefined, (e: unknown) => e as Error);
-async function waitFor(condition: () => boolean, ms = 5000): Promise<void> {
-  const until = Date.now() + ms;
-  while (!condition()) {
-    if (Date.now() > until) throw new Error('条件を満たさなかった');
-    await Bun.sleep(20);
-  }
-}
 
 /** 1 かたまりを送ったまま、閉じない本文 */
 const neverEnding = (first: string | Uint8Array, onCancel?: () => void) => new ReadableStream<Uint8Array>({
