@@ -8,6 +8,8 @@
 export const browserDeadlineSettings = {
   /** 取得の時間の上限（scrape の timeoutMs・browser_action の全体の時間）に足す猶予（ミリ秒）。ページを開いたあとの、本文や画像を取り出す分。試験は短くする */
   graceMs: 15_000,
+  /** 打ち切ったあと、閉じ終わるのを待つ時間の上限（ミリ秒）。閉じる呼び出しが返らなくても、失敗は返す。試験は短くする */
+  closeWaitMs: 5000,
 };
 
 /** ブラウザの処理が、時間の上限を超えた。文に「タイムアウト」を含める（REST で 408 に分類される） */
@@ -19,7 +21,8 @@ export class BrowserDeadlineError extends Error {
 }
 
 /**
- * work を ms まで待つ。超えたら close を呼び（返りは待たない）、signal を中止して、BrowserDeadlineError で失敗する。
+ * work を ms まで待つ。超えたら、signal を中止して close を呼び、閉じ終わるのを待ってから（closeWaitMs まで）、BrowserDeadlineError で失敗する。
+ * 呼び出し元がブラウザの枠を返すのは失敗のあとなので、ページが閉じる前に枠が空かない。
  * work の残りは、閉じたあとの呼び出しの失敗で終わる（結果は捨てる）ので、DB への書き込みなどの前には signal を確かめる
  */
 export async function runWithBrowserDeadline<T>(
@@ -30,17 +33,29 @@ export async function runWithBrowserDeadline<T>(
 ): Promise<T> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let closing: Promise<void> | undefined;
   const expired = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
       const error = new BrowserDeadlineError(ms, note);
       controller.abort(error);
-      void (async () => close())().catch(() => {});
+      // 先に失敗を決めてから閉じる（閉じた拍子の work の失敗が、時間切れの失敗より先に返らないように）
       reject(error);
+      closing = (async () => close())().then(() => {}, () => {});
     }, ms);
   });
   try {
     return await Promise.race([work(controller.signal), expired]);
+  } catch (error) {
+    if (closing) await settleWithin(closing, browserDeadlineSettings.closeWaitMs);
+    throw error;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** promise が終わるか、ms たつまで待つ */
+async function settleWithin(promise: Promise<void>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  await Promise.race([promise, new Promise<void>((resolve) => { timer = setTimeout(resolve, ms); })]);
+  clearTimeout(timer);
 }
