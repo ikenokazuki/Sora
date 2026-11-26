@@ -7,6 +7,7 @@ on:
       - Containerfile
       - package.json
       - bun.lock
+      - patches/**
       - vendor/**
       - scripts/image-smoke.ts
       - scripts/verify-image.sh

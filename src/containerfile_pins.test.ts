@@ -72,3 +72,23 @@ describe('vendor/wreq-js の固定（上流の wreq-util の新しい Chrome プ
     expect(Number(max)).toBeGreaterThanOrEqual(136);
   });
 });
+
+describe('依存に当てるパッチ（patchedDependencies）', () => {
+  const patched = (JSON.parse(readFileSync(root('package.json'), 'utf8')).patchedDependencies ?? {}) as Record<string, string>;
+
+  test('bun install をする段は、その前にパッチのフォルダをコピーする（無いと、イメージのビルドが失敗する）', () => {
+    expect(Object.keys(patched).length).toBeGreaterThan(0);
+    const stages = containerfile.split(/^FROM /m).filter((stage) => /^RUN bun install /m.test(stage));
+    expect(stages.length).toBeGreaterThan(0);
+    for (const stage of stages) expect(stage.indexOf('\nCOPY patches ./patches\n')).toBeGreaterThan(-1);
+    for (const stage of stages) expect(stage.indexOf('\nCOPY patches ./patches\n')).toBeLessThan(stage.search(/^RUN bun install /m));
+  });
+
+  test('turndown の仕上げは、空白の長い並びで二乗にならない形（パッチが当たっている）', () => {
+    expect(patched['turndown@7.2.5']).toBe('patches/turndown@7.2.5.patch');
+    for (const file of ['turndown.cjs.js', 'turndown.es.js']) {
+      // 直した行があることを確かめる（パッチの説明のコメントには、前の正規表現の字がある）
+      expect(readFileSync(root(`node_modules/turndown/lib/${file}`), 'utf8')).toContain("return output.join('').replace(/^[\\t\\r\\n]+/, '').trimEnd();");
+    }
+  });
+});

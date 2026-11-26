@@ -131,6 +131,14 @@ export interface Limits {
   pdfTenantSharePercent: number;
   /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
   audioMaxDurationSec: number;
+  /** 利用者が送る文字列の欄（検索語・名前など。下の 2 つ以外のすべて。欄の名前も）の長さの上限（字）。超えたら処理の前に断る（400）。長い入力は、全員の要求を処理するメインスレッドを、二乗の時間の処理で止められる（security/input_limits.ts） */
+  inputTextChars: number;
+  /** 長い文章の欄（description・productDescription・text・script・headers・cookies と、その中の値）の長さの上限（字） */
+  inputLongTextChars: number;
+  /** URL の欄（url・urls・webhookUrl）の長さの上限（字） */
+  inputUrlChars: number;
+  /** 1 回の要求の文字列（欄の名前を含む）の合計の上限（字）。短い欄を大量に並べる入力を止める */
+  inputTotalChars: number;
 }
 
 const MB = 1024 * 1024;
@@ -196,6 +204,10 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueueWaitMs: 60_000,
   pdfTenantSharePercent: 100,
   audioMaxDurationSec: 3600,
+  inputTextChars: 10_000,
+  inputLongTextChars: 100_000, // browser_action の text・script の上限（standard）と同じ
+  inputUrlChars: 32_768,
+  inputTotalChars: 5_000_000,
 });
 
 export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
@@ -259,6 +271,10 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueueWaitMs: 30_000,
   pdfTenantSharePercent: 50,
   audioMaxDurationSec: 900,
+  inputTextChars: 4_000,
+  inputLongTextChars: 20_000,
+  inputUrlChars: 8_192,
+  inputTotalChars: 500_000,
 });
 
 /**

@@ -4,6 +4,7 @@ import { ProviderHttpError, ProviderNetworkError } from '../provider_registry.js
 import { fetchProviderResponse, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
 import type { EvidenceDetail } from '../detail.js';
+import { stripTags } from '../../../strip_tags.js';
 export const WIKI_CURRENT_API = 'https://en.wikipedia.org/w/api.php';
 export const WIKI_CURRENT_MAX_ITEMS = 10;
 export function currentEventsPageFor(date: Date): string {
@@ -15,7 +16,8 @@ export function regionMatchKeys(region: ProviderInput['region']): string[] {
   return keys.filter((k): k is string => typeof k === 'string' && k.trim().length > 0);
 }
 function stripMarkup(text: string): string {
-  return text.replace(/\[\[[^\]|]*\|([^\]]+)\]\]/g, '$1').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/'''?/g, '').replace(/\{\{[^}]*\}\}/g, '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  const plain = text.replace(/\[\[[^\]|]*\|([^\]]+)\]\]/g, '$1').replace(/\[\[([^\]]+)\]\]/g, '$1').replace(/'''?/g, '').replace(/\{\{[^}]*\}\}/g, '');
+  return stripTags(plain).replace(/\s+/g, ' ').trim();
 }
 /** wikitext箇条書きから地域言及行だけ抽出。本文・辞書ハードコードなし。 */
 export function extractRegionBullets(wikitext: string, region: ProviderInput['region']): string[] {

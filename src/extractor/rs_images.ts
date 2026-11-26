@@ -6,6 +6,7 @@
  */
 import * as cheerio from 'cheerio';
 import { resolveImageUrl } from '../html_parser.js';
+import { stripTags } from '../strip_tags.js';
 
 const MARK_BASE = 0xe000;
 /** 目印に使う私用領域（U+E000〜U+F8FF）の字数 */
@@ -83,7 +84,7 @@ export function markImagesForRs(html: string, pageUrl: string): { html: string; 
 
 /** 1 回目と 2 回目の本文を比べる文字: タグと私用領域の文字を除き、空白をまとめる */
 export function rsComparableText(html: string): string {
-  return html.replace(/<[^>]*>/g, ' ').replace(PRIVATE_USE, '').replace(/\s+/g, ' ').trim();
+  return stripTags(html, ' ').replace(PRIVATE_USE, '').replace(/\s+/g, ' ').trim();
 }
 
 const escapeAttr = (value: string) => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');

@@ -4,6 +4,7 @@ import { normalizeEvidence } from '../evidence.js';
 import { ProviderHttpError } from '../provider_registry.js';
 import { fetchProviderResponse, providerHttpGate, rethrowIfBusy } from '../provider_http.js';
 import type { GdeltFetch } from './gdelt.js';
+import { stripTags } from '../../../strip_tags.js';
 
 /** 鍵なしで公開投稿に届く取得先。順序は応答の安定したものから。 */
 export const FEDIVERSE_TAG_SOURCES: ReadonlyArray<{ kind: 'misskey' | 'mastodon'; host: string }> = [
@@ -55,7 +56,7 @@ export function parseMastodonStatuses(data: unknown): FediversePost[] {
     const s = status as Record<string, unknown>;
     const url = typeof s.url === 'string' ? s.url : undefined;
     const content = typeof s.content === 'string' ? s.content : '';
-    const text = content.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const text = stripTags(content).replace(/\s+/g, ' ').trim();
     if (!url || !text) return [];
     const account = (s.account && typeof s.account === 'object' ? s.account : {}) as Record<string, unknown>;
     const acct = typeof account.acct === 'string' ? account.acct : 'unknown';

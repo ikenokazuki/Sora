@@ -135,6 +135,7 @@ import {
   fetchWithStealthBrowser,
 } from './browser_stealth.js';
 import { errorMessage, ResourceBusyError, ScrapeInputError } from './errors.js';
+import { ATTRIBUTE_SELECTOR, findCostlySelector } from './css_selector_cost.js';
 import { chargeQuota, quotaDay, refundQuota } from './security/quota.js';
 
 // ==========================================
@@ -701,6 +702,11 @@ export function assertScrapeInputs(options: { renderJs?: boolean; fastOnly?: boo
   if (options.clipSelector !== undefined && options.clipSelector.length > lim.selectorLength) throw new ScrapeInputError(`clipSelector は ${lim.selectorLength} 文字までです`);
   const invalid = findInvalidCssSelector(options.removeSelectors ?? []);
   if (invalid) throw new ScrapeInputError(`removeSelectors の "${invalid.selector}" は CSS セレクタとして読めません: ${invalid.reason}`);
+  // 段を重ねると時間が掛け算で伸びる形は断る（取得したページをメインスレッドで読むので、全員が止まる。clipSelector はブラウザが読む）
+  for (const [name, list] of [['removeSelectors', removeSelectors], ['selectors', selectorValues.map((v) => ATTRIBUTE_SELECTOR.exec(String(v))?.[1] ?? String(v))]] as const) {
+    const costly = findCostlySelector(list);
+    if (costly) throw new ScrapeInputError(`${name} の "${costly.selector}" は使えません: ${costly.reason}`);
+  }
 }
 
 /** crawl のパターンの個数と長さを確かめる（設計 6・穴 21）。入力の誤りは、取得の前に断る（REST では 400） */
@@ -1645,7 +1651,8 @@ async function crawlSiteUrlCore(options: {
   const pages: ScrapeResult[] = [];
   let seedError: unknown;
 
-  const visitKey = (u: string) => u.split('#')[0].replace(/\/+$/, '');
+  // 後読みは、/ の長い並びのリンク（ページの側が決める）で、二乗の時間にならないため
+  const visitKey = (u: string) => u.split('#')[0].replace(/(?<!\/)\/+$/, '');
   /** scrape と同じ整形。リンクをたどるために links を取っているので、formats で求められていなければ外す */
   const shape = (p: ScrapeResult) => formatCompactScrapeResult(formats.includes('links') ? p : { ...p, links: undefined }) as CrawledPage;
   /**

@@ -4,6 +4,7 @@ import { discoverMetaPosts, type DiscoveryWebSearch } from './discovery.js';
 import { extractWeiboBid, fetchWeiboExtend, fetchWeiboHotComments, fetchWeiboStatus, parseWeiboTime, searchWeibo, stripWeiboHtml, WeiboAuthError, WeiboRateLimitedError, type WeiboHttp } from './weibo.js';
 import { createWeiboSessionStore, type SimpleCookie, type WeiboSessionOpener } from './weibo_session.js';
 import { SocialFetchInputSchema, SocialFetchResultSchema, SocialSearchInputSchema, SocialSearchResultSchema, type SocialFetchInput, type SocialFetchResult, type SocialPlatform, type SocialPost, type SocialSearchInput, type SocialSearchResult } from './types.js';
+import { stripTags } from '../../strip_tags.js';
 
 export type { SocialPost } from './types.js';
 
@@ -112,7 +113,7 @@ function metaPageToPost(platform: SocialPlatform, requestedUrl: string, finalUrl
   const page = parseMetaPage(html);
   let path = '';
   try { path = new URL(finalUrl).pathname; } catch { path = new URL(requestedUrl).pathname; }
-  const id = path.replace(/\/+$/, '').split('/').filter(Boolean).pop() ?? requestedUrl;
+  const id = path.replace(/(?<!\/)\/+$/, '').split('/').filter(Boolean).pop() ?? requestedUrl;
   const time = selectPostTime(page.times, path);
   const warnings: string[] = [];
   let text = page.ogDescription ?? '';
@@ -183,7 +184,7 @@ async function fetchOembedText(deps: SocialDeps, platform: SocialPlatform, canon
   try {
     const { data } = await deps.metaHttp.getJson(endpoint + '?url=' + encodeURIComponent(canonicalUrl) + '&omitscript=true', 10000, ctx.signal);
     const html = typeof data?.html === 'string' ? data.html : '';
-    const text = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const text = stripTags(html.replace(/<script[\s\S]*?<\/script>/gi, ''), ' ').replace(/\s+/g, ' ').trim();
     return text || undefined;
   } catch {
     return undefined;

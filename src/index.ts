@@ -11,6 +11,7 @@ import {
   closeAllBrowserSessions,
 } from './browser_session.js';
 import { callerScope, createAuthMiddleware } from './auth.js';
+import { restInputLimits } from './routes/input_limits.js';
 import { restModuleGuard } from './routes/module_guard.js';
 import { envEnum, envList } from './config.js';
 import { runStrictStartup } from './browser_startup.js';
@@ -134,6 +135,8 @@ app.use('*', createAuthMiddleware());
 app.use('*', callerScope);
 // SORA_MODULES で絞ったモジュールの経路は、REST でも閉じる（認証のあと: 鍵のない要求には、設定を教えない）
 app.use('*', restModuleGuard);
+// 利用者の文字列の長さの上限（長い入力は、全員の要求を処理するメインスレッドを止める。MCP はツールの包みで掛ける）
+app.use('*', restInputLimits);
 
 // ==========================================
 // 3. サブルーターのマウント

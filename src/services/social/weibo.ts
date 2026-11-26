@@ -1,5 +1,6 @@
 import type { SimpleCookie } from './weibo_session.js';
 import type { SocialComment } from './types.js';
+import { stripTags } from '../../strip_tags.js';
 
 export const WEIBO_PWA_HEADERS: Record<string, string> = {
   'MWeibo-Pwa': '1',
@@ -21,10 +22,10 @@ export class WeiboRateLimitedError extends Error {
 
 /** HTMLの改行・引用・絵文字altを維持した簡易テキスト化。 */
 export function stripWeiboHtml(html: string): string {
-  return String(html ?? '')
+  const marked = String(html ?? '')
     .replace(/<img[^>]*alt="([^"]*)"[^>]*>/g, '$1')
-    .replace(/<(br|p|div|li|blockquote)[^>]*>/gi, '\n')
-    .replace(/<[^>]*>/g, '')
+    .replace(/<(br|p|div|li|blockquote)[^>]*>/gi, '\n');
+  return stripTags(marked)
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
