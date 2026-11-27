@@ -129,6 +129,16 @@ export interface Limits {
   pdfQueueWaitMs: number;
   /** 1 つの tenant が、同時に持てる PDF の解析の枠の割合（1〜100 のパーセント。枠の数 2 に掛けて切り捨て、最低 1 枠）。100 は制限なし。重い PDF や、本文が遅い PDF を並べても、ほかの tenant が使える枠を残す */
   pdfTenantSharePercent: number;
+  /** 取得したページの HTML の変換を、別プロセスで動かすときの、1 件の時間の上限（ミリ秒）。超えたら、その変換のプロセスだけを止めて失敗にする（408）。strict はすべてのページ、standard は要素の多いページだけを別プロセスで変換する（html_convert.ts） */
+  convertMaxMs: number;
+  /** 変換の別プロセスの順番を待つ変換の数の上限。tenant ごと。超えたら、待たせずに断る（429） */
+  convertQueuePerTenant: number;
+  /** 変換の別プロセスの順番を待つ変換の数の上限。全体（tenant の合計）。超えたら、待たせずに断る（429） */
+  convertQueueTotal: number;
+  /** 変換の別プロセスの順番を待つ時間の上限（ミリ秒）。超えたら断る（429） */
+  convertQueueWaitMs: number;
+  /** 1 つの tenant が、同時に持てる変換の枠の割合（1〜100 のパーセント。枠の数〔機械のメモリから 1 か 2〕に掛けて切り捨て、最低 1 枠）。100 は制限なし */
+  convertTenantSharePercent: number;
   /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
   audioMaxDurationSec: number;
   /** 利用者が送る文字列の欄（検索語・名前など。下の 2 つ以外のすべて。欄の名前も）の長さの上限（字）。超えたら処理の前に断る（400）。長い入力は、全員の要求を処理するメインスレッドを、二乗の時間の処理で止められる（security/input_limits.ts） */
@@ -203,6 +213,11 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueueTotal: 200,
   pdfQueueWaitMs: 60_000,
   pdfTenantSharePercent: 100,
+  convertMaxMs: 60_000,
+  convertQueuePerTenant: 100,
+  convertQueueTotal: 400,
+  convertQueueWaitMs: 120_000,
+  convertTenantSharePercent: 100,
   audioMaxDurationSec: 3600,
   inputTextChars: 10_000,
   inputLongTextChars: 100_000, // browser_action の text・script の上限（standard）と同じ
@@ -270,6 +285,11 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   pdfQueueTotal: 80,
   pdfQueueWaitMs: 30_000,
   pdfTenantSharePercent: 50,
+  convertMaxMs: 30_000,
+  convertQueuePerTenant: 30,
+  convertQueueTotal: 100,
+  convertQueueWaitMs: 60_000,
+  convertTenantSharePercent: 50,
   audioMaxDurationSec: 900,
   inputTextChars: 4_000,
   inputLongTextChars: 20_000,

@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runStrictStartup, STARTUP_PROBE_TENANT, sweepStaleProfileDirs, verifyStrictBrowser, verifyStrictPdf } from './browser_startup.js';
+import { runStrictStartup, STARTUP_PROBE_TENANT, sweepStaleProfileDirs, verifyStrictBrowser, verifyStrictConvert, verifyStrictPdf } from './browser_startup.js';
+import { ChildDropError } from './child_uid.js';
+import type { convertPage } from './html_convert.js';
 import { parsePdfToMarkdown, pdfSlots } from './pdf.js';
 import { PDF_PROBE_TEXT, startupProbePdf } from './pdf_probe.js';
 import { PdfDropError } from './pdf_uid.js';
@@ -253,6 +255,7 @@ describe('runStrictStartup（待ち受ける前の、strict の起動の確認�
       isStrict: () => true,
       sweep: () => ({ removed: [], inUse: [], failed: [] }),
       verifyPdf: async () => ({ status: 'ok' }),
+      verifyConvert: async () => ({ status: 'ok' }),
       verify: async () => ({ status: 'ok' }),
       ...deps,
     });
@@ -460,6 +463,7 @@ describe('runStrictStartup の PDF の確認', () => {
         order.push('pdf');
         return { status: 'ok' };
       },
+      verifyConvert: async () => ({ status: 'ok' }),
       verify: async () => {
         order.push('browser');
         return { status: 'ok' };
@@ -496,5 +500,88 @@ describe('runStrictStartup の PDF の確認', () => {
   test('strict でなければ、PDF の確認もしない', async () => {
     const { order } = await run({ isStrict: () => false });
     expect(order).toEqual([]);
+  });
+});
+
+describe('verifyStrictConvert（ページの変換を、別プロセスで動かせるかの確認）', () => {
+  type Convert = typeof convertPage;
+  const result = (markdown: string) => ({ parsed: { markdown }, warnings: [] }) as unknown as Awaited<ReturnType<Convert>>;
+
+  test('小さな HTML を、別プロセスの経路で 1 回変換し、本文が合えば ok（本物の子プロセス）', async () => {
+    expect(await verifyStrictConvert()).toEqual({ status: 'ok' });
+  });
+
+  test('確認の利用者（STARTUP_PROBE_TENANT）で順番を取り、水準によらず別プロセスで変換する', async () => {
+    let seen: Parameters<Convert>[1] | undefined;
+    await verifyStrictConvert(async (input, options) => {
+      seen = options;
+      return result(input.html);
+    });
+    expect(seen?.tenantId).toBe(STARTUP_PROBE_TENANT);
+    expect(seen?.child?.level).toBe('strict');
+  });
+
+  test('本文が合わなければ failed（同梱の html-convert.js と bun を確かめる案内）', async () => {
+    const check = await verifyStrictConvert(async () => result('別の本文'));
+    expect(check.status).toBe('failed');
+    expect(check.status === 'failed' && check.problem).toContain('html-convert.js');
+  });
+
+  test('別の uid に落とせないときは、その理由を書いて failed', async () => {
+    const check = await verifyStrictConvert(async () => {
+      throw new ChildDropError('Sora を root で起動する必要があります');
+    });
+    expect(check.status === 'failed' && check.problem).toContain('別の uid に落とせませんでした: Sora を root で起動する必要があります');
+  });
+
+  test('変換が失敗したら、その理由を書いて failed', async () => {
+    const check = await verifyStrictConvert(async () => {
+      throw new Error('入口が見つかりません');
+    });
+    expect(check.status === 'failed' && check.problem).toContain('入口が見つかりません');
+  });
+});
+
+describe('runStrictStartup の変換の確認', () => {
+  const run = async (deps: Partial<Parameters<typeof runStrictStartup>[0]>) => {
+    const lines: string[] = [];
+    const exits: number[] = [];
+    const order: string[] = [];
+    await runStrictStartup({
+      stderr: (line) => lines.push(line),
+      exit: (code) => void exits.push(code),
+      isStrict: () => true,
+      sweep: () => ({ removed: [], inUse: [], failed: [] }),
+      verifyPdf: async () => {
+        order.push('pdf');
+        return { status: 'ok' };
+      },
+      verifyConvert: async () => {
+        order.push('convert');
+        return { status: 'ok' };
+      },
+      verify: async () => {
+        order.push('browser');
+        return { status: 'ok' };
+      },
+      ...deps,
+    });
+    return { lines, exits, order };
+  };
+
+  test('PDF → 変換 → ブラウザの試し起動の順に確かめ、変換が通ったことを 1 行で知らせる', async () => {
+    const { lines, exits, order } = await run({});
+    expect(order).toEqual(['pdf', 'convert', 'browser']);
+    expect(exits).toEqual([]);
+    expect(lines.filter((line) => line.includes('ページの変換') && line.includes('別の uid'))).toHaveLength(1);
+  });
+
+  test('変換の確認に失敗したら、理由を出して exit(1)。ブラウザの試し起動はしない。通ったと知らせない', async () => {
+    const { lines, exits, order } = await run({ verifyConvert: async () => ({ status: 'failed', problem: 'ページの変換を別プロセスで動かせませんでした: 理由' }) });
+    expect(exits).toEqual([1]);
+    expect(order).toEqual(['pdf']);
+    expect(lines.join('\n')).toContain('動かせませんでした: 理由');
+    expect(lines.join('\n')).toContain('起動しません');
+    expect(lines.join('\n')).not.toContain('通りました');
   });
 });

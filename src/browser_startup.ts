@@ -1,9 +1,11 @@
 /**
- * strict の起動の確認（設計 2。段階 8）。待ち受ける前に、次の 3 つを行う。呼ぶのは起動の処理だけ（index.ts の import.meta.main）。
+ * strict の起動の確認（設計 2。段階 8）。待ち受ける前に、次の 4 つを行う。呼ぶのは起動の処理だけ（index.ts の import.meta.main）。
  * - 前回の実行が異常終了（OOM・docker kill）して残った Chromium のプロファイル（/tmp/sora-chromium-*。別の uid 所有の 0700）を消す。
  *   残っていると、次の起動で同じ uid をもらった別の tenant に、前の tenant の Cookie・セッションを読まれうる。
  * - PDF の解析を、別プロセス（同梱の pdf-parse.js）で 1 回動かす（ごく小さな PDF を読む）。strict は、重い PDF が本体のメモリと時間を使い切るのを、
  *   別プロセスで止めるので、その入口と bun が動くことを、最初の PDF ではなく、起動のときに知る。
+ * - ページの変換を、別プロセス（同梱の html-convert.js）で 1 回動かす（ごく小さな HTML を変換する）。strict は、重いページが全員の要求を止めないよう、
+ *   すべてのページの変換を別プロセスで動かすので、その入口と bun が動き、別の uid に落とせることを、起動のときに知る。
  * - Chromium を、サンドボックス有効・別の uid で、1 回起動して閉じる。設定の値を見るだけの検査（startup_check.ts）では分からない、
  *   実際に起動できるか（seccomp・ユーザー名前空間・capability）を、最初の要求ではなく、起動のときに知る。
  * strict でなければ、何もしない（何も起動せず、何も消さない）。
@@ -12,7 +14,9 @@ import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { browserSandboxStatus, CHROME_EXECUTABLE_PATH, closeSharedBrowser, getBrowser } from './browser_engine.js';
+import { ChildDropError } from './child_uid.js';
 import { errorMessage } from './errors.js';
+import { convertPage } from './html_convert.js';
 import { parsePdfToMarkdown } from './pdf.js';
 import { readChildRssMb } from './pdf_child.js';
 import { PDF_PROBE_TEXT, startupProbePdf } from './pdf_probe.js';
@@ -183,6 +187,34 @@ export async function verifyStrictPdf(parse: typeof parsePdfToMarkdown = parsePd
   }
 }
 
+export type StrictConvertCheck = { status: 'ok' } | { status: 'failed'; problem: string };
+
+/** 変換の確認に使う本文（これが Markdown に出れば、子が頼み方を読み、変換して、結果を返せている） */
+const CONVERT_PROBE_TEXT = 'これは Sora の起動の確認のための本文です';
+
+/**
+ * ごく小さな HTML を、別プロセスの経路（水準 strict）で 1 回変換して、本文が合うことを確かめる。入口（html-convert.js）が無い・bun が動かない・
+ * 別の uid に落とせない・子が約束どおりに返さない、のどれも、ここで分かる（strict は、入口が無いときに、このプロセスの中で変換することはしない）。
+ */
+export async function verifyStrictConvert(convert: typeof convertPage = convertPage): Promise<StrictConvertCheck> {
+  const html = `<html><head><title>Sora</title></head><body><main><p>${CONVERT_PROBE_TEXT}。取得したページの変換を、別プロセスで動かせるかを確かめます。</p></main></body></html>`;
+  try {
+    const { parsed } = await convert({ html, url: 'https://startup-probe.invalid/', maxChars: 1000 }, { tenantId: STARTUP_PROBE_TENANT, child: { level: 'strict' } });
+    if (!parsed.markdown.includes(CONVERT_PROBE_TEXT)) {
+      return { status: 'failed', problem: `ページの変換を別プロセスで試しましたが、結果の本文が合いません（${JSON.stringify(parsed.markdown.slice(0, 80))}）。同梱の html-convert.js と bun を確かめてください` };
+    }
+    return { status: 'ok' };
+  } catch (error) {
+    if (error instanceof ChildDropError) {
+      return { status: 'failed', problem: `ページの変換の別プロセスを、別の uid に落とせませんでした: ${error.message}（docs/operations/strict.md）` };
+    }
+    return {
+      status: 'failed',
+      problem: `ページの変換を別プロセスで動かせませんでした: ${errorMessage(error) ?? String(error)}（strict は、重いページが全員の要求を止めないよう、ページの変換を別プロセスで動かすことが必須です。同梱の html-convert.js と bun を確かめてください）`,
+    };
+  }
+}
+
 /** 待ち受ける前の、strict の起動の確認。失敗したら exit(1) */
 export async function runStrictStartup(
   deps: {
@@ -191,6 +223,7 @@ export async function runStrictStartup(
     isStrict?: () => boolean;
     sweep?: () => SweepResult;
     verifyPdf?: () => Promise<StrictPdfCheck>;
+    verifyConvert?: () => Promise<StrictConvertCheck>;
     verify?: () => Promise<StrictBrowserCheck>;
   } = {},
 ): Promise<void> {
@@ -224,6 +257,15 @@ export async function runStrictStartup(
     return;
   }
   stderr(`${PREFIX} PDF の解析を、別の uid に落とした別プロセスで動かせることを確かめました`);
+
+  const convertCheck = await (deps.verifyConvert ?? (() => verifyStrictConvert()))();
+  if (convertCheck.status === 'failed') {
+    stderr(`${PREFIX} エラー: ${convertCheck.problem}`);
+    stderr(`${PREFIX} SORA_ISOLATION=strict の起動の確認に失敗したので、起動しません`);
+    exit(1);
+    return;
+  }
+  stderr(`${PREFIX} ページの変換を、別の uid に落とした別プロセスで動かせることを確かめました`);
 
   const check = await (deps.verify ?? (() => verifyStrictBrowser()))();
   if (check.status === 'failed') {

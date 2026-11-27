@@ -166,6 +166,13 @@ describe('limits', () => {
     expect(STRICT_LIMITS.pdfMaxChildMemoryMb).toBeGreaterThanOrEqual(4 * 154);
   });
 
+  test('HTML の変換の別プロセス: 1 件の時間は strict 30 秒・standard 60 秒、順番を待つ変換は 1 人 strict 30・standard 100、全体 strict 100・standard 400、待ち時間 strict 60 秒・standard 120 秒、1 人が同時に使える枠の割合は strict 50%・standard 100%', () => {
+    expect(STRICT_LIMITS).toMatchObject({ convertMaxMs: 30_000, convertQueuePerTenant: 30, convertQueueTotal: 100, convertQueueWaitMs: 60_000, convertTenantSharePercent: 50 });
+    expect(STANDARD_LIMITS).toMatchObject({ convertMaxMs: 60_000, convertQueuePerTenant: 100, convertQueueTotal: 400, convertQueueWaitMs: 120_000, convertTenantSharePercent: 100 });
+    // 1 回の呼び出しが並列に読むページの最大（search_deep・search_web の limit の上限 20）と、ブラウザの描画の待ちの確認が、自分の分だけで断られずに通る大きさ
+    expect(STRICT_LIMITS.convertQueuePerTenant).toBeGreaterThanOrEqual(20);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上

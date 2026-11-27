@@ -2,7 +2,7 @@ import puppeteer, { type Browser, type Page } from 'puppeteer-core';
 import { execFileSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { promises as dnsPromises } from 'dns';
-import { totalmem } from 'os';
+import { detectMemoryLimitBytes } from './memory_limit.js';
 import { envBool, envInt, envPath, envRaw, envStr, type Env } from './config.js';
 import { ScrapeInputError } from './errors.js';
 import {
@@ -532,17 +532,8 @@ export function defaultBrowserConcurrency(memBytes: number | undefined): number 
   return Math.max(1, Math.min(5, Math.floor((memBytes / MB - 700) / 300)));
 }
 
-/** cgroup (v2/v1) のメモリ上限と搭載メモリの小さい方。取得できなければ undefined。 */
-export function detectMemoryLimitBytes(): number | undefined {
-  let limit = totalmem() || undefined;
-  for (const path of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
-    try {
-      const n = Number(readFileSync(path, 'utf8').trim());
-      if (Number.isFinite(n) && n > 0) limit = limit === undefined ? n : Math.min(limit, n);
-    } catch {}
-  }
-  return limit;
-}
+/** cgroup (v2/v1) のメモリ上限と搭載メモリの小さい方（memory_limit.ts。試験はここからも読む） */
+export { detectMemoryLimitBytes };
 
 /**
  * SORA_BROWSER_MAX_CONCURRENCY の解釈。正の整数ならそれ（50 を超える値は 50。頭打ちは登録簿の cap）、それ以外（未設定・数値でない・0 以下）はメモリからの既定値。

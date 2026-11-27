@@ -22,6 +22,8 @@
 #      本物の抽出の結果は落とす前と同じ。推奨の strict の運用（16b）と、落とす capability が足りない運用（16c。strict は抽出コマンドを動かさない）も（scripts/rs-uid-check.ts）
 #  17. Sora が起動する Chromium（イメージの版）の WebRTC は、UDP を直接送らない。対照の指定なしの Chromium からは届くことも確かめる（src/browser_webrtc_udp.test.ts。
 #      飛ばされたら何も確かめていないので、2 件とも実行されたことも確かめる）
+#  18. ページの変換が、イメージに同梱の別プロセス（/app/html-convert.js）で、本体（root）と別の uid（本文の抽出と同じ 64000〜の範囲）に落ちて動き、本体の中の変換と同じ結果を返し、
+#      子の中の本文の抽出も動き、メモリの暴走を、その変換のプロセスだけで止める。コンテナのメモリを 1GB に絞る。既定の運用と、推奨の strict の運用（18b）の両方（scripts/convert-isolation-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -224,3 +226,17 @@ webrtc=$(docker run --rm \
 echo "$webrtc"
 grep -qE '^ *2 pass$' <<<"$webrtc" || { echo "WebRTC の確認の 2 件が、実行されていない（飛ばされた）" >&2; exit 1; }
 
+# 18. ページの変換が、イメージに同梱の別プロセス（/app/html-convert.js）で、別の uid に落ちて動き、メモリの暴走を、その変換のプロセスだけで止める。コンテナのメモリを 1GB に絞る:
+#     止められなければ、大きいページの変換が、確認ごとコンテナを落とす。止めたあと、子が残らず、本体は無事で、次の変換が動く
+docker run --rm --memory=1g --memory-swap=1g \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/convert-isolation-check.ts
+
+# 18b. 18 を、推奨の strict の運用（deploy/seccomp-sora.json・no-new-privileges・--cap-drop=ALL に 5 つだけ）でも確かめる
+docker run --rm --memory=1g --memory-swap=1g \
+  --security-opt "seccomp=$PWD/deploy/seccomp-sora.json" --security-opt no-new-privileges \
+  --cap-drop=ALL --cap-add=CHOWN --cap-add=DAC_OVERRIDE --cap-add=KILL --cap-add=SETGID --cap-add=SETUID \
+  -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
+  -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/convert-isolation-check.ts

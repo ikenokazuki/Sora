@@ -4,20 +4,13 @@
  * アプリ本体（MCP・ブラウザ・DB など）は読み込まない。本番は `bun build` で 1 つにまとめた pdf-parse.js として同梱する（Containerfile）。
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md（穴 26）。親が上限を超えたら SIGKILL で止めるので、ここに時間やメモリの制御は要らない。
  */
-import { writeFileSync } from 'node:fs';
+import { lowerOomPriority } from './child_oom.js';
 import { extractPdfPages, type PdfExtractParams } from './pdf_extract.js';
 
 const USAGE = 'usage: pdf-parse --params <json>（標準入力に PDF）';
 
-/** 子の OOM スコアを最大にする: コンテナのメモリが尽きて、カーネルが何かを殺すとき、本体より先に、この子を選ばせる（書けなくても続ける） */
-export function lowerOomPriority(path = '/proc/self/oom_score_adj'): boolean {
-  try {
-    writeFileSync(path, '1000');
-    return true;
-  } catch {
-    return false;
-  }
-}
+/** 子の OOM スコアを最大にする（child_oom.ts。試験はここから読む） */
+export { lowerOomPriority };
 
 /** --params の JSON を検査して読む。誤りは例外（頼み方が分からないまま PDF を読まない） */
 export function parseChildParams(argv: readonly string[]): PdfExtractParams {

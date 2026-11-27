@@ -33,7 +33,7 @@ export class ScrapeInputError extends Error {}
 export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'tenant_budget' | 'session_limit' | 'process_limit';
 
 /** 混み合った資源: ブラウザの枠・セッション（browser）、地名の検索（geocoding）、Yahoo、国の情報の提供元（country_intel）、住所データの構築（address） */
-export type BusyResource = 'browser' | 'geocoding' | 'yahoo' | 'country_intel' | 'address' | 'pdf';
+export type BusyResource = 'browser' | 'geocoding' | 'yahoo' | 'country_intel' | 'address' | 'pdf' | 'convert';
 
 /**
  * 資源（ブラウザの枠・セッションの数・共有の外部資源の順番）が混み合っていて、待たせずに（または待たせたあとに）断ったときの例外。
