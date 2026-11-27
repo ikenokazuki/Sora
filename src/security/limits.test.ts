@@ -178,6 +178,11 @@ describe('limits', () => {
     expect(STANDARD_LIMITS.egressTenantSharePercent).toBe(100);
   });
 
+  test('MCP のセッションのうち、1 人が持てる数の割合は strict 10%（全体 100 個なら 10 個）・standard 100%（利用者ごとの上限なし）', () => {
+    expect(STRICT_LIMITS.mcpSessionTenantSharePercent).toBe(10);
+    expect(STANDARD_LIMITS.mcpSessionTenantSharePercent).toBe(100);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上

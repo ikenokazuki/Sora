@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { envInt } from './config.js';
 import { McpSessionManager } from './mcp.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
+import { withEnv } from './test_fixtures/env.js';
 
 // MCP セッションは 1 つあたり数 MB を保持する。以前は上限がなく、initialize を連打するだけでメモリが尽きた。
 
@@ -24,7 +25,7 @@ afterEach(() => {
   delete process.env.SORA_MCP_MAX_SESSIONS;
 });
 
-async function initialize(manager: McpSessionManager) {
+async function initialize(manager: McpSessionManager, tenantId?: string) {
   const res = await manager.handleRequest(new Request('http://localhost/mcp', {
     method: 'POST',
     headers: rpcHeaders,
@@ -32,18 +33,18 @@ async function initialize(manager: McpSessionManager) {
       jsonrpc: '2.0', id: 1, method: 'initialize',
       params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'session-limit-test', version: '1' } },
     }),
-  }));
+  }), tenantId === undefined ? undefined : { tenantId });
   await res.text();
   return { status: res.status, sessionId: res.headers.get('mcp-session-id'), retryAfter: res.headers.get('retry-after') };
 }
 
 /** そのセッションでリクエストを送る。生きていれば 200、退避済みなら 404。 */
-async function ping(manager: McpSessionManager, sessionId: string) {
+async function ping(manager: McpSessionManager, sessionId: string, tenantId?: string) {
   const res = await manager.handleRequest(new Request('http://localhost/mcp', {
     method: 'POST',
     headers: { ...rpcHeaders, 'mcp-session-id': sessionId },
     body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
-  }));
+  }), tenantId === undefined ? undefined : { tenantId });
   await res.text();
   return res.status;
 }
@@ -141,5 +142,79 @@ describe('MCP セッション数の上限', () => {
     }));
     expect(stateless.status).toBe(200);
     expect(manager.getActiveSessionCount()).toBe(1);
+  });
+});
+
+describe('MCP セッション数の上限（利用者ごと）', () => {
+  test('1 人の上限（全体×割合）に達した利用者の initialize は、その利用者のいちばん長く使われていないセッションを閉じて受け入れる。ほかの利用者のセッションは閉じない', async () => {
+    const manager = newManager({ maxSessions: 10, tenantSharePercent: 20, minIdleBeforeEvictMs: 60_000 }); // 1 人 2 個
+    const bob = await initialize(manager, 'name:bob');
+    const a1 = await initialize(manager, 'name:alice');
+    await sleep(5);
+    const a2 = await initialize(manager, 'name:alice');
+    await sleep(5);
+    expect(await ping(manager, a1.sessionId!, 'name:alice')).toBe(200); // a1 を使う → いちばん長く使われていないのは a2
+    await sleep(5);
+
+    const a3 = await initialize(manager, 'name:alice');
+    expect(a3.status).toBe(200);
+    expect(await ping(manager, a2.sessionId!, 'name:alice')).toBe(404);
+    expect(await ping(manager, a1.sessionId!, 'name:alice')).toBe(200);
+    expect(await ping(manager, a3.sessionId!, 'name:alice')).toBe(200);
+    expect(await ping(manager, bob.sessionId!, 'name:bob')).toBe(200);
+    expect(manager.getActiveSessionCount()).toBe(3);
+    expect(getSecurityMetrics().sora_mcp_session_tenant_limit_total).toBe(1);
+    expect(getSecurityMetrics().sora_mcp_session_evicted_total ?? 0).toBe(0);
+  });
+
+  test('1 人の initialize を並行に大量に送っても、その利用者のセッションは上限を超えない。ほかの利用者は作れる', async () => {
+    const manager = newManager({ maxSessions: 20, tenantSharePercent: 10, minIdleBeforeEvictMs: 60_000 }); // 1 人 2 個
+    const results = await Promise.all(Array.from({ length: 10 }, () => initialize(manager, 'name:alice')));
+    for (const r of results) expect([200, 503]).toContain(r.status);
+    expect(manager.getActiveSessionCount()).toBeLessThanOrEqual(2);
+    expect((await initialize(manager, 'name:bob')).status).toBe(200);
+  });
+
+  test('割合は、水準の表から読む: strict は 10%（ここでは全体 20 個で 1 人 2 個）、standard は利用者ごとの上限なし', async () => {
+    for (const [level, firstAlive] of [['strict', 404], ['standard', 200]] as const) {
+      await withEnv({ SORA_ISOLATION: level }, async () => {
+        const manager = newManager({ maxSessions: 20, minIdleBeforeEvictMs: 60_000 });
+        const first = await initialize(manager, 'name:alice');
+        await sleep(5);
+        await initialize(manager, 'name:alice');
+        await sleep(5);
+        await initialize(manager, 'name:alice');
+        expect(await ping(manager, first.sessionId!, 'name:alice')).toBe(firstAlive);
+      });
+    }
+  });
+
+  test('割合から決めた上限は、最低 1 個', async () => {
+    const manager = newManager({ maxSessions: 5, tenantSharePercent: 1, minIdleBeforeEvictMs: 60_000 });
+    const first = await initialize(manager, 'name:alice');
+    const second = await initialize(manager, 'name:alice');
+    expect([first.status, second.status]).toEqual([200, 200]);
+    expect(await ping(manager, first.sessionId!, 'name:alice')).toBe(404);
+    expect(manager.getActiveSessionCount()).toBe(1);
+  });
+});
+
+describe('GET（サーバーから送る流れ）', () => {
+  test('セッションなしの GET は 405 で断る（流れを開かない。セッションが無ければ、サーバーから送るものが無い）。セッションありの GET は、これまでどおり流れを開く', async () => {
+    const manager = newManager({ maxSessions: 5, minIdleBeforeEvictMs: 60_000 });
+    const sessionless = await manager.handleRequest(new Request('http://localhost/mcp', { method: 'GET', headers: { Accept: 'text/event-stream' } }));
+    expect(sessionless.status).toBe(405);
+    expect(sessionless.headers.get('allow')).toBe('POST');
+    expect(sessionless.headers.get('content-type')).toContain('application/json');
+    await sessionless.text();
+
+    const opened = await initialize(manager);
+    const stream = await manager.handleRequest(new Request('http://localhost/mcp', {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream', 'mcp-session-id': opened.sessionId!, 'mcp-protocol-version': '2024-11-05' },
+    }));
+    expect(stream.status).toBe(200);
+    expect(stream.headers.get('content-type')).toContain('text/event-stream');
+    await stream.body?.cancel();
   });
 });

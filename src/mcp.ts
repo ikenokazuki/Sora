@@ -5,6 +5,7 @@ import { sanitizeJsonSchemaForGemini } from './schema_sanitizer.js';
 import { SORA_VERSION } from './types.js';
 import { incrementSecurityCounter } from './security/metrics.js';
 import { envBool, envInt } from './config.js';
+import { limits } from './security/limits.js';
 import { bindServerTenant, isModuleActive, type McpServerOptions, type McpSessionState, type ToolCatalogEntry, type ToolRegistrationContext } from './mcp/registry.js';
 import { buildSoraMcpInstructions } from './mcp/instructions.js';
 import { registerSkillResources } from './mcp/resources.js';
@@ -128,40 +129,67 @@ export class McpSessionManager {
   private readonly sessionTtlMs: number;
   private readonly maxSessions: number;
   private readonly minIdleBeforeEvictMs: number;
+  /** 1 人の利用者が持てるセッションの、全体（maxSessions）に対する割合。省略すると、水準の表（mcpSessionTenantSharePercent）を、呼ぶたびに読む */
+  private readonly tenantSharePercent: number | undefined;
   /** initialize の処理中でまだ sessions に載っていない数。並行する initialize が上限を超えないよう予約として数える */
   private pendingInitializations = 0;
+  /** 同じく、利用者ごとの数 */
+  private readonly pendingByTenant = new Map<string, number>();
 
-  constructor(options?: { sessionTtlMs?: number; maxSessions?: number; minIdleBeforeEvictMs?: number }) {
+  constructor(options?: { sessionTtlMs?: number; maxSessions?: number; minIdleBeforeEvictMs?: number; tenantSharePercent?: number }) {
     this.sessionTtlMs = options?.sessionTtlMs ?? 60 * 60 * 1000; // 1時間 TTL
     this.maxSessions =
       options?.maxSessions !== undefined && Number.isInteger(options.maxSessions) && options.maxSessions > 0
         ? options.maxSessions
         : envInt('SORA_MCP_MAX_SESSIONS');
     this.minIdleBeforeEvictMs = options?.minIdleBeforeEvictMs ?? DEFAULT_MCP_MIN_IDLE_BEFORE_EVICT_MS;
+    this.tenantSharePercent = options?.tenantSharePercent;
     this.cleanupInterval = setInterval(() => this.cleanupStaleSessions(), 5 * 60 * 1000);
     if (typeof this.cleanupInterval === 'object' && 'unref' in this.cleanupInterval) {
       this.cleanupInterval.unref();
     }
   }
 
+  /** 1 人の利用者が持てるセッションの数（全体×割合。切り捨て、最低 1） */
+  private perTenantLimit(): number {
+    const percent = this.tenantSharePercent ?? limits().mcpSessionTenantSharePercent;
+    return Math.max(1, Math.floor((this.maxSessions * percent) / 100));
+  }
+
+  /** 条件に合うセッションのうち、最も長く使われていないもの */
+  private oldestSession(match: (entry: McpSessionEntry) => boolean): { id: string; lastActive: number } | undefined {
+    let oldest: { id: string; lastActive: number } | undefined;
+    for (const [id, entry] of this.sessions) {
+      if (match(entry) && (oldest === undefined || entry.lastActive < oldest.lastActive)) oldest = { id, lastActive: entry.lastActive };
+    }
+    return oldest;
+  }
+
+  private closeSession(id: string): void {
+    this.sessions.get(id)?.transport.close().catch(() => {});
+    this.sessions.delete(id);
+  }
+
   /**
-   * 新しいセッションを 1 つ受け入れる余地を作る。登録済み＋作成中が上限に達していたら、
-   * 最も長く使われていないセッションを閉じて空ける。ただし直近まで使われていたものは守る。
+   * 新しいセッションを 1 つ受け入れる余地を作る。
+   * まず、1 人の上限が全体より小さいとき（strict）、その利用者の分（登録済み＋作成中）が上限に達していたら、その利用者の、最も長く使われていない
+   * セッションを閉じる（ほかの利用者のものは閉じない）。1 人の上限が全体と同じとき（standard）は、ここでは閉じない（全体の決まりで、使用中のものを守る）。
+   * 次に、全体（登録済み＋作成中）が上限に達していたら、最も長く使われていないセッションを閉じて空ける。ただし直近まで使われていたものは守る。
    * 空けられなければ false（呼び出し側が 503 を返す）。
    */
-  private makeRoomForSession(): boolean {
+  private makeRoomForSession(tenantId: string): boolean {
+    const perTenant = this.perTenantLimit();
+    const ownCount = () => [...this.sessions.values()].filter((entry) => entry.state.tenantId === tenantId).length + (this.pendingByTenant.get(tenantId) ?? 0);
+    while (perTenant < this.maxSessions && ownCount() >= perTenant) {
+      const oldest = this.oldestSession((entry) => entry.state.tenantId === tenantId);
+      if (oldest === undefined) return false; // 作成中の分だけで埋まっている
+      this.closeSession(oldest.id);
+      incrementSecurityCounter('sora_mcp_session_tenant_limit_total');
+    }
     while (this.sessions.size + this.pendingInitializations >= this.maxSessions) {
-      let oldestId: string | undefined;
-      let oldestActive = Infinity;
-      for (const [id, session] of this.sessions) {
-        if (session.lastActive < oldestActive) {
-          oldestActive = session.lastActive;
-          oldestId = id;
-        }
-      }
-      if (oldestId === undefined || Date.now() - oldestActive < this.minIdleBeforeEvictMs) return false;
-      this.sessions.get(oldestId)?.transport.close().catch(() => {});
-      this.sessions.delete(oldestId);
+      const oldest = this.oldestSession(() => true);
+      if (oldest === undefined || Date.now() - oldest.lastActive < this.minIdleBeforeEvictMs) return false;
+      this.closeSession(oldest.id);
       incrementSecurityCounter('sora_mcp_session_evicted_total');
     }
     return true;
@@ -190,7 +218,20 @@ export class McpSessionManager {
       return sanitizeMcpResponse(res);
     }
 
-    // 2. セッション新規作成 (initialize リクエスト時)
+    // 2. セッションの無い GET（サーバーから送る流れ）は開かない。セッションが無ければ、サーバーから送るものが無く、
+    // 開いたままの流れは 1 本ごとに MCP のサーバーを 1 つ持つ（数 MB）。仕様は、流れを開かないときは 405 を返すと決めている
+    if (req.method === 'GET') {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          error: { code: -32000, message: 'Method Not Allowed: GET opens a stream only for a session (send the mcp-session-id header)' },
+          id: null,
+        }),
+        { status: 405, headers: { 'Content-Type': 'application/json', Allow: 'POST' } },
+      );
+    }
+
+    // 3. セッション新規作成 (initialize リクエスト時)
     let parsedBody = options?.parsedBody;
     if (parsedBody === undefined && req.method === 'POST') {
       try {
@@ -205,7 +246,7 @@ export class McpSessionManager {
 
     if (isInit) {
       // セッションは数 MB を保持するので、無制限に作らせない（未認証の連続 initialize によるメモリ枯渇の防止）
-      if (!this.makeRoomForSession()) {
+      if (!this.makeRoomForSession(tenantId)) {
         incrementSecurityCounter('sora_mcp_session_rejected_total');
         return new Response(
           JSON.stringify({
@@ -217,6 +258,7 @@ export class McpSessionManager {
         );
       }
       this.pendingInitializations++;
+      this.pendingByTenant.set(tenantId, (this.pendingByTenant.get(tenantId) ?? 0) + 1);
       try {
         const state: McpSessionState = { activatedTools: new Set<string>(), tenantId };
         const server = createMcpServer({ sessionState: state });
@@ -241,10 +283,13 @@ export class McpSessionManager {
         return sanitizeMcpResponse(res);
       } finally {
         this.pendingInitializations--;
+        const pending = (this.pendingByTenant.get(tenantId) ?? 1) - 1;
+        if (pending > 0) this.pendingByTenant.set(tenantId, pending);
+        else this.pendingByTenant.delete(tenantId);
       }
     }
 
-    // 3. 単発リクエストでは明示的に呼ばれたツールだけをその要求内で有効化する。
+    // 4. 単発リクエストでは明示的に呼ばれたツールだけをその要求内で有効化する。
     // tools/list と search_tools の結果は別の要求や接続へ持ち越さない。
     const activatedTools = new Set<string>();
     for (const message of messages) {
