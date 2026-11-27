@@ -1,7 +1,9 @@
 // Shared safe-transport primitives (RFC P0-SEC-03/04).
 // Call sites must validate before fetching and must never buffer
 // unbounded bodies. New outbound code should build on safeFetch.
+import { currentCaller } from '../security/caller.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
+import { type BodyBudget, bodyBudget } from './body_budget.js';
 
 export const DEFAULT_MAX_BODY_BYTES = 30 * 1024 * 1024;
 
@@ -16,12 +18,15 @@ export interface BodyReadOptions {
   timeoutMs: number;
   /** 中止されたら、読むのをやめて、その理由で失敗する（全体の時間の期限・クライアントの切断） */
   signal?: AbortSignal;
+  /** 読み込み中の本文の量を数える予算（既定は、プロセスで 1 つの bodyBudget。試験が差し替える） */
+  budget?: BodyBudget;
 }
 
 /**
  * Read a response body with a streaming byte cap (RFC P0-SEC-04) and a time limit.
  * 取得に渡す中止の信号は、wreq-js では、ヘッダーを受けるまでしか効かない（受けると、信号の登録を外す。本文は wreq-js の内部の上限の 300 秒まで待つ）。
- * 本文が終わらない応答が、共有の枠（PDF の解析など）を握り続けないように、ここで切る。時間は読み始めから数える（順番を待った時間は含めない）
+ * 本文が終わらない応答が、共有の枠（PDF の解析など）を握り続けないように、ここで切る。時間は読み始めから数える（順番を待った時間は含めない）。
+ * 読んだ量は、いま呼んでいる利用者の分に予約し（net/body_budget.ts）、上限を超えたら、読むのをやめて ResourceBusyError。読み終えたら（失敗も）返す
  */
 export async function readBodyWithLimit(
   response: Response,
@@ -38,6 +43,9 @@ export async function readBodyWithLimit(
   else stop.addEventListener('abort', cancel, { once: true });
   const chunks: Uint8Array[] = [];
   let total = 0;
+  const budget = options.budget ?? bodyBudget;
+  const owner = currentCaller();
+  let reserved = 0;
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -52,9 +60,17 @@ export async function readBodyWithLimit(
         incrementSecurityCounter('sora_response_size_abort_total');
         throw new BodyTooLargeError(`Response exceeds ${maxBytes} bytes`);
       }
+      try {
+        budget.reserve(owner, value.byteLength);
+      } catch (error) {
+        try { await reader.cancel(); } catch {}
+        throw error;
+      }
+      reserved += value.byteLength;
       chunks.push(value);
     }
   } finally {
+    budget.release(owner, reserved);
     stop.removeEventListener('abort', cancel);
     try { reader.releaseLock(); } catch {}
   }

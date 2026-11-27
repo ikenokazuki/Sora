@@ -30,11 +30,12 @@ export class ScrapeInputError extends Error {}
  * （ブラウザセッションの数。設計 6。穴 22）session_limit = 全体のセッション数の上限（ほかの利用者のセッションは閉じない）
  * （tenant ごとのブラウザのプロセス。設計 2）process_limit = 同時に持てるプロセスの数の上限（閉じてよい、使っていないプロセスが無い）
  * （出口のゲートウェイ）connection_limit = 同時の接続数の上限（その利用者の分か、全体）
+ * （読み込み中の本文）memory_limit = 読み込み中の本文の量の上限（その利用者の分か、全体）
  */
-export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'tenant_budget' | 'session_limit' | 'process_limit' | 'connection_limit';
+export type BusyReason = 'tenant_queue_full' | 'queue_full' | 'queue_timeout' | 'tenant_budget' | 'session_limit' | 'process_limit' | 'connection_limit' | 'memory_limit';
 
-/** 混み合った資源: ブラウザの枠・セッション（browser）、地名の検索（geocoding）、Yahoo、国の情報の提供元（country_intel）、住所データの構築（address）、出口のゲートウェイの接続（egress） */
-export type BusyResource = 'browser' | 'geocoding' | 'yahoo' | 'country_intel' | 'address' | 'pdf' | 'convert' | 'egress';
+/** 混み合った資源: ブラウザの枠・セッション（browser）、地名の検索（geocoding）、Yahoo、国の情報の提供元（country_intel）、住所データの構築（address）、出口のゲートウェイの接続（egress）、読み込み中の本文の量（body） */
+export type BusyResource = 'browser' | 'geocoding' | 'yahoo' | 'country_intel' | 'address' | 'pdf' | 'convert' | 'egress' | 'body';
 
 /**
  * 資源（ブラウザの枠・セッションの数・共有の外部資源の順番）が混み合っていて、待たせずに（または待たせたあとに）断ったときの例外。

@@ -196,7 +196,7 @@ groups:
 |---|---|
 | 鍵なし・誤った鍵・管理者でない鍵（401・403） | `sora_auth_rejected_missing_total`・`sora_auth_rejected_invalid_total`・`sora_auth_rejected_not_admin_total` |
 | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて断った（429。一括・crawl の件数で断った分も） | `sora_quota_exceeded_total` |
-| ブラウザの枠・共有の外部資源の順番が混んでいて断った（429） | `sora_<資源>_busy_<理由>_total`（資源は `browser`・`geocoding`・`yahoo`・`country_intel`・`address`・`pdf`・`convert`・`egress`。理由は `tenant_queue_full`・`queue_full`・`queue_timeout`・`tenant_budget`。ブラウザは、ほかに `process_limit`・`session_limit`。`egress` は `connection_limit`〈出口のゲートウェイの接続が、その利用者の上限か全体の上限に達していて、静的な取得をしなかった〉） |
+| ブラウザの枠・共有の外部資源の順番が混んでいて断った（429） | `sora_<資源>_busy_<理由>_total`（資源は `browser`・`geocoding`・`yahoo`・`country_intel`・`address`・`pdf`・`convert`・`egress`・`body`。理由は `tenant_queue_full`・`queue_full`・`queue_timeout`・`tenant_budget`。ブラウザは、ほかに `process_limit`・`session_limit`。`egress` は `connection_limit`〈出口のゲートウェイの接続が、その利用者の上限か全体の上限に達していて、静的な取得をしなかった〉。`body` は `memory_limit`〈読み込み中の本文の量が、その利用者の上限〔64MB〕か全体の上限〔機械のメモリの 25%〕に達していて、読み込みを止めた〉） |
 | ウォッチの登録数・確認の間隔の上限 | `sora_watch_limit_exceeded_total`・`sora_watch_too_frequent_total` |
 | MCP セッションの上限 | `sora_mcp_session_rejected_total`（新しい接続を断った）・`sora_mcp_session_evicted_total`（全体の上限で、古い接続を閉じて空けた）・`sora_mcp_session_tenant_limit_total`（1 人の利用者の上限で、その利用者の古い接続を閉じた） |
 | ブラウザのページから来た REST 要求を、Host・Origin で断った | `sora_rest_origin_rejected_total` |

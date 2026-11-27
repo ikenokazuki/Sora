@@ -42,6 +42,7 @@ const BUDGET_WORDS: Record<BusyResource, string> = {
   pdf: 'PDF の解析',
   convert: 'ページの変換',
   egress: '外への接続',
+  body: '本文の読み込み',
 };
 
 /** 窓の幅の書き方（ちょうど分なら「1 分」、そうでなければ「30 秒」） */
