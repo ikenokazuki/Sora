@@ -77,12 +77,12 @@ const memoryError = await convertPage({ html: denseHtml, url: URL_OF, maxChars: 
 check(memoryError instanceof ConvertLimitError && memoryError.reason === 'memory', `メモリの上限で止まらない: ${String(memoryError)}`);
 
 // 6. 監視を外しても（上限を巨大にしても）、コンテナのメモリが尽きたとき、カーネルが選ぶのは変換の子で、この確認は生き残る。
-//    500 万字の記事（本体の中の変換では 1.3GB ほど要った）を、1GB のコンテナで変換する
+//    1,000 万字の記事（子は 1GB を超える。500 万字は、子の中の GC のおかげで 1GB に収まり、尽きなかった）を、1GB のコンテナで変換する
 let giant = '';
-for (let i = 0; giant.length < 5_000_000; i++) giant += `<section><h2>見出し ${i}</h2><p>これは段落 ${i} の本文です。<a href="/a/${i % 300}">関連する記事</a>への案内と、ふつうの長さの文章が続きます。</p></section>`;
+for (let i = 0; giant.length < 10_000_000; i++) giant += `<section><h2>見出し ${i}</h2><p>これは段落 ${i} の本文です。<a href="/a/${i % 300}">関連する記事</a>への案内と、ふつうの長さの文章が続きます。</p></section>`;
 const giantHtml = `<html><head><title>t</title></head><body><main>${giant}</main></body></html>`;
 const backstop = await convertPage({ html: giantHtml, url: URL_OF, maxChars: 30_000 }, { child: strictChild({ memoryMb: 100_000, hardMs: 120_000 }) }).catch((e: unknown) => e);
-check(backstop instanceof ConvertLimitError && backstop.reason === 'crashed', `カーネルに止められた変換の子が、勝手に終わったものとして扱われない: ${String(backstop)}`);
+check(backstop instanceof ConvertLimitError && backstop.reason === 'crashed', `カーネルに止められた変換の子が、勝手に終わったものとして扱われない: ${backstop instanceof Error ? String(backstop) : '変換が終わった（コンテナのメモリが尽きなかった。ページを大きくする）'}`);
 
 // 7. 止めたあと: 子が残らず、順番は手放され、本体のメモリは小さいまま、次の変換が動く
 await Bun.sleep(300);
