@@ -7,7 +7,9 @@
  * - 運用者のプロキシ（SORA_PROXY_URL・HTTPS_PROXY など。net/proxy_config.ts）は、ゲートウェイの上流にする。NO_PROXY の宛先は、上流を使わず、
  *   ゲートウェイが直接つなぐ（検査は、同じに受ける）
  */
+import { createHash } from 'node:crypto';
 import { envBool, envError, envList, type Env } from '../config.js';
+import { limits } from '../security/limits.js';
 import { type EgressAllowedDestination, EgressGateway, type EgressGatewayOptions, parseUpstreamProxyUrl } from './egress_gateway.js';
 import { canonicalHost, ipLiteralVersion, isAllowableInternalIp, isMetadataHostname, isPrivateIp } from './ip_policy.js';
 import { isProxyBypassed } from './no_proxy.js';
@@ -102,15 +104,19 @@ export interface EgressEndpoint {
 
 let starting: Promise<EgressEndpoint> | undefined;
 let running: EgressGateway | undefined;
+/** ブラウザのプロセスの番号ごとの受け口（のポート）と、いまその番号を持つ利用者の印 */
+const slotListeners = new Map<number, Promise<number>>();
+const slotOwners = new Map<number, string>();
 
 /**
  * プロセスで 1 つの、出口のゲートウェイを返す（初めて呼ぶときに、ループバックで待ち受けを始める）。
- * 設定は、環境変数から。options は、最初の起動のときだけ、環境変数の設定より優先して使う（確認の道具が、検査の方針を差し替えるため）。
+ * 設定は、環境変数から。1 人が同時に持てる接続の割合は、水準の表（egressTenantSharePercent）から。
+ * options は、最初の起動のときだけ、環境変数の設定より優先して使う（確認の道具が、検査の方針を差し替えるため）。
  * 起動に失敗しても、その失敗は覚えない（設定を直して、もう一度呼べる）。
  */
 export function getEgressGateway(options: EgressGatewayOptions = {}): Promise<EgressEndpoint> {
   starting ??= (async () => {
-    const gateway = new EgressGateway({ ...egressGatewayOptionsFromEnv(), ...options });
+    const gateway = new EgressGateway({ ...egressGatewayOptionsFromEnv(), ownerSharePercent: limits().egressTenantSharePercent, ...options });
     const port = await gateway.start();
     running = gateway;
     return { host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
@@ -127,6 +133,50 @@ export function isEgressGatewayStarted(): boolean {
 }
 
 /**
+ * ゲートウェイが、利用者を見分ける印（利用者の ID のハッシュの先頭 16 進 24 字）。利用者の名前は、プロキシの URL（エラーの文に出ることがある）に出さない。
+ * ゲートウェイは、印ごとに同時の接続を数える（egressTenantSharePercent）
+ */
+export function egressOwnerToken(tenantId: string): string {
+  return createHash('sha256').update(`sora-egress-owner:${tenantId}`).digest('hex').slice(0, 24);
+}
+
+/**
+ * 本体の取得（wreq-js・Bun の fetch）に使う、利用者の印を付けたゲートウェイの URL（`http://<印>:@127.0.0.1:<port>`）。
+ * どちらも、URL の名前を Proxy-Authorization（Basic）でゲートウェイに送る（平文の要求にも CONNECT にも。2026-11-27 に実測）
+ */
+export async function egressProxyUrlFor(tenantId: string): Promise<string> {
+  const { host, port } = await getEgressGateway();
+  return `http://${egressOwnerToken(tenantId)}:@${host}:${port}`;
+}
+
+/**
+ * ブラウザのプロセスの番号（slot）ごとの受け口。Chromium は、プロキシに資格情報を送れないので、プロセスごとに受け口を分けて、
+ * そこへの接続を、いまその番号を持つ利用者（tenantId）の数に入れる。受け口は番号ごとに 1 つ（番号の数は SORA_BROWSER_MAX_PROCESSES まで）で、
+ * 番号を別の利用者に渡すとき（前のプロセスを閉じて、残りを片づけてから起動する）に、呼び直して利用者を替える
+ */
+export async function egressEndpointForSlot(slot: number, tenantId: string): Promise<EgressEndpoint> {
+  slotOwners.set(slot, egressOwnerToken(tenantId));
+  await getEgressGateway();
+  let listening = slotListeners.get(slot);
+  if (!listening) {
+    const gateway = running;
+    if (!gateway) throw new Error('出口のゲートウェイは止まった');
+    listening = gateway.addListener(() => slotOwners.get(slot) ?? '');
+    slotListeners.set(slot, listening);
+    listening.catch(() => {
+      if (slotListeners.get(slot) === listening) slotListeners.delete(slot);
+    });
+  }
+  const port = await listening;
+  return { host: '127.0.0.1', port, url: `http://127.0.0.1:${port}` };
+}
+
+/** その利用者の接続が、ゲートウェイの上限（egressTenantSharePercent）に達しているか。ゲートウェイが動いていなければ false */
+export function egressOwnerAtLimit(tenantId: string): boolean {
+  return running?.ownerAtLimit(egressOwnerToken(tenantId)) ?? false;
+}
+
+/**
  * 子プロセス（Yahoo の検索バイナリ・住所データの構築）の環境変数に足す、出口のゲートウェイの指定（`childEnv` の extra に渡す）。
  * 使わないときは空（子プロセスの環境は、これまでどおり）。使うときは、HTTP_PROXY・HTTPS_PROXY（大文字・小文字）をゲートウェイの URL にし、
  * ALL_PROXY・NO_PROXY は消す: 運用者の上流のプロキシと NO_PROXY は、ゲートウェイが受け持つ。残すと、子が、ゲートウェイを通さず、直接つなぐ
@@ -140,10 +190,11 @@ export async function egressChildProxyEnv(): Promise<Record<string, string | und
   return { HTTP_PROXY: url, HTTPS_PROXY: url, http_proxy: url, https_proxy: url, ALL_PROXY: undefined, all_proxy: undefined, NO_PROXY: undefined, no_proxy: undefined };
 }
 
-/** ゲートウェイを止める（中継中の接続も切る）。次に getEgressGateway を呼ぶと、新しく始める */
+/** ゲートウェイを止める（番号ごとの受け口も、中継中の接続も切る）。次に getEgressGateway を呼ぶと、新しく始める */
 export async function stopEgressGateway(): Promise<void> {
   const gateway = running;
   running = undefined;
   starting = undefined;
+  slotListeners.clear();
   await gateway?.stop();
 }

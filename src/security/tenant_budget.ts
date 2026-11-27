@@ -41,6 +41,7 @@ const BUDGET_WORDS: Record<BusyResource, string> = {
   address: '住所データの構築',
   pdf: 'PDF の解析',
   convert: 'ページの変換',
+  egress: '外への接続',
 };
 
 /** 窓の幅の書き方（ちょうど分なら「1 分」、そうでなければ「30 秒」） */

@@ -196,11 +196,11 @@ groups:
 |---|---|
 | 鍵なし・誤った鍵・管理者でない鍵（401・403） | `sora_auth_rejected_missing_total`・`sora_auth_rejected_invalid_total`・`sora_auth_rejected_not_admin_total` |
 | 日次の上限（`SORA_AUTH_DAILY_LIMIT`）を超えて断った（429。一括・crawl の件数で断った分も） | `sora_quota_exceeded_total` |
-| ブラウザの枠・共有の外部資源の順番が混んでいて断った（429） | `sora_<資源>_busy_<理由>_total`（資源は `browser`・`geocoding`・`yahoo`・`country_intel`・`address`・`pdf`。理由は `tenant_queue_full`・`queue_full`・`queue_timeout`・`tenant_budget`。ブラウザは、ほかに `process_limit`・`session_limit`） |
+| ブラウザの枠・共有の外部資源の順番が混んでいて断った（429） | `sora_<資源>_busy_<理由>_total`（資源は `browser`・`geocoding`・`yahoo`・`country_intel`・`address`・`pdf`・`convert`・`egress`。理由は `tenant_queue_full`・`queue_full`・`queue_timeout`・`tenant_budget`。ブラウザは、ほかに `process_limit`・`session_limit`。`egress` は `connection_limit`〈出口のゲートウェイの接続が、その利用者の上限か全体の上限に達していて、静的な取得をしなかった〉） |
 | ウォッチの登録数・確認の間隔の上限 | `sora_watch_limit_exceeded_total`・`sora_watch_too_frequent_total` |
 | MCP セッションの上限 | `sora_mcp_session_rejected_total`（新しい接続を断った）・`sora_mcp_session_evicted_total`（古い接続を閉じて空けた） |
 | ブラウザのページから来た REST 要求を、Host・Origin で断った | `sora_rest_origin_rejected_total` |
-| 出口のゲートウェイが断った（理由別） | `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`） |
+| 出口のゲートウェイが断った（理由別） | `sora_egress_denied_<理由>_total`（理由は `port`・`private_ip`・`blocked_host`・`dns`・`bad_request`・`limit`・`tenant_limit`） |
 | URL の事前検査（取得の前に、内部の宛先を断る検査）が断った（理由別） | `sora_precheck_denied_<理由>_total`（理由は `private_ip`・`blocked_host`・`dns`。静的な取得〈リダイレクト先も〉・ブラウザのページの要求と遷移・`browser_action` の URL・webhook の宛先。静的な取得の分は、理由なしの合計 `sora_redirect_block_total` にも数えます） |
 | 鍵ファイルの読み直し | `sora_auth_keys_reload_total`・`sora_auth_keys_reload_failed_total`・`sora_auth_keys_missing_total` |
 
@@ -210,6 +210,7 @@ groups:
 - ゲートウェイの `private_ip`・`blocked_host` が増えるのは、事前検査を通った要求が、接続のときに内部の IP と分かった場合です（名前の答えが、検査と接続のあいだで変わった場合など）。
 - ブラウザは、断った**要求**ごとに数えます。ページが内部の宛先へ何本も要求を出せば、その本数だけ増えるので、1 回の取得で 1 つとは限りません（実機では、内部の IP を `mode=browser` で開くと 2 増えました）。静的な取得・`browser_action` の URL・webhook は、1 回につき 1 つです。
 - 数えないもの: `http`・`https` 以外の URL を断った分、広告・トラッカー・メディアの中止、`SORA_FETCH_ALLOW_PRIVATE_NETWORK=true` で検査を外している間（断らないので）。
+- ゲートウェイの `limit` と `tenant_limit` は、同時の接続数の上限です。全体は 2,048 本で、`strict` では 1 人の利用者が 512 本まで（`tenant_limit`）です。利用者は、Sora の本体の取得では、ゲートウェイへの要求に付ける印で、ブラウザでは、利用者ごとのプロセスがつなぐ受け口で見分けます。`tenant_limit` が増え続けるのは、1 人の利用者が、終わらないページなどで接続を握り続けている場合です。ほかの利用者の取得には響きません。
 
 コンテナの死活確認に使う `GET /health`（`detailed` なし）は、`strict` でも鍵なしで開きます（`cachedEntries`・`activeMcpSessions` の、全利用者の合計の数字は見えます）。
 

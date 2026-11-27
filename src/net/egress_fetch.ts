@@ -7,7 +7,8 @@
  * 設計: docs/superpowers/specs/2026-11-12-isolation-design.md の設計 1（E17）。
  */
 import { envForgetNoProxy } from '../config.js';
-import { getEgressGateway, isEgressGatewayEnabled } from './egress.js';
+import { currentCaller } from '../security/caller.js';
+import { type EgressEndpoint, egressProxyUrlFor, getEgressGateway, isEgressGatewayEnabled } from './egress.js';
 import type { EgressGatewayOptions } from './egress_gateway.js';
 
 let installed: { original: typeof fetch; wrapped: typeof fetch } | undefined;
@@ -19,6 +20,16 @@ function requestedProxy(init: unknown): string | undefined {
   return typeof proxy === 'string' ? proxy : String((proxy as { url?: unknown } | null)?.url);
 }
 
+/** url が、このゲートウェイ（利用者の印の有無によらず）を指すか */
+function pointsToGateway(url: string, gateway: EgressEndpoint): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' && parsed.hostname === gateway.host && Number(parsed.port) === gateway.port;
+  } catch {
+    return false;
+  }
+}
+
 async function throughGateway(original: typeof fetch, args: Parameters<typeof fetch>, options: EgressGatewayOptions): Promise<Response> {
   const [input, init] = args;
   const gateway = await getEgressGateway(options);
@@ -26,10 +37,12 @@ async function throughGateway(original: typeof fetch, args: Parameters<typeof fe
   // その後で、プロセスの環境から外す（外す前に呼ぶと、ゲートウェイが、迂回の指定を失う）
   envForgetNoProxy();
   const requested = requestedProxy(init);
-  if (requested !== undefined && requested !== gateway.url) {
+  if (requested !== undefined && !pointsToGateway(requested, gateway)) {
     throw new Error('SORA_EGRESS_GATEWAY=on のときは、呼び出しごとのプロキシの指定は使えない（出口のゲートウェイを迂回してしまう）。運用者のプロキシは、SORA_PROXY_URL などで、ゲートウェイの上流にする');
   }
-  return original(input, { ...(init as RequestInit | undefined), proxy: gateway.url });
+  // ゲートウェイは、利用者ごとに同時の接続を数える。指定が無ければ、いま呼んでいる利用者の印を付ける（呼び出し元が印つきの URL を渡したら、それを使う）
+  const proxy = requested ?? (await egressProxyUrlFor(currentCaller()));
+  return original(input, { ...(init as RequestInit | undefined), proxy });
 }
 
 /** 設定の誤りは、使わないことにせず、そのまま投げる（打ち間違いで、ゲートウェイが黙って外れない） */

@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { runAsCaller } from '../security/caller.js';
 import { getSecurityMetrics, resetSecurityMetrics } from '../security/metrics.js';
-import { getEgressGateway, isEgressGatewayStarted, stopEgressGateway } from './egress.js';
+import { egressOwnerAtLimit, egressProxyUrlFor, getEgressGateway, isEgressGatewayStarted, stopEgressGateway } from './egress.js';
 import { installEgressFetch, uninstallEgressFetch } from './egress_fetch.js';
-import { createEgressTestKit, fakeResolver } from './egress_test_kit.js';
+import { createEgressTestKit, fakeResolver, waitUntil } from './egress_test_kit.js';
 
 // Bun の fetch（globalThis.fetch）が、SORA_EGRESS_GATEWAY=on のとき、出口のゲートウェイを通ること。
 // 天気・防災・荷物追跡などの固定の提供元、webhook、提供元の応答が決める URL は、どれも、この fetch で取る。
@@ -205,10 +206,39 @@ describe('installEgressFetch: on のとき、fetch は、出口のゲートウ�
 
     await expect(fetch(url, { proxy: 'http://other-proxy.example:8080' })).rejects.toThrow('SORA_EGRESS_GATEWAY');
     await expect(fetch(url, { proxy: { url: 'http://other-proxy.example:8080' } } as RequestInit)).rejects.toThrow('SORA_EGRESS_GATEWAY');
+    // ゲートウェイと似ていても、方式・名前・ポートが違えば、別のプロキシ
+    for (const other of [`https://127.0.0.1:${gateway.port}`, `http://localhost:${gateway.port}`, `http://127.0.0.1:${gateway.port + 1}`]) {
+      await expect(fetch(url, { proxy: other })).rejects.toThrow('SORA_EGRESS_GATEWAY');
+    }
     expect((await fetch(url, { proxy: gateway.url })).status).toBe(200);
     expect((await fetch(url, { proxy: { url: gateway.url } } as RequestInit)).status).toBe(200);
     // proxy: undefined と明示しても、指定なしと同じ（ゲートウェイを通る）。迂回の抜け道にならない
     expect((await fetch(`http://localhost:${origin.port}/`, { proxy: undefined })).status).toBe(403);
+  });
+
+  test('印の無い呼び出しは、いま呼んでいる利用者（currentCaller）の印でゲートウェイを通る（利用者ごとの接続の数に入る）。印つきのゲートウェイの URL を指定してもよい', async () => {
+    // 頭部と本文の一部を送り、本文を終えない宛先（接続が開いたままになる）
+    const stalled = await kit.startTcpServer((socket) => {
+      socket.once('data', () => socket.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7\r\npartial\r\n'));
+    });
+    const { resolve } = fakeResolver({ 'web.test': ['127.0.0.1'] });
+    await getEgressGateway({ allowedPorts: [stalled.port], resolve, isPrivateIp: () => false, maxConnections: 4, ownerSharePercent: 25 }); // 1 人 1 本
+    installEgressFetch();
+    const url = `http://web.test:${stalled.port}/`;
+
+    const held = await runAsCaller('name:alice', () => fetch(url));
+    expect(held.status).toBe(200);
+    expect(egressOwnerAtLimit('name:alice')).toBe(true);
+    expect(egressOwnerAtLimit('name:bob')).toBe(false);
+
+    const bob = await fetch(url, { proxy: await egressProxyUrlFor('name:bob') });
+    expect(bob.status).toBe(200);
+    expect(egressOwnerAtLimit('name:bob')).toBe(true);
+
+    // 読むのをやめれば、Bun の fetch は接続を閉じ、数が戻る
+    await held.body?.cancel();
+    expect(await waitUntil(() => !egressOwnerAtLimit('name:alice'), 3000)).toBe(true);
+    await bob.body?.cancel();
   });
 
   test('ゲートウェイを始められないとき（設定の誤り）は、直接つなぐ道に落ちず、失敗する', async () => {

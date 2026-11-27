@@ -24,7 +24,7 @@ import { isSensitiveHeaderName } from './security/credential_scope.js';
 import { limits, strictBrowserProcessMax } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
 import { countPrecheckDenied, deniesHost } from './net/precheck.js';
-import { browserResolvesLocally, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
+import { browserResolvesLocally, egressEndpointForSlot, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { getProxyConfig } from './net/proxy_config.js';
 import { HEADER_NAME, hasControlCharacter } from './net/egress_gateway.js';
 
@@ -130,9 +130,10 @@ interface LaunchArg {
 /** 共有ブラウザの鍵。tenant の ID（名前・key:<ハッシュ>・legacy など）には現れない */
 const SHARED_KEY = '*shared*';
 
-function launchBrowser(slot: number | undefined, arg: LaunchArg): Promise<Browser> {
+/** owner は、tenant ごとのプロセスの tenant（出口のゲートウェイが、そのプロセスの接続を、その tenant の分に数える）。共有のプロセスは undefined */
+function launchBrowser(slot: number | undefined, arg: LaunchArg, owner?: string): Promise<Browser> {
   if (!CHROME_EXECUTABLE_PATH) return Promise.reject(new Error('Chromium/Chrome が見つからないためブラウザを起動できません'));
-  return launchStealthChromium(arg.proxy, arg.bypass, slot);
+  return launchStealthChromium(arg.proxy, arg.bypass, slot, owner);
 }
 
 /**
@@ -164,7 +165,7 @@ const browserPool = new BrowserPool<Browser, LaunchArg>({
       key,
       slot,
       {
-        launch: launchBrowser,
+        launch: (slot, arg) => launchBrowser(slot, arg, key),
         // その tenant が、枠を持っている間は、使用中
         inUse: () => browserSemaphore.heldBy(key) > 0,
         idleTtlMs: perTenantIdleTtlMs,
@@ -403,7 +404,7 @@ export function slotUid(slot: number): number | undefined {
 }
 
 /** 共有・専用のどちらの Chromium も、ここで起動する。 */
-async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined, slot?: number): Promise<Browser> {
+async function launchStealthChromium(proxy: string | undefined, bypass: string | undefined, slot?: number, owner?: string): Promise<Browser> {
   const userAgent = await stealthUserAgent();
   const profileMajor = await alignedProfileMajor();
   const args = [
@@ -429,8 +430,13 @@ async function launchStealthChromium(proxy: string | undefined, bypass: string |
     `--disable-features=${wreqAlignDisabledFeatures(profileMajor).join(',')}`,
   ];
   if (userAgent) args.push(`--user-agent=${userAgent}`);
-  // 出口のゲートウェイを使うときは、すべての通信を、ゲートウェイに通す（使うときに、初めて起動する）。使わないときは、運用者のプロキシを、そのまま渡す
-  const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
+  // 出口のゲートウェイを使うときは、すべての通信を、ゲートウェイに通す（使うときに、初めて起動する）。使わないときは、運用者のプロキシを、そのまま渡す。
+  // tenant ごとのプロセスは、番号ごとの受け口を使う（Chromium はプロキシに資格情報を送れないので、受け口で、その tenant の接続と数える）
+  const gateway = !isEgressGatewayEnabled()
+    ? undefined
+    : slot !== undefined && owner !== undefined
+      ? await egressEndpointForSlot(slot, owner)
+      : await getEgressGateway();
   args.push(...browserProxyArgs({ gateway, proxy, bypass }));
   if (isBrowserLowMemory()) args.push('--enable-low-end-device-mode');
 

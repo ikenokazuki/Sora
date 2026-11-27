@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import net from 'node:net';
 import { resetSecurityMetrics } from '../security/metrics.js';
-import { egressChildProxyEnv, egressGatewayOptionsFromEnv, getEgressGateway, isEgressGatewayEnabled, isEgressGatewayStarted, stopEgressGateway } from './egress.js';
+import {
+  egressChildProxyEnv,
+  egressEndpointForSlot,
+  egressGatewayOptionsFromEnv,
+  egressOwnerAtLimit,
+  egressOwnerToken,
+  egressProxyUrlFor,
+  getEgressGateway,
+  isEgressGatewayEnabled,
+  isEgressGatewayStarted,
+  stopEgressGateway,
+} from './egress.js';
 import { childEnv } from '../security/child_env.js';
+import { withEnv } from '../test_fixtures/env.js';
 import { connectHead, createEgressTestKit, fakeResolver, readBytes } from './egress_test_kit.js';
 
 const kit = createEgressTestKit();
@@ -212,6 +224,108 @@ describe('getEgressGateway: プロセスで 1 つの、出口のゲートウェ�
     } finally {
       if (previous === undefined) delete process.env.SORA_EGRESS_PORTS;
       else process.env.SORA_EGRESS_PORTS = previous;
+    }
+  });
+});
+
+describe('利用者ごとの接続の数え方（印つきの URL・ブラウザのプロセスごとの受け口）', () => {
+  // getEgressGateway の describe と同じく、テストの事前設定の架空のプロキシを、この間だけ外す
+  const proxyKeys = ['SORA_PROXY_URL', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy'];
+  let saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    saved = Object.fromEntries(proxyKeys.map((key) => [key, process.env[key]]));
+    for (const key of proxyKeys) delete process.env[key];
+  });
+  afterEach(() => {
+    for (const key of proxyKeys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  });
+
+  const permissive = async (extra: Record<string, unknown> = {}) => {
+    const echo = await startEchoServer();
+    const { resolve } = fakeResolver({ 'echo.test': ['127.0.0.1'] });
+    return { target: `echo.test:${echo.port}`, options: { allowedPorts: [echo.port], resolve, isPrivateIp: () => false, ...extra } };
+  };
+  /** URL の資格情報を、本体の取得（wreq-js・Bun の fetch）と同じに Proxy-Authorization で送る CONNECT */
+  const connectVia = (proxyUrl: string, target: string) => {
+    const url = new URL(proxyUrl);
+    const auth = url.username ? `Proxy-Authorization: Basic ${Buffer.from(`${decodeURIComponent(url.username)}:${url.password}`).toString('base64')}\r\n` : '';
+    return rawRequest(Number(url.port), `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n${auth}\r\n`);
+  };
+
+  test('egressOwnerToken: 利用者の ID から作る、決まった 16 進 24 字（利用者の名前は URL に出さない）。利用者が違えば違う', () => {
+    const alice = egressOwnerToken('name:alice');
+    expect(alice).toMatch(/^[0-9a-f]{24}$/);
+    expect(egressOwnerToken('name:alice')).toBe(alice);
+    expect(egressOwnerToken('name:bob')).not.toBe(alice);
+    expect(alice).not.toContain('alice');
+  });
+
+  test('egressProxyUrlFor: ゲートウェイの URL に、利用者の印を付ける。その URL で通した接続は、その利用者の数に入る', async () => {
+    const { target, options } = await permissive({ maxConnections: 4, ownerSharePercent: 25 }); // 1 人 1 本
+    const endpoint = await getEgressGateway(options);
+    const aliceUrl = await egressProxyUrlFor('name:alice');
+    expect(aliceUrl).toBe(`http://${egressOwnerToken('name:alice')}:@127.0.0.1:${endpoint.port}`);
+
+    expect((await connectVia(aliceUrl, target)).status).toBe(200);
+    expect(egressOwnerAtLimit('name:alice')).toBe(true);
+    expect(egressOwnerAtLimit('name:bob')).toBe(false);
+    const again = await connectVia(aliceUrl, target);
+    expect(again.status).toBe(503);
+    expect(again.headers['x-sora-egress-deny']).toBe('tenant_limit');
+    expect((await connectVia(await egressProxyUrlFor('name:bob'), target)).status).toBe(200);
+  });
+
+  test('egressEndpointForSlot: ブラウザのプロセスの番号ごとの受け口。そこへの接続は、いまその番号を持つ利用者の数に入る', async () => {
+    const { target, options } = await permissive({ maxConnections: 8, ownerSharePercent: 25 }); // 1 人 2 本
+    const main = await getEgressGateway(options);
+    const slot0 = await egressEndpointForSlot(0, 'name:alice');
+    expect(slot0.port).not.toBe(main.port);
+    expect(slot0.url).toBe(`http://127.0.0.1:${slot0.port}`);
+    expect((await egressEndpointForSlot(1, 'name:bob')).port).not.toBe(slot0.port);
+
+    // 同じ利用者の、本体の取得（印つきの URL）と、ブラウザ（番号の受け口）は、同じ数に入る
+    expect((await connectVia(await egressProxyUrlFor('name:alice'), target)).status).toBe(200);
+    expect((await connectVia(slot0.url, target)).status).toBe(200);
+    expect((await connectVia(slot0.url, target)).status).toBe(503);
+
+    // 番号を別の利用者に渡したあとの接続は、新しい利用者の数に入る（受け口は同じ）
+    const reassigned = await egressEndpointForSlot(0, 'name:carol');
+    expect(reassigned.port).toBe(slot0.port);
+    expect((await connectVia(reassigned.url, target)).status).toBe(200);
+    expect(egressOwnerAtLimit('name:carol')).toBe(false);
+  });
+
+  test('stopEgressGateway で、番号の受け口も閉じる。次に呼ぶと、新しい受け口を作る', async () => {
+    const { target, options } = await permissive();
+    await getEgressGateway(options);
+    const before = await egressEndpointForSlot(0, 'name:alice');
+    await stopEgressGateway();
+    await getEgressGateway(options);
+    const after = await egressEndpointForSlot(0, 'name:alice');
+    expect((await connectVia(after.url, target)).status).toBe(200);
+    if (after.port !== before.port) {
+      await expect(connectVia(before.url, target)).rejects.toThrow();
+    }
+  });
+
+  test('ゲートウェイが動いていなければ、egressOwnerAtLimit は false（数えるものが無い）', () => {
+    expect(egressOwnerAtLimit('name:alice')).toBe(false);
+  });
+
+  test('利用者ごとの割合は、水準の表から読む: strict は 25%（ここでは全体 8 本で 1 人 2 本）、standard は利用者ごとの上限なし', async () => {
+    for (const [level, perOwner] of [['strict', 2], ['standard', 8]] as const) {
+      await withEnv({ SORA_ISOLATION: level }, async () => {
+        const { target, options } = await permissive({ maxConnections: 8 });
+        await getEgressGateway(options);
+        const url = await egressProxyUrlFor('name:alice');
+        const statuses: number[] = [];
+        for (let i = 0; i <= perOwner; i++) statuses.push((await connectVia(url, target)).status);
+        expect(statuses).toEqual([...Array(perOwner).fill(200), 503]);
+        await stopEgressGateway();
+      });
     }
   });
 });
