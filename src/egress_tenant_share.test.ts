@@ -18,7 +18,7 @@ const MALLORY = 'mallory-key-0123456789abcdef';
 const VICTIM = 'victim-key-0123456789abcdefg';
 const kit = createEgressTestKit();
 const touchedKeys = ['SORA_PROXY_URL', 'SORA_PROXY_LIST', 'HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy', 'NO_PROXY', 'no_proxy', 'SORA_FETCH_ALLOW_PRIVATE_NETWORK', 'SORA_EGRESS_GATEWAY', 'SORA_AUTH_KEYS_FILE', 'SORA_API_KEY', 'SORA_ALLOW_ANONYMOUS'];
-/** mallory が取る、止まるページの宛先。全体の上限（ここでは 8 本）より多い。以前は、これで全体が埋まり、victim も断られた */
+/** mallory が取る、止まるページの宛先。mallory の上限（ここでは 2 本）より多い。利用者ごとの上限が無ければ、10 本とも接続を握る */
 const stalledHosts = Array.from({ length: 10 }, (_, i) => `s${i}.test`);
 let saved: Record<string, string | undefined> = {};
 let dir: string;
@@ -58,14 +58,15 @@ const scrape = (key: string, url: string) =>
   );
 
 describe('出口のゲートウェイの接続は、利用者ごとに数える', () => {
-  test('1 人が、止まるページを全体の上限より多く取っても、その人だけが断られ（429）、ほかの利用者は取れる', async () => {
+  test('1 人が、止まるページを自分の上限より多く取ると、その人の分だけが断られ（429）、ほかの利用者は取れる', async () => {
     // 頭部と本文の一部だけを送り、本文を終えない宛先（長さは決めない: wreq-js は、Content-Length の小さい応答を、本文を全部読んでから返す）
     const stalled = await kit.startTcpServer((socket) => {
       socket.once('data', () => socket.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n<html>\r\n'));
     });
     const ok = await kit.startOrigin('<html><head><title>ok</title></head><body><main><h1>hello</h1><p>This page is fine and has enough words to read.</p></main></body></html>');
     const { resolve } = fakeResolver(Object.fromEntries([...stalledHosts, 'ok.test'].map((host) => [host, ['127.0.0.1']])));
-    await getEgressGateway({ allowedPorts: [stalled.port, ok.port], resolve, isPrivateIp: () => false, maxConnections: 8, ownerSharePercent: 25 }); // 1 人 2 本
+    // 全体（40 本）は、mallory の 10 本より大きくする。全体が満杯のときの断りは、頭部を読む前に返すので、混んだ機械では、wreq-js の側でエラー（429 でない）になることがある
+    await getEgressGateway({ allowedPorts: [stalled.port, ok.port], resolve, isPrivateIp: () => false, maxConnections: 40, ownerSharePercent: 5 }); // 1 人 2 本
 
     const malloryRequests = stalledHosts.map((host) => scrape(MALLORY, `http://${host}:${stalled.port}/`));
     // mallory の 2 本が、ゲートウェイの接続を握るまで待つ
