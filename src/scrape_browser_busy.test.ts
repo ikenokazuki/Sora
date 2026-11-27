@@ -3,6 +3,7 @@ import * as engine from './browser_engine.js';
 import { ResourceBusyError } from './errors.js';
 import { scrapeUrl } from './scraper.js';
 import { fillQueue, releaseAll, saturate } from './test_fixtures/browser_slots.js';
+import { installFakePdfLauncher } from './test_fixtures/pdf_launcher.js';
 
 /**
  * scrapeUrl が、ブラウザの枠の断り（ResourceBusyError）を握って、欠けた結果を共有のキャッシュに入れない（設計 6。穴 25。独立したレビューで見つかった同じ型の穴）。
@@ -13,6 +14,8 @@ import { fillQueue, releaseAll, saturate } from './test_fixtures/browser_slots.j
 let server: ReturnType<typeof Bun.serve>;
 const saved: Record<string, string | undefined> = {};
 const spies: Array<{ mockRestore: () => void }> = [];
+/** strict のページの変換は、別の uid に落とした子で動く。root でない試験では、落とすふりをする起動用バイナリを使う */
+let launcher: ReturnType<typeof installFakePdfLauncher> | undefined;
 
 const SPA = '<html><head><title>Spa</title></head><body><div id="root"><p>Static shell text that is more than fifty characters long, but SPA marker present.</p></div></body></html>';
 const ARTICLE = `<html><head><title>Article</title></head><body><article><h1>Article</h1><p>${'This is a long server rendered paragraph with plenty of readable text. '.repeat(12)}</p></article></body></html>`;
@@ -22,6 +25,7 @@ beforeEach(() => {
   process.env.SORA_ISOLATION = 'strict';
   process.env.CHROME_PATH = process.execPath; // Chromium が「ある」ことにする（枠を断られるので、起動しない）
   process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
+  launcher = installFakePdfLauncher();
   server = Bun.serve({
     port: 0,
     hostname: '127.0.0.1',
@@ -33,6 +37,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   server.stop(true);
+  launcher?.restore();
   for (const spy of spies.splice(0)) spy.mockRestore();
   await releaseAll();
   for (const [key, value] of Object.entries(saved)) {

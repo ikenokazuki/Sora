@@ -29,6 +29,13 @@ import { hasMeaningfulPageContent } from './scrape_content_quality.js';
 import { sortEventsByProximity } from './events.js';
 import type { RsMainContent } from './extractor/rs_trafilatura.js';
 
+/**
+ * 変換の重い段階（Readability と turndown）の直前に呼ぶ合図。変換の別プロセス（html_convert_child_main.ts）だけが、ここで GC を挟み、
+ * それまでの段階が残したごみを片づけて、メモリの最大を下げる（本物のページと合成のページで 3〜21% 減。時間は 0〜12% 増）。
+ * 本体の中の変換では使わない（GC は、その間、全員の要求を止める）
+ */
+export const conversionHooks: { beforeHeavyStage?: () => void } = {};
+
 /** Markdown 冒頭の「📅 イベント情報」に出す予定の上限。超えた分は件数だけ示す（events には全件が入る） */
 const MAX_EVENT_CALLOUT = 10;
 
@@ -1332,6 +1339,7 @@ export function convertHtmlToMarkdown(
     if (tryReadability) {
       if (!tooDeep) {
         try {
+          conversionHooks.beforeHeavyStage?.();
           const { document } = parseHTML($.html());
           const reader = new Readability(document);
           const article = reader.parse();
@@ -1367,6 +1375,7 @@ export function convertHtmlToMarkdown(
   const header = frontmatterLines.length > 0 ? `---\n${frontmatterLines.join('\n')}\n---\n\n` : '';
 
   // パンくず階層コンテキスト & イベント概要ブロック
+  conversionHooks.beforeHeavyStage?.();
   let bodyMarkdown = cleanMarkdownTokens(turndown.turndown(contentHtml), keepDataImages);
   const hasBody = hasMeaningfulPageContent(bodyMarkdown);
   if (!hasBody) bodyMarkdown = '';

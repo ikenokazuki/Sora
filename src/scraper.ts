@@ -42,7 +42,7 @@ import { incrementSecurityCounter } from './security/metrics.js';
 import { tokenizeAndSelectTerms, parseMarkdownSections } from './extractor/markdown_sections.js';
 import { stripHighlightInternals } from './highlight_surface.js';
 import { formatCompactScrapeResult } from './response_cleaner.js';
-import { extractMainContentWithRs } from './extractor/rs_trafilatura.js';
+import { type ConvertWant, convertPage, rememberLast } from './html_convert.js';
 import { buildSearchDiagnostics } from './search_diagnostics.js';
 import { formatCompactIntegratedSearchResponse } from './search_compact.js';
 import { projectRequestedScrapeFormats } from './search_format_projection.js';
@@ -119,7 +119,6 @@ import { settleWithDeadline } from './scrape_deadline.js';
 import { isUnusableIntegratedSearch, summarizeContextSufficiency } from './context_sufficiency.js';
 import { computeEvidenceCoverage, entityTermsForQuery, kindsForFacet } from './retrieval/answerability.js';
 import {
-  convertHtmlToMarkdown,
   findInvalidCssSelector,
   matchUrlPattern,
   parseYouTubeUrl,
@@ -306,18 +305,16 @@ export function capHighlightItems<T extends { text: string }>(items: T[], maxCha
   return kept.filter((item): item is T => item !== undefined);
 }
 
-/** 本文の抽出（rs-trafilatura）が使えず、結果が変わりうるときに、応答の warnings に書く文。内部の設定は書かない（理由は、運用者向けのログに出る） */
-const RS_UNAVAILABLE_WARNINGS = {
-  content: '本文の抽出（rs-trafilatura）が使えなかったので、別の方式（Readability）で本文を取り出しました。ページの種類（一覧・掲示板など）によっては、いつもと違う結果になることがあります',
-  images: '本文の抽出（rs-trafilatura）の、画像を戻す処理が使えなかったので、本文の中の画像が抜けていることがあります',
-} as const;
-
-/** 本文の抽出。使えなかったときの、利用者向けの警告の文も返す */
-async function readMainContent(html: string, url: string, { removeSelectors, includeMedia }: { removeSelectors?: string[]; includeMedia?: boolean }) {
-  const warnings: string[] = [];
-  const rsMain = await extractMainContentWithRs(html, url, undefined, { removeSelectors, includeMedia, onUnavailable: (missed) => warnings.push(RS_UNAVAILABLE_WARNINGS[missed]) });
-  return { rsMain, warnings };
-}
+/** 結果に入れる、大きくなりうる欄（formats で頼まれたものだけ。別プロセスの変換は、ほかを返さない。html_convert.ts） */
+const convertWantFor = (formats: readonly string[]): ConvertWant => ({
+  links: formats.includes('links'),
+  images: formats.includes('images'),
+  jsonLd: formats.includes('jsonLd'),
+  tables: formats.includes('tables'),
+  html: formats.includes('html'),
+});
+/** 確かめるためだけの変換（ブラウザの描画を待つ間）は、大きな欄を受け取らない */
+const NO_LARGE_FIELDS: ConvertWant = { links: false, images: false, jsonLd: false, tables: false, html: false };
 
 /** ブラウザが送れず、外して開いた headers を知らせる文。名前だけを書く（値は資格情報のこともある） */
 const unsendableHeaderWarning = (names: string[]) => `ブラウザが送れない headers は外して開きました: ${names.map((name) => JSON.stringify(name)).join('、')}`;
@@ -867,6 +864,14 @@ export async function scrapeUrl(options: {
       const warnings = unsendableHeaders.length > 0 ? [...own, unsendableHeaderWarning(unsendableHeaders)] : own;
       return warnings.length > 0 ? { warnings } : {};
     };
+    // ブラウザの描画を待つ間の「本文が出たか」の確認。同じ HTML を続けて 2 回確かめることがあるので、直前の 1 件の答えを覚える（rememberLast）
+    const isContentReady = rememberLast(async (html: string, finalUrl: string): Promise<boolean> => {
+      const { parsed: content } = await convertPage(
+        { html, url: finalUrl, maxChars, isRendered: true, onlyMainContent, selectors: options.selectors, removeSelectors: options.removeSelectors, stripLinks: options.stripLinks, keepDataImages: options.keepDataImages },
+        { tenantId, want: NO_LARGE_FIELDS },
+      );
+      return !isRenderStillBlockedOrBlank({ html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim() });
+    });
     const renderInBrowser = (message: string) => {
       try { incrementSecurityCounter('sora_browser_launch_total'); } catch {}
       onProgress?.({ stage: 'render', message });
@@ -880,13 +885,7 @@ export async function scrapeUrl(options: {
         fullPage,
         tenantId,
         {
-          isContentReady: (html, finalUrl) => {
-            const content = convertHtmlToMarkdown(html, finalUrl, maxChars, true, onlyMainContent,
-              options.selectors, options.removeSelectors, options.stripLinks, options.keepDataImages);
-            return !isRenderStillBlockedOrBlank({
-              html, bodyOnlyMarkdown: content.markdown.replace(/^---[\s\S]*?---\n*/, '').trim(),
-            });
-          },
+          isContentReady,
           onWait: () => {
             botRetryCount++;
             onProgress?.({ stage: 'render', message: 'Waiting for content on the current browser page' });
@@ -944,19 +943,10 @@ export async function scrapeUrl(options: {
 
       const buf = await readBodyWithLimit(response, MAX_RESPONSE_BODY_BYTES, { timeoutMs });
       const html = decodeHtmlBuffer(buf, contentType);
-      const extraction = onlyMainContent ? await readMainContent(html, finalUrl, options) : undefined;
-
-      const parsed = convertHtmlToMarkdown(
-        html,
-        finalUrl,
-        maxChars,
-        false,
-        onlyMainContent,
-        options.selectors,
-        options.removeSelectors,
-        options.stripLinks,
-        options.keepDataImages,
-        extraction?.rsMain,
+      // 変換（onlyMainContent なら本文の抽出も）。strict と要素の多いページは別プロセスで動かす（html_convert.ts）
+      const { parsed, warnings: extractionWarnings } = await convertPage(
+        { html, url: finalUrl, maxChars, isRendered: false, onlyMainContent, selectors: options.selectors, removeSelectors: options.removeSelectors, stripLinks: options.stripLinks, keepDataImages: options.keepDataImages },
+        { tenantId, mainContent: onlyMainContent ? { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia } : undefined, want: convertWantFor(formats) },
       );
 
       const bodyOnlyMarkdown = parsed.markdown.replace(/^---[\s\S]*?---\n*/, '').trim();
@@ -1031,7 +1021,7 @@ export async function scrapeUrl(options: {
         qualityReasons: parsed.qualityReasons,
         missingFields: parsed.missingFields,
         evidence: parsed.evidence,
-        ...(extraction?.warnings.length ? { warnings: extraction.warnings } : {}),
+        ...(extractionWarnings.length ? { warnings: extractionWarnings } : {}),
       };
 
       if (!isSpaOrBlank || recallSaved) {
@@ -1092,18 +1082,9 @@ export async function scrapeUrl(options: {
       }
     }
 
-    const extraction = onlyMainContent ? await readMainContent(browserRes.html, browserRes.finalUrl, options) : undefined;
-    const parsed = convertHtmlToMarkdown(
-      browserRes.html,
-      browserRes.finalUrl,
-      maxChars,
-      true,
-      onlyMainContent,
-      options.selectors,
-      options.removeSelectors,
-      options.stripLinks,
-      options.keepDataImages,
-      extraction?.rsMain,
+    const { parsed, warnings: extractionWarnings } = await convertPage(
+      { html: browserRes.html, url: browserRes.finalUrl, maxChars, isRendered: true, onlyMainContent, selectors: options.selectors, removeSelectors: options.removeSelectors, stripLinks: options.stripLinks, keepDataImages: options.keepDataImages },
+      { tenantId, mainContent: onlyMainContent ? { removeSelectors: options.removeSelectors, includeMedia: options.includeMedia } : undefined, want: convertWantFor(formats) },
     );
 
     result = {
@@ -1145,7 +1126,7 @@ export async function scrapeUrl(options: {
       qualityReasons: parsed.qualityReasons,
       missingFields: parsed.missingFields,
       evidence: parsed.evidence,
-      ...withBrowserWarnings(extraction?.warnings),
+      ...withBrowserWarnings(extractionWarnings),
     };
 
     onProgress?.({ stage: 'enrich', message: 'Enriching rendered content with metadata and summaries' });

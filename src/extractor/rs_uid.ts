@@ -20,6 +20,9 @@ export const RS_UID_COUNT = 256;
 
 export const RS_UID_SPEC: ChildUidSpec = { setting: 'SORA_RS_TRAFILATURA_UID', defaultUid: DEFAULT_RS_UID, child: '本文の抽出（rs-trafilatura）の別プロセス', name: '本文の抽出', error: (message) => new ChildDropError(message) };
 
+/** ページの変換の別プロセス（html_convert.ts）も、同じ設定・同じ範囲を使う。断る・知らせる文だけを、変換の言葉にする */
+const CONVERT_UID_SPEC: ChildUidSpec = { ...RS_UID_SPEC, child: 'ページの変換の別プロセス', name: 'ページの変換' };
+
 /** 本文の抽出が使う uid の範囲（off は null） */
 export const rsUidRange = (env?: Env): UidRange | null => childUidRange(RS_UID_SPEC, RS_UID_COUNT, env);
 
@@ -39,9 +42,9 @@ function otherUidRanges(env: Env, strict: boolean): Array<UidRange | null> {
   return [browser ? { name: 'Chromium', setting: 'SORA_BROWSER_UID', first: browser.first, last: browser.last } : null, pdfUidRange(env)];
 }
 
-function plan(env: Env) {
+function plan(env: Env, spec: ChildUidSpec = RS_UID_SPEC) {
   const strict = isolationLevel(env) === 'strict';
-  return planChildDrop(RS_UID_SPEC, {
+  return planChildDrop(spec, {
     env,
     strict,
     currentUid: childDropProbe.currentUid(),
@@ -103,5 +106,23 @@ export async function withRsUid<T>(command: readonly string[], run: (launch: RsL
     return await run(launch);
   } finally {
     await lease?.done();
+  }
+}
+
+/**
+ * HTML の変換の別プロセス（html_convert.ts）を、本文の抽出と同じ uid の範囲（SORA_RS_TRAFILATURA_UID の基準から RS_UID_COUNT 個）から、
+ * 1 件に 1 つ借りた uid に落として動かす（どちらも信頼できない HTML を読む子なので、同じ範囲を分けて使い、新しい設定を足さない。
+ * 同時に 2 つの子が同じ uid を持つことはない）。終わったら（run が失敗しても）、その uid のプロセス（子の中で動かした本文の抽出も）を片づける。
+ * 使えないとき（strict で落とせない・uid が空かないなど）は、run を呼ばずに ChildDropError を投げる（扱いは呼び出し側。本文の抽出のカウンターは数えない）。
+ */
+export async function withExtractionUid<T>(command: readonly string[], run: (launch: RsLaunch) => Promise<T>, env: Env = process.env): Promise<T> {
+  const { drop, warnings } = plan(env, CONVERT_UID_SPEC);
+  for (const warning of warnings) warn(warning);
+  if (!drop) return run({ command: [...command] });
+  const lease = await pool.lease(drop.baseUid);
+  try {
+    return await run(droppedChild(command, drop.launcher, lease.uid, lease.gid));
+  } finally {
+    await lease.done();
   }
 }

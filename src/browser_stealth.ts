@@ -352,7 +352,7 @@ const NETWORK_IDLE_CAP_MS = 5000;
 /**
  * Stealth Chromium レンダリング
  */
-type StealthReadiness = { isContentReady: (html: string, finalUrl: string) => boolean; onWait?: () => void };
+type StealthReadiness = { isContentReady: (html: string, finalUrl: string) => boolean | Promise<boolean>; onWait?: () => void };
 
 export async function fetchWithStealthBrowser(
   url: string,
@@ -534,7 +534,7 @@ async function renderWithStealthBrowser(
         let html = await captureHtml();
         const contentDeadline = Math.min(deadline, Date.now() + 2000);
         let waiting = false;
-        while (readiness && !readiness.isContentReady(html, page.url()) && Date.now() < contentDeadline) {
+        while (readiness && !(await readiness.isContentReady(html, page.url())) && Date.now() < contentDeadline) {
           if (!waiting) {
             waiting = true;
             readiness.onWait?.();
@@ -545,7 +545,7 @@ async function renderWithStealthBrowser(
         }
         const finalUrl = page.url();
         // 待っても本文が出ず、確認の画面（ボット対策）のままか
-        const blocked = Boolean(readiness && !readiness.isContentReady(html, finalUrl));
+        const blocked = Boolean(readiness && !(await readiness.isContentReady(html, finalUrl)));
         const title = await page.title();
 
         expired.throwIfAborted(); // 時間の上限を超えたあとの残りの処理では、保存分を書き換えない

@@ -11,7 +11,7 @@
  */
 import { existsSync } from 'node:fs';
 import * as cheerio from 'cheerio';
-import { envPath } from '../config.js';
+import { type Env, envPath } from '../config.js';
 import { childEnv } from '../security/child_env.js';
 import { incrementSecurityCounter } from '../security/metrics.js';
 import { markImagesForRs, restoreRsImages } from './rs_images.js';
@@ -30,6 +30,8 @@ export interface RsExtractOptions {
   includeMedia?: boolean;
   /** 別の uid が使えず、結果が変わるときに呼ぶ。content は本文の抽出が使えない、images は画像を戻す 2 回目だけが使えない */
   onUnavailable?: (missed: 'content' | 'images') => void;
+  /** uid の設定（SORA_RS_TRAFILATURA_UID）と水準を読む環境。省略すると、プロセスの環境。ページの変換の子は、自分と同じ uid のまま動かすため off を渡す */
+  env?: Env;
 }
 
 /** 1 回の取り出しの上限。rs-trafilatura は 1 ページ数十 ms なので、これを超えるのは異常なページだけ */
@@ -64,7 +66,7 @@ async function readUntilExit(proc: ReturnType<typeof spawnRs>): Promise<{ stdout
 }
 
 /** コマンドを 1 回走らせる。本文が空なら undefined。起動の失敗・壊れた出力は例外。別の uid が使えないときは ChildDropError（動かさない） */
-async function runRs(bin: string, html: string, url: string, pageType?: string): Promise<RsMainContent | undefined> {
+async function runRs(bin: string, html: string, url: string, pageType?: string, env?: Env): Promise<RsMainContent | undefined> {
   const args = [bin, '--url', url, '--hybrid', '--markdown', ...(pageType ? ['--page-type', pageType] : [])];
   return withRsUid(args, async (launch) => {
     const proc = spawnRs(launch, new TextEncoder().encode(html));
@@ -80,7 +82,7 @@ async function runRs(bin: string, html: string, url: string, pageType?: string):
     } finally {
       clearTimeout(timer);
     }
-  });
+  }, env);
 }
 
 export async function extractMainContentWithRs(
@@ -99,7 +101,7 @@ export async function extractMainContentWithRs(
   }
   let first: RsMainContent | undefined;
   try {
-    first = await runRs(bin, input, url);
+    first = await runRs(bin, input, url, undefined, options.env);
   } catch (error) {
     // 別の uid が使えないときは、rs_uid.ts が数えて知らせる。失敗とは数えない
     if (error instanceof ChildDropError) options.onUnavailable?.('content');
@@ -117,7 +119,7 @@ export async function extractMainContentWithRs(
   try {
     const marked = markImagesForRs(input, url);
     if (marked.images.length === 0) return first;
-    const second = await runRs(bin, marked.html, url, first.pageType);
+    const second = await runRs(bin, marked.html, url, first.pageType, options.env);
     const restored = second ? restoreRsImages(first.contentHtml, second.contentHtml, marked.images) : undefined;
     return restored ? { ...first, contentHtml: restored } : first;
   } catch (error) {

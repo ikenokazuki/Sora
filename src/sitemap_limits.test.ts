@@ -3,6 +3,7 @@ import { fetchSitemapEntries, mapSiteUrl, type SitemapContext } from './scraper.
 import { clearCache } from './cache.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
 import { limits, STANDARD_LIMITS, STRICT_LIMITS } from './security/limits.js';
+import { installFakePdfLauncher } from './test_fixtures/pdf_launcher.js';
 
 /**
  * map_site のサイトマップの取得の上限（設計 6。穴 11）。
@@ -19,8 +20,11 @@ let handler: (path: string) => Response | Promise<Response> = () => new Response
 let requests: string[] = [];
 let previousAllow: string | undefined;
 let previousIsolation: string | undefined;
+/** strict のページの変換は、別の uid に落とした子で動く。root でない試験では、落とすふりをする起動用バイナリを使う */
+let launcher: ReturnType<typeof installFakePdfLauncher>;
 
 beforeAll(() => {
+  launcher = installFakePdfLauncher();
   previousAllow = process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   previousIsolation = process.env.SORA_ISOLATION;
   process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = 'true';
@@ -45,6 +49,7 @@ afterEach(() => {
 });
 afterAll(() => {
   server.stop(true);
+  launcher.restore();
   if (previousAllow === undefined) delete process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK;
   else process.env.SORA_FETCH_ALLOW_PRIVATE_NETWORK = previousAllow;
 });

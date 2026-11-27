@@ -22,6 +22,7 @@ on:
       - scripts/pdf-isolation-check.ts
       - scripts/pdf-uid-check.ts
       - scripts/rs-uid-check.ts
+      - scripts/convert-isolation-check.ts
       - scripts/vps-check.sh
       - scripts/vps-check.ts
       - deploy/seccomp-sora.json
@@ -58,6 +59,12 @@ on:
       - src/extractor/rs_uid.ts
       - src/extractor/rs_trafilatura.ts
       - src/test_fixtures/pdf_launcher.ts
+      - src/child_runner.ts
+      - src/child_oom.ts
+      - src/memory_limit.ts
+      - src/html_convert.ts
+      - src/html_convert_child_main.ts
+      - src/html_convert_protocol.ts
       - src/browser_startup.ts
       - src/test_fixtures/pdf.ts
       - src/db.ts

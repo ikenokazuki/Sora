@@ -4,7 +4,6 @@ import { browserDeadlineSettings, runWithBrowserDeadline } from './browser_deadl
 import { toBrowserUrl } from './browser_engine.js';
 import {
   getBrowser,
-  convertHtmlToMarkdown,
   safeTruncateMarkdown,
   estimateTokens,
   DEFAULT_MAX_CHARS,
@@ -21,6 +20,7 @@ import {
   type Lease,
 } from './scraper.js';
 import { envBool } from './config.js';
+import { convertPage } from './html_convert.js';
 import { errorMessage, ScrapeInputError } from './errors.js';
 import { isolationLevel, type Limits, limits } from './security/limits.js';
 import { browserResolvesLocally } from './net/egress.js';
@@ -797,7 +797,8 @@ export async function handleBrowserSessionAction(
       if (extract.markdown !== false) {
         const rawHtml = html || (await page.content().catch(() => ''));
         if (rawHtml) {
-          const { markdown } = convertHtmlToMarkdown(rawHtml, finalUrl, maxChars, true);
+          // strict と要素の多いページは、別プロセスで変換する（html_convert.ts）
+          const { markdown } = (await convertPage({ html: rawHtml, url: finalUrl, maxChars, isRendered: true }, { tenantId: options.tenantId, want: { links: false, images: false, jsonLd: false, tables: false, html: false } })).parsed;
           content = safeTruncateMarkdown(markdown, maxChars);
         }
       }

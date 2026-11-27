@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { absolutizeContentUrls, convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
+import { absolutizeContentUrls, conversionHooks, convertHtmlToMarkdown, parseTimestampChapters, parseYouTubeChannelRef, parseYouTubeUrl } from './html_parser.js';
 
 describe('event details and publication dates', () => {
   const event = {
@@ -563,5 +563,36 @@ describe('scrape output of product pages', () => {
     const offerOnly = { '@context': 'https://schema.org', '@type': 'Product', name: 'Mug', offers: { '@type': 'Offer', sku: ' MUG-1 ', price: '9', priceCurrency: 'USD' } };
     const r = convertHtmlToMarkdown(html.replace(JSON.stringify(ld), JSON.stringify(offerOnly)), 'https://shop.test/m', 30000);
     expect(r.sku).toBeUndefined();
+  });
+});
+
+describe('変換の重い段階の前の合図（conversionHooks。変換の別プロセスが、ここで GC を挟んでメモリの最大を下げる）', () => {
+  const page = `<html><head><title>t</title></head><body><article>${'<p>これは本文の段落です。ふつうの長さの文章が続きます。</p>'.repeat(20)}</article></body></html>`;
+  const countCalls = (run: () => void): number => {
+    let calls = 0;
+    conversionHooks.beforeHeavyStage = () => {
+      calls++;
+    };
+    try {
+      run();
+    } finally {
+      conversionHooks.beforeHeavyStage = undefined;
+    }
+    return calls;
+  };
+
+  it('本文を取り出すとき（Readability）は、Readability の前と turndown の前の 2 回', () => {
+    expect(countCalls(() => convertHtmlToMarkdown(page, 'https://example.com/a', 10_000, false, true))).toBe(2);
+  });
+
+  it('ページ全体を変換するとき（onlyMainContent: false）は、Readability を通らないので、turndown の前の 1 回', () => {
+    expect(countCalls(() => convertHtmlToMarkdown(page, 'https://example.com/a', 10_000, false, false))).toBe(1);
+  });
+
+  it('合図が無いとき（本体の中の変換）は、何も呼ばず、結果も同じ', () => {
+    const plain = convertHtmlToMarkdown(page, 'https://example.com/a', 10_000, false, true);
+    let withHook: ReturnType<typeof convertHtmlToMarkdown> | undefined;
+    countCalls(() => (withHook = convertHtmlToMarkdown(page, 'https://example.com/a', 10_000, false, true)));
+    expect(withHook?.markdown).toBe(plain.markdown);
   });
 });

@@ -92,3 +92,17 @@ describe('依存に当てるパッチ（patchedDependencies）', () => {
     }
   });
 });
+
+describe('信頼できない入力を読む子プロセスの入口（server.js とは別に、1 つのファイルにまとめて同梱する）', () => {
+  const finalStage = containerfile.split(/^FROM /m).at(-1) ?? '';
+
+  test('ページの変換の入口（html-convert.js）を、PDF の入口（pdf-parse.js）と同じく、作って server.js の隣にコピーする（無いと、strict は起動せず、standard は本体の中で変換する）', () => {
+    for (const [entry, outfile] of [
+      ['./src/pdf_child_main.ts', 'pdf-parse.js'],
+      ['./src/html_convert_child_main.ts', 'html-convert.js'],
+    ]) {
+      expect(containerfile).toContain(`RUN bun build ${entry} --target=bun --outfile=${outfile}\n`);
+      expect(finalStage).toContain(`COPY --from=builder /app/${outfile} /app/${outfile}\n`);
+    }
+  });
+});
