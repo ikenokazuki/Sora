@@ -58,7 +58,7 @@ ML-DSA は、npm の wreq-js の native（wreq-util 0.2.1）が持つ BoringSSL 
 
 静的取得の TLS・HTTP の実装（wreq-js の native）は、npm のビルド済みのものではなく、Containerfile の Stage 1b で、wreq-js のソースからビルドしたものを使う。
 
-- 材料: wreq-js のタグ（`WREQ_JS_VERSION`・`WREQ_JS_REV`。package.json の wreq-js と同じ版）と、`vendor/wreq-js/` の固定（`Cargo.toml.patch`・`Cargo.lock`・`pins.json`）。依存は、上流の wreq-util の main（新しい Chrome プロファイル）と、wreq-util が自分の `[patch.crates-io]` で使っている wreq・btls の rev に向ける。公開された wreq-util 0.2.1 は Chrome 149 まで。
+- 材料: wreq-js のタグ（`WREQ_JS_VERSION`・`WREQ_JS_REV`。package.json の wreq-js と同じ版）と、`vendor/wreq-js/` の固定（`Cargo.toml.patch`・`Cargo.lock`・`pins.json`）と、不具合の直し（`body-cancel.patch`。読み込みをやめた本文の接続を、すぐ閉じる。中身はそのファイルの先頭）。依存は、上流の wreq-util の main（新しい Chrome プロファイル）と、wreq-util が自分の `[patch.crates-io]` で使っている wreq・btls の rev に向ける。公開された wreq-util 0.2.1 は Chrome 149 まで。
 - 作り直し: `bun scripts/wreq-native/update.ts`（`--wreq-util <rev か ブランチ>` で、wreq-util の rev を選ぶ。既定は main。`--max-chrome-profile <版>` で、`WREQ_MAX_CHROME_PROFILE` も書き換える）。podman か docker が要る（`CONTAINER_RUNTIME` で選べる）。出力の差分を見て、`bun test src/containerfile_pins.test.ts scripts/wreq-native` を通す。
 - 上限: `ARG WREQ_MAX_CHROME_PROFILE`（Containerfile の先頭）が、native が持つ最新の Chrome の版。ビルドの時点で、native がこのプロファイルを持つことを確かめ、`SORA_FETCH_MAX_CHROME_PROFILE` として渡す。
 - **挙動を戻す**: 実行時に `SORA_FETCH_MAX_CHROME_PROFILE=149` を渡せば、UA・TLS・ヘッダが `chrome_149` のものに戻る（ブラウザの起動引数も、149 用に戻る）。イメージの作り直しは要らない。

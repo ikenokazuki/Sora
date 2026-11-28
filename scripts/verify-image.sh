@@ -24,6 +24,8 @@
 #      飛ばされたら何も確かめていないので、2 件とも実行されたことも確かめる）
 #  18. ページの変換が、イメージに同梱の別プロセス（/app/html-convert.js）で、本体（root）と別の uid（本文の抽出と同じ 64000〜の範囲）に落ちて動き、本体の中の変換と同じ結果を返し、
 #      子の中の本文の抽出も動き、メモリの暴走を、その変換のプロセスだけで止める。コンテナのメモリを 1GB に絞る。既定の運用と、推奨の strict の運用（18b）の両方（scripts/convert-isolation-check.ts）
+#  19. 静的取得の wreq-js（イメージの自前の native。vendor/wreq-js/body-cancel.patch を当てたもの）で、読み込みをやめた本文（取り消し・読みかけの取り消し・要求の時間切れ）の
+#      接続がすぐ閉じ、ふつうの読み込みは変わらない（scripts/wreq-cancel-check.ts）
 # 使い方: scripts/verify-image.sh <イメージ>（どれかが失敗すれば、終了コードは 0 でない）
 # src と scripts を /app に置くのは、bare の import を、イメージの /app/node_modules（本番依存と自前の native）から解決させるため。
 set -euo pipefail
@@ -240,3 +242,9 @@ docker run --rm --memory=1g --memory-swap=1g \
   -e NODE_ENV=test -e SORA_DB_PATH=':memory:' \
   -v "$PWD/src:/app/src:ro" -v "$PWD/scripts:/app/scripts:ro" \
   --entrypoint /usr/local/bin/bun "$image" /app/scripts/convert-isolation-check.ts
+
+# 19. 静的取得の wreq-js（イメージの自前の native）で、読み込みをやめた本文の接続が、すぐ閉じる。パッチ（vendor/wreq-js/body-cancel.patch）の前は、
+#     サーバーが本文を止めると、取り消しても、要求の時間切れのエラーでも、native の Cache の time_to_idle（300 秒）まで残った
+docker run --rm \
+  -v "$PWD/scripts:/app/scripts:ro" \
+  --entrypoint /usr/local/bin/bun "$image" /app/scripts/wreq-cancel-check.ts

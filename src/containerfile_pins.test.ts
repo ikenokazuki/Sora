@@ -66,6 +66,13 @@ describe('vendor/wreq-js の固定（上流の wreq-util の新しい Chrome プ
     );
   });
 
+  test('読み込みをやめた本文の接続を閉じるパッチ（body-cancel.patch）を、Cargo.toml.patch のあとに当てる。パッチは native の client.rs だけを触る', () => {
+    expect(containerfile).toContain('COPY vendor/wreq-js/Cargo.toml.patch vendor/wreq-js/Cargo.lock vendor/wreq-js/body-cancel.patch /vendor/');
+    expect(containerfile).toContain('git apply /vendor/Cargo.toml.patch && git apply /vendor/body-cancel.patch');
+    const bodyCancel = readFileSync(root('vendor/wreq-js/body-cancel.patch'), 'utf8');
+    expect([...bodyCancel.matchAll(/^diff --git a\/(\S+) b\//gm)].map((m) => m[1])).toEqual(['rust/src/client.rs']);
+  });
+
   test('WREQ_MAX_CHROME_PROFILE は、3 桁の Chrome の版で、wreq の最小（136）以上', () => {
     const max = arg('WREQ_MAX_CHROME_PROFILE');
     expect(max).toMatch(/^\d{3}$/);

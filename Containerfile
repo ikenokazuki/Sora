@@ -34,8 +34,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake clang lib
     && rm -rf /var/lib/apt/lists/*
 RUN git clone --depth 1 --branch "v${WREQ_JS_VERSION}" https://github.com/sqdshguy/wreq-js /src \
     && cd /src && test "$(git rev-parse HEAD)" = "$WREQ_JS_REV"
-COPY vendor/wreq-js/Cargo.toml.patch vendor/wreq-js/Cargo.lock /vendor/
-RUN cd /src && git apply /vendor/Cargo.toml.patch && cp /vendor/Cargo.lock rust/Cargo.lock
+# body-cancel.patch は、読み込みをやめた本文の接続が閉じない不具合の直し（中身と確かめ方は、そのファイルの先頭）。上流の版を上げて当たらなくなったら、ここで落ちる
+COPY vendor/wreq-js/Cargo.toml.patch vendor/wreq-js/Cargo.lock vendor/wreq-js/body-cancel.patch /vendor/
+RUN cd /src && git apply /vendor/Cargo.toml.patch && git apply /vendor/body-cancel.patch && cp /vendor/Cargo.lock rust/Cargo.lock
 RUN cd /src/rust && cargo build --release --locked \
     && cp target/release/libwreq_js.so /wreq-js.linux-x64-gnu.node
 

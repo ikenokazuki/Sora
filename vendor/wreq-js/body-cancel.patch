@@ -1,0 +1,145 @@
+wreq-js 3.2.0 の native（rust/src/client.rs）へのパッチ。Containerfile の Stage 1b が、Cargo.toml.patch のあとに当てる。
+
+読み込みをやめた本文（ReadableStream の cancel・FinalizationRegistry・要求の時間切れのエラー）の接続が閉じず、
+サーバーが本文を止めると、moka の Cache の time_to_idle（300 秒）まで残った（npm 版も同じ。2026-11-27 に実測）。
+原因は 2 つ: 取り消し（cancelBody）が invalidate だけで、値の破棄が Cache の後始末まで遅れる。読みかけの read_body_chunk が、
+本文の Arc を握ったまま、次の塊を待ち続ける。
+直し: 本文と並べて取り消しの合図（CancellationToken）を持つ。取り消しは合図を出して、本文をすぐ捨てる（読みかけの読み込みは、
+合図で止まってから捨てる）。エラーと終わりのときも、本文をすぐ捨てる。本文を捨てると、HTTP/1 の接続は閉じる（HTTP/2 は、その流れだけ止まる）。
+確かめ方: scripts/wreq-cancel-check.ts（scripts/verify-image.sh の 19）。
+
+diff --git a/rust/src/client.rs b/rust/src/client.rs
+index 2825abf..daeb7a5 100644
+--- a/rust/src/client.rs
++++ b/rust/src/client.rs
+@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
+ use std::time::{Duration, Instant};
+ use tokio::runtime::Runtime;
+ use tokio::sync::Mutex;
++use tokio_util::sync::CancellationToken;
+ use uuid::Uuid;
+ use wreq::cookie::Jar;
+ use wreq::header::OrigHeaderMap;
+@@ -301,7 +302,23 @@ struct BodyEventState {
+     url: String,
+ }
+ 
+-static BODY_STREAMS: LazyLock<Cache<u64, Arc<Mutex<ResponseBodyStream>>>> = LazyLock::new(|| {
++/// A response body and the signal that cancels reading it. Cancelling (cancelBody) also stops a read that is
++/// waiting for the next chunk, and the body is dropped right away instead of when the cache gets around to it:
++/// dropping an unfinished body closes an HTTP/1 connection (HTTP/2 resets only that stream). Without this, a body
++/// whose server stalls kept its connection open until the cache's idle expiry, even after the caller gave up on it.
++pub struct BodyEntry {
++    stream: Mutex<Option<ResponseBodyStream>>,
++    cancel: CancellationToken,
++}
++
++impl BodyEntry {
++    /// Drops the body (and so releases its connection). Waits for a read that holds the lock to finish first.
++    async fn release(&self) {
++        self.stream.lock().await.take();
++    }
++}
++
++static BODY_STREAMS: LazyLock<Cache<u64, Arc<BodyEntry>>> = LazyLock::new(|| {
+     Cache::builder()
+         .time_to_idle(Duration::from_secs(300))
+         .build()
+@@ -374,17 +391,41 @@ fn build_cert_store(mode: TrustStoreMode) -> Result<CertStore> {
+ 
+ pub fn store_body_stream(stream: ResponseBodyStream) -> u64 {
+     let handle = next_body_handle();
+-    BODY_STREAMS.insert(handle, Arc::new(Mutex::new(stream)));
++    BODY_STREAMS.insert(
++        handle,
++        Arc::new(BodyEntry {
++            stream: Mutex::new(Some(stream)),
++            cancel: CancellationToken::new(),
++        }),
++    );
+     handle
+ }
+ 
+ pub async fn read_body_chunk(handle: u64) -> Result<Option<Bytes>> {
+-    let stream = BODY_STREAMS
++    let entry = BODY_STREAMS
+         .get(&handle)
+         .ok_or_else(|| anyhow!("Body handle {} not found", handle))?;
+ 
+-    let mut guard = stream.lock().await;
+-    let next = guard.next().await;
++    // A cancel wins over a read that is waiting for the server; the waiting read (and its lock) is dropped here.
++    let next = tokio::select! {
++        biased;
++        _ = entry.cancel.cancelled() => {
++            entry.release().await;
++            return Ok(None);
++        }
++        next = async {
++            let mut guard = entry.stream.lock().await;
++            match guard.as_mut() {
++                Some(stream) => stream.next().await,
++                None => None,
++            }
++        } => next,
++    };
++
++    if !matches!(next, Some(Ok(_))) {
++        // An error (such as the request timeout) or the end: drop the body now, not when the cache expires it
++        entry.release().await;
++    }
+ 
+     match next {
+         Some(Ok(bytes)) => {
+@@ -415,22 +456,33 @@ pub async fn read_body_chunk(handle: u64) -> Result<Option<Bytes>> {
+ 
+ /// Read entire body into a single buffer. More efficient than streaming for small bodies.
+ pub async fn read_body_all(handle: u64) -> Result<Bytes> {
+-    let stream = BODY_STREAMS
++    let entry = BODY_STREAMS
+         .remove(&handle)
+         .ok_or_else(|| anyhow!("Body handle {} not found", handle))?;
+ 
+-    let mut guard = stream.lock().await;
++    let mut guard = entry.stream.lock().await;
++    let Some(stream) = guard.as_mut() else {
++        return Err(anyhow!("Body handle {} was cancelled", handle));
++    };
+     let mut chunks: Vec<Bytes> = Vec::new();
+     let mut total_len = 0usize;
+ 
+-    while let Some(result) = guard.next().await {
+-        let bytes = result?;
++    while let Some(result) = stream.next().await {
++        let bytes = match result {
++            Ok(bytes) => bytes,
++            Err(err) => {
++                // Drop the body now (and so its connection), not when the cache expires the entry
++                guard.take();
++                return Err(err.into());
++            }
++        };
+         total_len += bytes.len();
+         if let Some(state) = BODY_EVENT_STATES.get(&handle) {
+             emit_body_progress(&state, bytes.len() as u64);
+         }
+         chunks.push(bytes);
+     }
++    guard.take();
+ 
+     if let Some((_, state)) = BODY_EVENT_STATES.remove(&handle) {
+         emit_body_complete(&state);
+@@ -453,6 +505,13 @@ pub async fn read_body_all(handle: u64) -> Result<Bytes> {
+ }
+ 
+ pub fn drop_body_stream(handle: u64) {
++    if let Some(entry) = BODY_STREAMS.get(&handle) {
++        entry.cancel.cancel();
++        // When no read holds the lock, drop the body here. Otherwise the waiting read sees the cancel and drops it.
++        if let Ok(mut guard) = entry.stream.try_lock() {
++            guard.take();
++        }
++    }
+     BODY_STREAMS.invalidate(&handle);
+     BODY_EVENT_STATES.remove(&handle);
+ }

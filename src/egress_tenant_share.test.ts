@@ -83,7 +83,8 @@ describe('出口のゲートウェイの接続は、利用者ごとに数える'
     expect(statuses.filter((status) => status === 408)).toHaveLength(2); // 握った 2 本は、本文の時間切れ
     expect(stalled.connections).toHaveLength(2);
 
-    // 時間切れのあとも、wreq-js は止まった接続を閉じない（mallory の分に残る）。それでも、ほかの利用者は取れる
+    // 試験で読む npm 版の wreq-js の native は、時間切れのあとも、止まった接続を閉じない（mallory の分に残る。イメージの native は、
+    // vendor/wreq-js/body-cancel.patch で閉じる）。残っていても、ほかの利用者は取れる
     const after = await scrape(VICTIM, `http://ok.test:${ok.port}/again`);
     expect(after.status).toBe(200);
   }, 20_000);
