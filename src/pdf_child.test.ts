@@ -261,9 +261,28 @@ describe('上限（時間・メモリ・出力量）', () => {
       ${HANG}`;
     const { outcome, events, pid } = await run(script(body), { maxOutputBytes: 300_000 }, BYTES, { pageLimit: 5000, needed: 1, budgetMs: 1 });
     expect(outcome).toMatchObject({ kind: 'killed', reason: 'output' });
-    // 上限の内の行までは届き、超えた塊は捨てる
-    expect(events.length).toBeGreaterThanOrEqual(2);
-    expect(events.length).toBeLessThanOrEqual(4);
+    // 上限（300,000 バイト）の内で終わる行（開く行と 2 ページ）までは届き、そのあとは捨てる
+    expect(events.length).toBe(3);
+    await expectGone(pid);
+  });
+
+  test('上限をまたいで届いた塊でも、上限の内で終わる行は届く（届く行が、読みの区切り〔パイプの塊の大きさ〕に左右されない）', async () => {
+    // 1 行 約 1KB のページを 1000 行。上限の 300,000 バイトをまたぐ塊（64KB ずつ読むと 262,144〜327,680 バイト目）の中にも、上限の内で終わる行がある
+    const text = 'x'.repeat(1000);
+    const body = `${line({ t: 'open', numPages: 5000, info: {} })}
+      for (let n = 1; n <= 1000; n++) console.log(JSON.stringify({ t: 'page', n, text: ${JSON.stringify(text)} }));
+      ${HANG}`;
+    const cap = 300_000;
+    const lines = [JSON.stringify({ t: 'open', numPages: 5000, info: {} }), ...Array.from({ length: 1000 }, (_, i) => JSON.stringify({ t: 'page', n: i + 1, text }))];
+    let within = 0;
+    for (let end = 0, i = 0; i < lines.length; i++) {
+      end += Buffer.byteLength(lines[i]!) + 1;
+      if (end > cap) break;
+      within++;
+    }
+    const { outcome, events, pid } = await run(script(body), { maxOutputBytes: cap }, BYTES, { pageLimit: 5000, needed: 5000, budgetMs: 60_000 });
+    expect(outcome).toMatchObject({ kind: 'killed', reason: 'output' });
+    expect(events.length).toBe(within);
     await expectGone(pid);
   });
 

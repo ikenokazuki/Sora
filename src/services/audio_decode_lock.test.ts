@@ -198,6 +198,18 @@ const reachOut = async (target: string, port: number, navigate: boolean) => {
   return { main, fromWorker };
 };
 
+/** ページの中で、先読み（prerender と Speculation Rules の投機的な取得）だけを試す。移動はしない（移動すると、始まる前の先読みは取り消される） */
+const speculateOnly = (target: string) => {
+  const rules = document.createElement('script');
+  rules.type = 'speculationrules';
+  rules.textContent = JSON.stringify({ prefetch: [{ urls: [`${target}spec_prefetch`] }] });
+  document.head.append(rules);
+  const prerender = document.createElement('link');
+  prerender.rel = 'prerender';
+  prerender.href = `${target}link_prerender`;
+  document.head.append(prerender);
+};
+
 describe.skipIf(!resolveChromiumPath())('デコード用のコンテキストとページ（実 Chromium）', () => {
   afterAll(async () => {
     await closeSharedBrowser();
@@ -214,8 +226,15 @@ describe.skipIf(!resolveChromiumPath())('デコード用のコンテキストと
       expect(result).toEqual({ main: 'reached', fromWorker: 'reached' });
       // 移動先のページが、アイコン（/favicon.ico）も取りに来ることがあるので、含まれていることを確かめる
       expect([...server.paths]).toEqual(expect.arrayContaining(['/fetch', '/worker', '/websocket', '/worker_ws', '/window_open', '/iframe', '/navigate']));
-      // prerender と投機的な取得は、Chromium の判断で動く（版・状況で、どちらかしか動かないことがある）ので、どちらかが届けばよい
-      expect(server.paths.has('/link_prerender') || server.paths.has('/spec_prefetch')).toBe(true);
+      // prerender と投機的な取得は、Chromium の判断で動く（版・状況で、どちらかしか動かないことがある）ので、どちらかが届けばよい。
+      // 始まる前にページが移動すると取り消されるので（混んだ CI で 1 回、どちらも届かなかった）、届いていなければ、移動しないページで試し直す
+      const speculated = () => server.paths.has('/link_prerender') || server.paths.has('/spec_prefetch');
+      if (!speculated()) {
+        const again = await context.newPage();
+        await again.evaluate(speculateOnly, server.target);
+        for (const deadline = Date.now() + 10_000; !speculated() && Date.now() < deadline; ) await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      expect(speculated()).toBe(true);
       expect(server.contacts()).toBeGreaterThan(9);
     } finally {
       await context.close();
