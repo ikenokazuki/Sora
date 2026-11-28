@@ -195,14 +195,16 @@ export async function runLimitedChild<F>(
         const { done, value } = await outReader.read();
         if (done || stopped) break;
         total += value.byteLength;
-        if (total > limits.maxOutputBytes) {
-          stop('output', `出力が ${limits.maxOutputBytes} バイトを超えました`);
-          break;
-        }
-        lines.push(value, (line) => {
+        const over = total - limits.maxOutputBytes;
+        // 上限をまたぐ塊でも、上限までの部分で終わる行は渡す（届く行が、読みの区切り〔パイプの塊の大きさ〕に左右されない）
+        lines.push(over > 0 ? value.subarray(0, value.byteLength - over) : value, (line) => {
           feed(lineDecoder.decode(line));
           return stopped !== undefined;
         });
+        if (over > 0) {
+          stop('output', `出力が ${limits.maxOutputBytes} バイトを超えました`);
+          break;
+        }
         if (stopped) break;
       }
     } catch {

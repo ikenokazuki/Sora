@@ -23,6 +23,7 @@ on:
       - scripts/pdf-uid-check.ts
       - scripts/rs-uid-check.ts
       - scripts/convert-isolation-check.ts
+      - scripts/wreq-cancel-check.ts
       - scripts/vps-check.sh
       - scripts/vps-check.ts
       - deploy/seccomp-sora.json

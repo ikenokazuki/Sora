@@ -141,7 +141,7 @@ export interface Limits {
   convertTenantSharePercent: number;
   /**
    * 出口のゲートウェイ（SORA_EGRESS_GATEWAY）で、1 人の利用者が同時に持てる接続の、全体（2,048 本）に対する割合（1〜100 のパーセント）。超えたら、その利用者の新しい接続だけを断る。
-   * 本体の取得とブラウザのプロセスの接続を、合わせて数える（net/egress.ts）。100 は制限なし。時間切れのあとも閉じない接続（wreq-js）も、その利用者の数に入る
+   * 本体の取得とブラウザのプロセスの接続を、合わせて数える（net/egress.ts）。100 は制限なし。接続は、閉じるまで、その利用者の数に入る
    */
   egressTenantSharePercent: number;
   /**
