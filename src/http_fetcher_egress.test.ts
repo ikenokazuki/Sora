@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { ResourceBusyError } from './errors.js';
 import { closeHttpSession, fetchWithSafeRedirects, NativeFetchSession } from './http_fetcher.js';
-import { getEgressGateway, stopEgressGateway } from './net/egress.js';
+import { egressOwnerAtLimit, egressProxyUrlFor, getEgressGateway, stopEgressGateway } from './net/egress.js';
 import { createEgressTestKit, fakeResolver } from './net/egress_test_kit.js';
+import { runAsCaller } from './security/caller.js';
 import { getSecurityMetrics, resetSecurityMetrics } from './security/metrics.js';
+import { withEnv } from './test_fixtures/env.js';
 
 // 静的取得（wreq-js）が、SORA_EGRESS_GATEWAY=on のとき、出口のゲートウェイを通ること。
 // テストの事前設定（test_preload.ts）は、外へ出ないよう、プロキシの環境変数に、閉じたポートの架空のプロキシを入れている。
@@ -91,6 +94,74 @@ describe('fetchWithSafeRedirects と出口のゲートウェイ', () => {
 
   test('取得ごとのプロキシの指定（proxyUrl）は、on のときはエラー。黙って無視すると、ゲートウェイを迂回したと思わせる', async () => {
     await expect(fetchWithSafeRedirects('http://other.test/', 1000, 0, undefined, undefined, 'http://other-proxy.example:8080')).rejects.toThrow('SORA_EGRESS_GATEWAY');
+  });
+});
+
+describe('利用者ごとの接続の数（ゲートウェイが印で数える）', () => {
+  /** 頭部と本文の一部を送り、本文を終えない宛先（取得は頭部で返り、接続は開いたまま）。長さは決めない（chunked）: wreq-js は、Content-Length の小さい応答を、本文を全部読んでから返す */
+  const startStalledOrigin = () =>
+    kit.startTcpServer((socket) => {
+      socket.once('data', () => socket.write('HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nTransfer-Encoding: chunked\r\n\r\n6\r\n<html>\r\n'));
+    });
+  const tenants = ['name:alice', 'name:bob'];
+  const ownerHosts = ['owner-a.test', 'owner-b.test', 'owner-c.test'];
+  afterEach(async () => {
+    for (const host of ownerHosts) for (const tenant of tenants) await closeHttpSession(host, tenant);
+  });
+
+  test('tenantId を渡した取得は、その利用者の印で通る。上限に達した利用者の次の取得は、試さずに ResourceBusyError（egress）。ほかの利用者は通る', async () => {
+    const stalled = await startStalledOrigin();
+    const { resolve } = fakeResolver({ 'owner-a.test': ['127.0.0.1'], 'owner-b.test': ['127.0.0.1'] });
+    await getEgressGateway({ allowedPorts: [stalled.port], resolve, isPrivateIp: () => false, maxConnections: 4, ownerSharePercent: 25 }); // 1 人 1 本
+
+    const held = await fetchWithSafeRedirects(`http://owner-a.test:${stalled.port}/`, 5000, 0, undefined, undefined, undefined, 'name:alice');
+    expect(held.response.status).toBe(200);
+    expect(egressOwnerAtLimit('name:alice')).toBe(true);
+
+    const refused = await fetchWithSafeRedirects(`http://owner-b.test:${stalled.port}/`, 5000, 0, undefined, undefined, undefined, 'name:alice').catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ResourceBusyError);
+    expect((refused as ResourceBusyError).resource).toBe('egress');
+    expect((refused as ResourceBusyError).reason).toBe('connection_limit');
+    expect(stalled.connections).toHaveLength(1); // 試していない
+    expect(getSecurityMetrics().sora_egress_denied_tenant_limit_total ?? 0).toBe(0); // ゲートウェイにも届いていない
+    expect(getSecurityMetrics().sora_egress_busy_connection_limit_total).toBe(1);
+
+    const bob = await fetchWithSafeRedirects(`http://owner-b.test:${stalled.port}/`, 5000, 0, undefined, undefined, undefined, 'name:bob');
+    expect(bob.response.status).toBe(200);
+  });
+
+  test('ゲートウェイが混んでいて断った平文 http の応答（全体の limit・利用者ごとの tenant_limit）は、ページとして返さず ResourceBusyError（その結果を共有のキャッシュに入れない）', async () => {
+    const stalled = await startStalledOrigin();
+    const { resolve } = fakeResolver({ 'owner-a.test': ['127.0.0.1'], 'owner-b.test': ['127.0.0.1'] });
+    await getEgressGateway({ allowedPorts: [stalled.port], resolve, isPrivateIp: () => false, maxConnections: 1 }); // 全体で 1 本
+
+    expect((await fetchWithSafeRedirects(`http://owner-a.test:${stalled.port}/`, 5000, 0, undefined, undefined, undefined, 'name:bob')).response.status).toBe(200);
+    const refused = await fetchWithSafeRedirects(`http://owner-b.test:${stalled.port}/`, 5000, 0, undefined, undefined, undefined, 'name:alice').catch((error: unknown) => error);
+    expect(refused).toBeInstanceOf(ResourceBusyError);
+    expect((refused as ResourceBusyError).resource).toBe('egress');
+  });
+
+  test('strict で tenantId の無い取得（Sora 自身の上流への取得）は、いま呼んでいる利用者の印で通る', async () => {
+    const stalled = await startStalledOrigin();
+    const { resolve } = fakeResolver({ 'owner-c.test': ['127.0.0.1'] });
+    await withEnv({ SORA_ISOLATION: 'strict' }, async () => {
+      await getEgressGateway({ allowedPorts: [stalled.port], resolve, isPrivateIp: () => false, maxConnections: 4, ownerSharePercent: 25 });
+      const held = await runAsCaller('name:alice', () => fetchWithSafeRedirects(`http://owner-c.test:${stalled.port}/`, 5000, 0));
+      expect(held.response.status).toBe(200);
+      expect(egressOwnerAtLimit('name:alice')).toBe(true);
+      expect(egressOwnerAtLimit('legacy')).toBe(false);
+    });
+  });
+
+  test('NativeFetchSession は、作るときに渡した印つきの URL で通る', async () => {
+    const stalled = await startStalledOrigin();
+    const { resolve } = fakeResolver({ 'native.test': ['127.0.0.1'] });
+    await getEgressGateway({ allowedPorts: [stalled.port], resolve, isPrivateIp: () => false, maxConnections: 4, ownerSharePercent: 25 });
+
+    const response = await new NativeFetchSession(await egressProxyUrlFor('name:alice')).fetch(`http://native.test:${stalled.port}/n`);
+    expect(response.status).toBe(200);
+    expect(egressOwnerAtLimit('name:alice')).toBe(true);
+    await response.body?.cancel();
   });
 });
 

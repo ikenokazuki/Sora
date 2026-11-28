@@ -12,9 +12,10 @@ import { isolationLevel, limits } from './security/limits.js';
 import { trimMap } from './security/bounded_map.js';
 import { hasSensitiveRequestCredentials, isSensitiveHeaderName } from './security/credential_scope.js';
 import { markTenantStateUsed } from './security/tenant_state.js';
-import { getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
+import { egressOwnerAtLimit, egressProxyUrlFor, getEgressGateway, isEgressGatewayEnabled } from './net/egress.js';
 import { isProxyBypassed } from './net/no_proxy.js';
-import { errorMessage } from './errors.js';
+import { errorMessage, ResourceBusyError } from './errors.js';
+import { currentCaller } from './security/caller.js';
 
 // ==========================================
 // 0. wreq-js の動的遅延読み込み & ネイティブ fetch フォールバック
@@ -256,6 +257,9 @@ export class NativeFetchSession implements UniversalHttpSession {
   // Domain-scoped jar: cookies must never cross origins on redirect.
   private cookies = new Map<string, Map<string, string>>();
 
+  /** gatewayProxyUrl: 出口のゲートウェイを使うときの、利用者の印を付けた URL（egressProxyUrlFor。作る側が渡す。渡さなければ印なし） */
+  constructor(private readonly gatewayProxyUrl?: string) {}
+
   private static domainOf(urlOrDomain?: string | URL): string {
     try {
       if (!urlOrDomain) return '';
@@ -308,7 +312,7 @@ export class NativeFetchSession implements UniversalHttpSession {
     const res = await fetch(url, {
       ...init,
       headers,
-      ...(gateway ? { proxy: gateway.url } : {}),
+      ...(gateway ? { proxy: this.gatewayProxyUrl ?? gateway.url } : {}),
     });
 
     // Set-Cookie ヘッダーの収集 (response origin scope only)
@@ -383,7 +387,8 @@ export async function closeHttpSession(domain: string, tenantId = 'legacy', scop
 /** 新しいセッションを作る（wreq が使えなければ、標準の fetch で代える）。プールには入れない */
 async function createHttpSession(browser: BrowserProfile, proxyUrl?: string): Promise<UniversalHttpSession> {
   const mod = await getWreqModule();
-  if (!mod) return new NativeFetchSession();
+  // ゲートウェイを使うときの proxyUrl は、取得の側（followSafeRedirects）が渡す、利用者の印つきのゲートウェイの URL
+  if (!mod) return new NativeFetchSession(isEgressGatewayEnabled() ? proxyUrl : undefined);
   const trustStore = parseTrustStoreMode(envRaw('SORA_FETCH_TRUST_STORE'));
   return mod.createSession({
     browser: withinMaxProfile(browser),
@@ -482,6 +487,12 @@ export function groupCookiesByDomain(
   return map;
 }
 
+/** 出口のゲートウェイの接続が、上限（この利用者の分か、全体）に達していて、取得しなかったときの例外（REST では 429） */
+function egressBusyError(): ResourceBusyError {
+  incrementSecurityCounter('sora_egress_busy_connection_limit_total');
+  return new ResourceBusyError('外への接続が、この利用者の上限か、全体の上限に達しています。実行中の取得が終わってから、もう一度試してください', 'connection_limit', 5, 'egress');
+}
+
 /** 取得に使うセッションを開く（1 回の取得の中で、1 回だけ呼ばれる） */
 type SessionOpener = (domain: string, browser: BrowserProfile, proxyUrl: string | undefined, credentialScope: string | undefined) => Promise<UniversalHttpSession>;
 
@@ -504,14 +515,16 @@ export async function fetchWithSafeRedirects(
   tenantId?: string,
   parentSignal?: AbortSignal,
 ): Promise<{ finalUrl: string; response: Response }> {
+  // 出口のゲートウェイで、接続を数える利用者。Sora 自身の上流への取得（tenantId なし）は、いま呼んでいる利用者の分に数える
+  const owner = tenantId ?? currentCaller();
   if (tenantId !== undefined || isolationLevel() !== 'strict') {
     const tenant = tenantId ?? 'legacy';
-    return followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal,
+    return followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal, owner,
       (domain, browser, proxy, scope) => getOrCreateHttpSession(domain, browser, proxy, tenant, scope));
   }
   let throwaway: UniversalHttpSession | undefined;
   try {
-    return await followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal,
+    return await followSafeRedirects(initialUrl, timeoutMs, maxRedirects, customHeaders, customCookies, proxyUrl, parentSignal, owner,
       async (_domain, browser, proxy) => {
         throwaway = await createHttpSession(browser, proxy);
         incrementSecurityCounter('sora_fetch_throwaway_session_opened_total');
@@ -532,6 +545,8 @@ async function followSafeRedirects(
   customCookies: CookieParam[] | undefined,
   proxyUrl: string | undefined,
   parentSignal: AbortSignal | undefined,
+  /** 出口のゲートウェイで、接続を数える利用者 */
+  owner: string,
   openSession: SessionOpener,
 ): Promise<{ finalUrl: string; response: Response }> {
   let currentUrl = initialUrl;
@@ -544,10 +559,13 @@ async function followSafeRedirects(
   const initialDomain = new URL(initialUrl).hostname;
   // 出口のゲートウェイを使うときは、すべての通信が、ゲートウェイ（と、その上流の運用者のプロキシ）を通る。取得ごとの別のプロキシは、
   // 黙って無視すると、ゲートウェイを迂回したと思わせるので、エラーにする
-  const gateway = isEgressGatewayEnabled() ? await getEgressGateway() : undefined;
-  if (gateway && proxyUrl) throw new Error('SORA_EGRESS_GATEWAY=on のときは、取得ごとのプロキシの指定は使えない（すべての通信が、出口のゲートウェイを通る）');
+  const gatewayEnabled = isEgressGatewayEnabled();
+  if (gatewayEnabled && proxyUrl) throw new Error('SORA_EGRESS_GATEWAY=on のときは、取得ごとのプロキシの指定は使えない（すべての通信が、出口のゲートウェイを通る）');
+  // ゲートウェイは、利用者ごとに同時の接続を数える（印つきの URL）。上限に達した利用者は、試さずに断る（https の CONNECT の断りは、wreq-js が理由を返さない）
+  const gatewayUrl = gatewayEnabled ? await egressProxyUrlFor(owner) : undefined;
+  if (gatewayUrl && egressOwnerAtLimit(owner)) throw egressBusyError();
   // 環境変数由来のプロキシは NO_PROXY の除外先には使わない（ブラウザ側と同じ扱い）。明示指定の proxyUrl はそのまま使う
-  const effectiveProxyUrl = gateway?.url
+  const effectiveProxyUrl = gatewayUrl
     ?? proxyUrl
     ?? (isProxyBypassed(initialDomain, getProxyConfig().proxyBypassList) ? undefined : pickProxyUrl());
   const browser = pickBrowserProfile();
@@ -618,6 +636,13 @@ async function followSafeRedirects(
       redirect: 'manual',
       signal: combined,
     });
+    // ゲートウェイが混んでいて断った平文 http の応答（全体か、この利用者の接続の上限）は、ページとして返さない（その URL の性質ではないので、
+    // 結果を共有のキャッシュに入れると、ほかの利用者にも「読めない」と返る）
+    const denied = gatewayUrl ? res.headers.get('x-sora-egress-deny') : null;
+    if (denied === 'limit' || denied === 'tenant_limit') {
+      await res.body?.cancel().catch(() => {});
+      throw egressBusyError();
+    }
 
     const contentLength = res.headers.get('content-length');
     if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BODY_BYTES) {

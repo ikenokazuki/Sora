@@ -28,8 +28,8 @@ export interface EgressUpstream {
   ca?: string | Buffer;
 }
 
-/** 拒否の理由。カウンター `sora_egress_denied_<理由>_total` の名前になる */
-export type DenyReason = 'bad_request' | 'port' | 'blocked_host' | 'private_ip' | 'dns' | 'limit';
+/** 拒否の理由。カウンター `sora_egress_denied_<理由>_total` の名前になる。limit は全体の、tenant_limit は利用者ごとの、同時の接続数の上限 */
+export type DenyReason = 'bad_request' | 'port' | 'blocked_host' | 'private_ip' | 'dns' | 'limit' | 'tenant_limit';
 
 /** 運用者が、内部の宛先として挙げた `host:port`（SORA_EGRESS_ALLOW_HOSTS）。host は、名前（小文字・末尾のドットなし）か IP リテラル（IPv6 は [ ] なし） */
 export interface EgressAllowedDestination {
@@ -62,6 +62,12 @@ export interface EgressGatewayOptions {
   idleTimeoutMs?: number;
   /** 同時に受ける、クライアントの接続数の上限。超えたら 503 */
   maxConnections?: number;
+  /**
+   * 1 人の利用者が同時に持てる接続の、全体（maxConnections）に対する割合（1〜100 のパーセント。掛けて切り捨て、最低 1 本）。超えたら、その利用者だけ 503。
+   * 利用者は、要求の Proxy-Authorization（Basic）の名前（本体の取得。プロキシの URL の `http://<名前>:@...`）か、足した受け口（addListener。ブラウザのプロセスごと）で分ける。
+   * 名前の無い接続（子プロセス・共有のブラウザなど）と、読めない名前は、まとめて 1 人と数える。省略すると、利用者ごとの上限は置かない
+   */
+  ownerSharePercent?: number;
   /** 拒否・失敗の応答を返したあと、クライアントが接続を閉じてこなくても、この時間が過ぎたら切る */
   denyLingerMs?: number;
   /**
@@ -95,15 +101,33 @@ interface Opened {
 }
 
 const DEFAULT_PORTS: readonly number[] = [80, 443];
+/**
+ * 同時に受ける接続数の上限の既定。ふつうの重いページは、ブラウザで 1 枚開くだけで約 240 本を使う（2026-11-27 の実測。広告の多いページ）。
+ * 1 本は 20〜40KB ほど（2,000 本で約 40MB）
+ */
+export const DEFAULT_MAX_CONNECTIONS = 2048;
 const DEFAULTS = {
   headTimeoutMs: 10_000,
   maxHeadBytes: 16 * 1024,
   resolveTimeoutMs: 10_000,
   connectTimeoutMs: 10_000,
   idleTimeoutMs: 5 * 60_000,
-  maxConnections: 512,
+  maxConnections: DEFAULT_MAX_CONNECTIONS,
   denyLingerMs: 5_000,
 };
+/** Proxy-Authorization の名前として数えるもの（Sora が付けるのは 16 進の短い文字列）。ほかは、名前の無い接続と同じに数える */
+const OWNER_NAME = /^[A-Za-z0-9._~-]{1,64}$/;
+/** 名前の無い接続（と、読めない名前）をまとめて数える鍵 */
+const UNNAMED_OWNER = '';
+
+/** 要求の頭部の Proxy-Authorization（Basic）から、利用者の名前を読む。無い・読めないときは、名前の無い接続 */
+function ownerFromHead(head: string): string {
+  const value = /^proxy-authorization:[ \t]*(.*)$/im.exec(head)?.[1]?.trim();
+  const basic = value && /^basic[ \t]+([A-Za-z0-9+/=]+)$/i.exec(value)?.[1];
+  if (!basic) return UNNAMED_OWNER;
+  const user = Buffer.from(basic, 'base64').toString('latin1').split(':')[0];
+  return OWNER_NAME.test(user) ? user : UNNAMED_OWNER;
+}
 
 /** 拒否・失敗を、応答（状態コードと、拒否の理由）にして運ぶ */
 class GatewayError extends Error {
@@ -219,9 +243,15 @@ export class EgressGateway {
   private readonly upstream: ResolvedUpstream | undefined;
   private readonly bypassUpstream: ((host: string) => boolean) | undefined;
   private server: net.Server | undefined;
+  /** 足した受け口（addListener） */
+  private readonly extraServers: net.Server[] = [];
   private readonly sockets = new Set<net.Socket>();
   /** 受けているクライアントの接続の数（maxConnections の判定に使う） */
   private activeClients = 0;
+  /** 利用者ごとの、受けている接続の数（頭部を読んで、通したもの） */
+  private readonly ownerCounts = new Map<string, number>();
+  /** 1 人の利用者が同時に持てる接続の数 */
+  private readonly perOwnerLimit: number;
   /** すでに警告に出した文（同じ文は、要求のたびには出さない） */
   private readonly warned = new Set<string>();
 
@@ -252,6 +282,10 @@ export class EgressGateway {
       maxConnections: options.maxConnections ?? DEFAULTS.maxConnections,
       denyLingerMs: options.denyLingerMs ?? DEFAULTS.denyLingerMs,
     };
+    this.perOwnerLimit =
+      options.ownerSharePercent === undefined
+        ? this.limits.maxConnections
+        : Math.max(1, Math.floor((this.limits.maxConnections * options.ownerSharePercent) / 100));
   }
 
   /** ループバックの空きポートで待ち受けを始め、そのポートを返す */
@@ -267,12 +301,36 @@ export class EgressGateway {
     return (server.address() as net.AddressInfo).port;
   }
 
-  /** 待ち受けをやめ、中継中の接続もすべて切る */
+  /**
+   * ループバックの空きポートに、受け口を足し、そのポートを返す（ブラウザのプロセスごと。Chromium は、プロキシに資格情報を送れないため）。
+   * そこへの接続は、要求の資格情報を見ず、owner()（接続を受けるたびに読む）の利用者として数える。始める前は、足せない
+   */
+  async addListener(owner: () => string): Promise<number> {
+    const server = net.createServer({ allowHalfOpen: true }, (client) => this.accept(client, owner));
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => resolve());
+    });
+    // 始める前か、待ち受けを始める間に止められたときは、足さずに閉じる（stop() が閉じる一覧には、この確認のあとで入れる）
+    if (!this.server) {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      throw new Error('出口のゲートウェイが動いていない（始める前か、止めたあと）ので、受け口は足せない');
+    }
+    this.extraServers.push(server);
+    return (server.address() as net.AddressInfo).port;
+  }
+
+  /** 利用者 owner の、いまの接続の数が、上限に達しているか */
+  ownerAtLimit(owner: string): boolean {
+    return (this.ownerCounts.get(owner) ?? 0) >= this.perOwnerLimit;
+  }
+
+  /** 待ち受けをやめ（足した受け口も）、中継中の接続もすべて切る */
   async stop(): Promise<void> {
-    const server = this.server;
+    const servers = [...(this.server ? [this.server] : []), ...this.extraServers.splice(0)];
     this.server = undefined;
     for (const socket of this.sockets) socket.destroy();
-    if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+    await Promise.all(servers.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   }
 
   private track(socket: net.Socket): void {
@@ -280,7 +338,8 @@ export class EgressGateway {
     socket.once('close', () => this.sockets.delete(socket));
   }
 
-  private accept(client: net.Socket): void {
+  /** fixedOwner は、足した受け口の利用者（資格情報より優先する）。本体の受け口は undefined（要求の Proxy-Authorization で分ける） */
+  private accept(client: net.Socket, fixedOwner?: () => string): void {
     this.track(client);
     client.on('error', () => client.destroy());
     if (this.activeClients >= this.limits.maxConnections) {
@@ -308,6 +367,10 @@ export class EgressGateway {
       client.pause(); // 転送を始めるまで、頭部のあとのバイトを読まない（読んだ分は rest で渡す）
       const head = received.subarray(0, end).toString('latin1');
       const rest = received.subarray(end + 4);
+      if (!this.claimOwner(client, fixedOwner ? fixedOwner() : ownerFromHead(head))) {
+        this.deny(client, new GatewayError(503, '利用者ごとの同時の接続数の上限', 'tenant_limit'));
+        return;
+      }
       this.handle(client, head, rest).catch((error) => {
         if (error instanceof GatewayError) return this.deny(client, error);
         // 想定外（実装の誤り）。応答は返さず、接続を切る。黙って落とさず、警告を残す
@@ -316,6 +379,19 @@ export class EgressGateway {
       });
     };
     client.on('data', onData);
+  }
+
+  /** 利用者 owner の数に、この接続を入れる（閉じたら戻す）。上限に達していれば入れずに false */
+  private claimOwner(client: net.Socket, owner: string): boolean {
+    const count = this.ownerCounts.get(owner) ?? 0;
+    if (count >= this.perOwnerLimit) return false;
+    this.ownerCounts.set(owner, count + 1);
+    client.once('close', () => {
+      const left = (this.ownerCounts.get(owner) ?? 1) - 1;
+      if (left > 0) this.ownerCounts.set(owner, left);
+      else this.ownerCounts.delete(owner);
+    });
+    return true;
   }
 
   /** 設定の誤りに気づけるよう、同じ文は 1 回だけ警告に出す（文の種類が増え続けても、溜めすぎない） */

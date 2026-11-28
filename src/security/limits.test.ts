@@ -173,6 +173,11 @@ describe('limits', () => {
     expect(STRICT_LIMITS.convertQueuePerTenant).toBeGreaterThanOrEqual(20);
   });
 
+  test('出口のゲートウェイで、1 人が同時に持てる接続の割合は strict 25%（全体 2,048 本のうち 512 本）・standard 100%（利用者ごとの上限なし）', () => {
+    expect(STRICT_LIMITS.egressTenantSharePercent).toBe(25);
+    expect(STANDARD_LIMITS.egressTenantSharePercent).toBe(100);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上

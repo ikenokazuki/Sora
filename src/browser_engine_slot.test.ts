@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import puppeteer from 'puppeteer-core';
 import { CHROME_EXECUTABLE_PATH, closeSharedBrowser, getBrowser, launchProbe, slotUid } from './browser_engine.js';
 import { DEFAULT_LAUNCHER } from './browser_launch_plan.js';
+import { egressEndpointForSlot, getEgressGateway, stopEgressGateway } from './net/egress.js';
 import { withEnv } from './test_fixtures/env.js';
 
 /**
@@ -41,7 +42,7 @@ function fakeBrowser() {
 }
 
 const original = { ...launchProbe };
-let launches: Array<{ executablePath?: string; env?: Record<string, string>; userDataDir?: string }>;
+let launches: Array<{ executablePath?: string; env?: Record<string, string>; userDataDir?: string; args?: string[] }>;
 let profiles: Array<{ uid: number; gid: number; dir: string }>;
 let tmp: string;
 let spy: ReturnType<typeof spyOn>;
@@ -116,6 +117,30 @@ describe.skipIf(CHROME_EXECUTABLE_PATH === undefined)('slot → uid', () => {
       await closeSharedBrowser();
       expect(reaped.toSorted()).toEqual([65532, 65533]);
     });
+  });
+
+  test('出口のゲートウェイを使うとき: strict の tenant ごとのプロセスは、番号ごとの受け口を --proxy-server にする（その tenant の接続の数に入る）。standard の共有のプロセスは、本体の受け口', async () => {
+    const proxyArg = (launch: (typeof launches)[number]) => launch.args?.find((arg) => arg.startsWith('--proxy-server='));
+    const gatewayEnv = { SORA_EGRESS_GATEWAY: 'on', SORA_FETCH_ALLOW_PRIVATE_NETWORK: undefined };
+    try {
+      await strict(async () => {
+        const main = await getEgressGateway();
+        await getBrowser(undefined, 'name:A');
+        await getBrowser(undefined, 'name:B');
+        const [a, b] = [await egressEndpointForSlot(0, 'name:A'), await egressEndpointForSlot(1, 'name:B')];
+        expect(launches.map(proxyArg)).toEqual([`--proxy-server=${a.url}`, `--proxy-server=${b.url}`]);
+        expect(new Set([main.port, a.port, b.port]).size).toBe(3);
+        await closeSharedBrowser();
+      }, gatewayEnv);
+      launches.length = 0;
+      await withEnv({ SORA_ISOLATION: 'standard', SORA_BROWSER_IDLE_TTL_MS: '0', SORA_BROWSER_UID: undefined, ...gatewayEnv }, async () => {
+        const main = await getEgressGateway();
+        await getBrowser(undefined, 'name:A');
+        expect(launches.map(proxyArg)).toEqual([`--proxy-server=${main.url}`]);
+      });
+    } finally {
+      await stopEgressGateway();
+    }
   });
 
   test('slotUid: 基準 + 番号。uid を分けられない環境（root でない）は undefined', async () => {

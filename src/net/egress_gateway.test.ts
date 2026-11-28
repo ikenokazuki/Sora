@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { randomBytes } from 'node:crypto';
 import net from 'node:net';
 import { getSecurityMetrics, resetSecurityMetrics } from '../security/metrics.js';
+import { DEFAULT_MAX_CONNECTIONS, EgressGateway } from './egress_gateway.js';
 import {
   closedPort,
   closesWithin,
@@ -614,6 +615,155 @@ describe('上流のプロキシ: 名前・IP リテラル・ポートを検査�
   });
 });
 
+// ---- 利用者ごとの同時の接続 ----
+
+/** Proxy-Authorization（Basic、名前だけ）つきの CONNECT の頭部。本体の取得は、プロキシの URL の名前（http://<名前>:@...）を、こう送る */
+const ownedConnectHead = (target: string, owner: string) =>
+  `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\nProxy-Authorization: Basic ${Buffer.from(`${owner}:`).toString('base64')}\r\n\r\n`;
+
+describe('利用者ごとの同時の接続（ownerSharePercent）', () => {
+  const setup = async (options: { maxConnections: number; ownerSharePercent?: number }) => {
+    const echo = await startEchoServer();
+    const { resolve } = fakeResolver({ 'echo.test': ['127.0.0.1'] });
+    const started = await startGateway({ resolve, allowedPorts: [echo.port], ...treatLoopbackAsPublic, ...options });
+    return { ...started, target: `echo.test:${echo.port}`, echo };
+  };
+
+  test('Proxy-Authorization の名前ごとに数え、上限（全体×割合）を超えた名前だけを 503 で断る（理由は tenant_limit）。ほかの名前は受ける', async () => {
+    const { port, target, echo } = await setup({ maxConnections: 10, ownerSharePercent: 20 }); // 1 人 2 本
+    const a1 = await rawRequest(port, ownedConnectHead(target, 'aaa'));
+    const a2 = await rawRequest(port, ownedConnectHead(target, 'aaa'));
+    expect([a1.status, a2.status]).toEqual([200, 200]);
+
+    const a3 = await rawRequest(port, ownedConnectHead(target, 'aaa'));
+    expect(a3.status).toBe(503);
+    expect(a3.headers['x-sora-egress-deny']).toBe('tenant_limit');
+    expect(getSecurityMetrics().sora_egress_denied_tenant_limit_total).toBe(1);
+    // 断った要求は、宛先へつながない
+    await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+    expect(echo.connections).toHaveLength(2);
+
+    const b1 = await rawRequest(port, ownedConnectHead(target, 'bbb'));
+    expect(b1.status).toBe(200);
+    b1.socket.write('ok');
+    expect((await readBytes(b1.socket, 2, b1.rest)).toString()).toBe('ok');
+  });
+
+  test('平文の http（絶対 URI の要求）も、同じ名前の数に入る', async () => {
+    const { port, target } = await setup({ maxConnections: 10, ownerSharePercent: 10 }); // 1 人 1 本
+    const tunnel = await rawRequest(port, ownedConnectHead(target, 'aaa'));
+    expect(tunnel.status).toBe(200);
+
+    const auth = `Proxy-Authorization: Basic ${Buffer.from('aaa:').toString('base64')}`;
+    const forward = await rawRequest(port, `GET http://${target}/ HTTP/1.1\r\nHost: ${target}\r\n${auth}\r\n\r\n`);
+    expect(forward.status).toBe(503);
+    expect(forward.headers['x-sora-egress-deny']).toBe('tenant_limit');
+  });
+
+  test('名前の無い接続・読めない名前（Basic でない・壊れた base64・使えない文字）は、まとめて 1 人と数える', async () => {
+    const { port, target } = await setup({ maxConnections: 10, ownerSharePercent: 20 }); // 1 人 2 本
+    const plain = await rawRequest(port, connectHead(target));
+    // Basic でない方式は、値が名前の形（base64 の `bbb:`）でも、名前として読まない
+    const bearer = await rawRequest(port, `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\nProxy-Authorization: Bearer ${Buffer.from('bbb:').toString('base64')}\r\n\r\n`);
+    expect([plain.status, bearer.status]).toEqual([200, 200]);
+    for (const value of ['Basic !!!', `Basic ${Buffer.from('a b:').toString('base64')}`, `Basic ${Buffer.from(':').toString('base64')}`]) {
+      const reply = await rawRequest(port, `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\nProxy-Authorization: ${value}\r\n\r\n`);
+      expect(reply.status).toBe(503);
+      expect(reply.headers['x-sora-egress-deny']).toBe('tenant_limit');
+    }
+    // 名前のある接続は、別に数える
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(200);
+  });
+
+  test('接続が閉じれば、その名前の数は戻り、また受ける', async () => {
+    const { port, target } = await setup({ maxConnections: 10, ownerSharePercent: 10 }); // 1 人 1 本
+    const first = await rawRequest(port, ownedConnectHead(target, 'aaa'));
+    expect(first.status).toBe(200);
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(503);
+
+    first.socket.destroy();
+    let again: ProxyReply | undefined;
+    expect(
+      await waitUntil(() => {
+        void rawRequest(port, ownedConnectHead(target, 'aaa')).then((reply) => {
+          if (reply.status === 200) again = reply;
+        }, () => {});
+        return again !== undefined;
+      }, 3000),
+    ).toBe(true);
+  });
+
+  test('割合を指定しないと、利用者ごとの上限は置かない（全体の上限だけ。理由は limit）', async () => {
+    const { port, target } = await setup({ maxConnections: 2 });
+    const replies = [await rawRequest(port, ownedConnectHead(target, 'aaa')), await rawRequest(port, ownedConnectHead(target, 'aaa'))];
+    expect(replies.map((reply) => reply.status)).toEqual([200, 200]);
+    const third = await rawRequest(port, ownedConnectHead(target, 'bbb'));
+    expect(third.status).toBe(503);
+    expect(third.headers['x-sora-egress-deny']).toBe('limit');
+  });
+
+  test('割合から決めた上限は、最低 1 本', async () => {
+    const { port, target } = await setup({ maxConnections: 3, ownerSharePercent: 1 });
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(200);
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(503);
+  });
+
+  test('ownerAtLimit: その名前の接続が、上限に達しているか', async () => {
+    const { gateway, port, target } = await setup({ maxConnections: 10, ownerSharePercent: 10 });
+    expect(gateway.ownerAtLimit('aaa')).toBe(false);
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(200);
+    expect(gateway.ownerAtLimit('aaa')).toBe(true);
+    expect(gateway.ownerAtLimit('bbb')).toBe(false);
+  });
+});
+
+describe('受け口を足す（addListener。ブラウザのプロセスごと）', () => {
+  test('足した受け口への接続は、資格情報を見ず、その受け口の利用者（呼ぶたびに読む）として数える', async () => {
+    const echo = await startEchoServer();
+    const { resolve } = fakeResolver({ 'echo.test': ['127.0.0.1'] });
+    const { gateway, port } = await startGateway({ resolve, allowedPorts: [echo.port], ...treatLoopbackAsPublic, maxConnections: 10, ownerSharePercent: 20 });
+    const target = `echo.test:${echo.port}`;
+    let owner = 'aaa';
+    const listener = await gateway.addListener(() => owner);
+    expect(listener).not.toBe(port);
+
+    // 本体の受け口で、aaa を 1 本。足した受け口で 1 本（資格情報の bbb は見ない）→ aaa は 2 本で上限
+    expect((await rawRequest(port, ownedConnectHead(target, 'aaa'))).status).toBe(200);
+    const viaListener = await rawRequest(listener, ownedConnectHead(target, 'bbb'));
+    expect(viaListener.status).toBe(200);
+    viaListener.socket.write('hi');
+    expect((await readBytes(viaListener.socket, 2, viaListener.rest)).toString()).toBe('hi');
+    const over = await rawRequest(listener, connectHead(target));
+    expect(over.status).toBe(503);
+    expect(over.headers['x-sora-egress-deny']).toBe('tenant_limit');
+    expect((await rawRequest(port, ownedConnectHead(target, 'bbb'))).status).toBe(200); // bbb は、まだ 1 本目
+
+    // 受け口の利用者が替われば、そのあとの接続は、新しい利用者の数に入る
+    owner = 'ccc';
+    expect((await rawRequest(listener, connectHead(target))).status).toBe(200);
+    expect(gateway.ownerAtLimit('ccc')).toBe(false);
+  });
+
+  test('stop() は、足した受け口も閉じる。始める前は、足せない', async () => {
+    const before = new EgressGateway();
+    await expect(before.addListener(() => 'aaa')).rejects.toThrow();
+
+    const { gateway } = await startGateway();
+    const listener = await gateway.addListener(() => 'aaa');
+    await gateway.stop();
+    await expect(
+      new Promise<void>((resolve, reject) => {
+        const socket = net.connect({ host: '127.0.0.1', port: listener });
+        socket.once('connect', () => {
+          socket.destroy();
+          resolve();
+        });
+        socket.once('error', reject);
+      }),
+    ).rejects.toThrow();
+  });
+});
+
 // ---- 資源と後始末 ----
 
 describe('資源の上限と後始末', () => {
@@ -642,6 +792,10 @@ describe('資源の上限と後始末', () => {
         return again !== undefined;
       }, 3000),
     ).toBe(true);
+  });
+
+  test('既定の同時の接続数の上限は 2,048（ふつうの重いページは 1 枚で約 240 本を開く）', () => {
+    expect(DEFAULT_MAX_CONNECTIONS).toBe(2048);
   });
 
   test('無通信の接続は、時間切れで両側とも閉じる。通信が続いている間は、閉じない', async () => {

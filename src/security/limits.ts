@@ -139,6 +139,11 @@ export interface Limits {
   convertQueueWaitMs: number;
   /** 1 つの tenant が、同時に持てる変換の枠の割合（1〜100 のパーセント。枠の数〔機械のメモリから 1 か 2〕に掛けて切り捨て、最低 1 枠）。100 は制限なし */
   convertTenantSharePercent: number;
+  /**
+   * 出口のゲートウェイ（SORA_EGRESS_GATEWAY）で、1 人の利用者が同時に持てる接続の、全体（2,048 本）に対する割合（1〜100 のパーセント）。超えたら、その利用者の新しい接続だけを断る。
+   * 本体の取得とブラウザのプロセスの接続を、合わせて数える（net/egress.ts）。100 は制限なし。時間切れのあとも閉じない接続（wreq-js）も、その利用者の数に入る
+   */
+  egressTenantSharePercent: number;
   /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
   audioMaxDurationSec: number;
   /** 利用者が送る文字列の欄（検索語・名前など。下の 2 つ以外のすべて。欄の名前も）の長さの上限（字）。超えたら処理の前に断る（400）。長い入力は、全員の要求を処理するメインスレッドを、二乗の時間の処理で止められる（security/input_limits.ts） */
@@ -218,6 +223,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   convertQueueTotal: 400,
   convertQueueWaitMs: 120_000,
   convertTenantSharePercent: 100,
+  egressTenantSharePercent: 100,
   audioMaxDurationSec: 3600,
   inputTextChars: 10_000,
   inputLongTextChars: 100_000, // browser_action の text・script の上限（standard）と同じ
@@ -290,6 +296,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   convertQueueTotal: 100,
   convertQueueWaitMs: 60_000,
   convertTenantSharePercent: 50,
+  egressTenantSharePercent: 25,
   audioMaxDurationSec: 900,
   inputTextChars: 4_000,
   inputLongTextChars: 20_000,
