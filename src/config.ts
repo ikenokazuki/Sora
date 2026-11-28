@@ -202,7 +202,7 @@ export const SETTINGS = {
   },
   SORA_MCP_MAX_SESSIONS: {
     area: 'mcp', kind: 'int', min: 1, default: 100,
-    doc: '同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total` で確認できます',
+    doc: '同時に保持する MCP セッション数の上限（正の整数）。1 セッションは JS ヒープを約 3〜4MB 使います（v4 の見積もり）。上限に達すると、30 秒以上使われていないセッションのうち最も古いものを閉じて新しい接続を受け入れ、すべてが直近まで使われている場合は `503`（`Retry-After: 5`）で断ります。`SORA_ISOLATION=strict` では、1 人の利用者が持てるのは、この上限の 10%（既定なら 10 個）までで、超える `initialize` は、その利用者の、最も長く使われていないセッションを閉じて受け入れます（ほかの利用者のセッションは閉じません）。小さな VPS では小さく設定してください。発生は `/metrics` の `sora_mcp_session_evicted_total`・`sora_mcp_session_rejected_total`・`sora_mcp_session_tenant_limit_total` で確認できます',
   },
 
   // --- ブラウザ ---

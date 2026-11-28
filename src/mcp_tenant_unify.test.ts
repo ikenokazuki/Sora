@@ -308,3 +308,25 @@ describe('鍵ファイルでは、MCP も鍵ごとの tenant で分かれる', (
     }
   });
 });
+
+describe('セッションなしの GET（/mcp・/sse）は、アプリの入口を通しても 405', () => {
+  test('流れを開かない（認証・Origin の確認・ルートを通る）。セッションのある GET は開く', async () => {
+    await withEnv(keyed(), async () => {
+      for (const path of ['/mcp', '/sse']) {
+        const res = await app.fetch(
+          new Request(`http://localhost${path}`, { method: 'GET', headers: { Accept: 'text/event-stream', 'X-API-Key': KEY } }),
+          { remoteAddr: null },
+        );
+        expect(res.status, path).toBe(405);
+        await res.text();
+      }
+      const sessionId = await open({ 'X-API-Key': KEY });
+      const stream = await app.fetch(
+        new Request('http://localhost/mcp', { method: 'GET', headers: { Accept: 'text/event-stream', 'X-API-Key': KEY, 'mcp-session-id': sessionId, 'mcp-protocol-version': '2024-11-05' } }),
+        { remoteAddr: null },
+      );
+      expect(stream.status).toBe(200);
+      await stream.body?.cancel();
+    });
+  });
+});
