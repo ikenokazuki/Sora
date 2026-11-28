@@ -25,7 +25,8 @@ export interface BodyReadOptions {
 /**
  * Read a response body with a streaming byte cap (RFC P0-SEC-04) and a time limit.
  * 取得に渡す中止の信号は、wreq-js では、ヘッダーを受けるまでしか効かない（受けると、信号の登録を外す。本文は wreq-js の内部の上限の 300 秒まで待つ）。
- * 本文が終わらない応答が、共有の枠（PDF の解析など）を握り続けないように、ここで切る。時間は読み始めから数える（順番を待った時間は含めない）。
+ * 本文が終わらない応答が、共有の枠（PDF の解析など）を握り続けないように、ここで切る。切ると読み込みを取り消し、イメージの wreq-js の native
+ * （vendor/wreq-js/body-cancel.patch を当てたもの）は、その接続もすぐ閉じる（npm 版の native は、300 秒まで残す）。時間は読み始めから数える（順番を待った時間は含めない）。
  * 読んだ量は、いま呼んでいる利用者の分に予約し（net/body_budget.ts）、上限を超えたら、読むのをやめて ResourceBusyError。読み終えたら（失敗も）返す
  */
 export async function readBodyWithLimit(
