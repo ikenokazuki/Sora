@@ -331,7 +331,7 @@ describe('parseProcStatus（/proc/<pid>/status）', () => {
   const text = 'Name:\tbun\nState:\tS (sleeping)\nPPid:\t1\nUid:\t0\t0\t0\t0\nGid:\t0\t0\t0\t0\nGroups:\t\nNSpid:\t172\t3\nCapEff:\t0000000000000000\nNoNewPrivs:\t1\nSeccomp:\t2\n';
 
   test('名前・状態・親・uid・gid・NSpid・capability・NoNewPrivs・Seccomp を読む', () => {
-    expect(parseProcStatus(text)).toEqual({ name: 'bun', state: 'S', ppid: 1, uid: [0, 0, 0, 0], gid: [0, 0, 0, 0], nspid: [172, 3], capEff: '0000000000000000', noNewPrivs: 1, seccomp: 2 });
+    expect(parseProcStatus(text)).toEqual({ name: 'bun', state: 'S', threads: 1, ppid: 1, uid: [0, 0, 0, 0], gid: [0, 0, 0, 0], nspid: [172, 3], capEff: '0000000000000000', noNewPrivs: 1, seccomp: 2 });
   });
 
   test('欄が無い（古いカーネル・途中で消えた）ときは、安全でない側（NoNewPrivs 0・Seccomp 0）として読む', () => {
@@ -348,7 +348,7 @@ describe('auditProcesses（Sora のコンテナの中のプロセス。同じ PI
   const proc = (pid: number, ppid: number, uid: number, cmdline: string, extra: Partial<ProcInfo['status']> = {}): ProcInfo => ({
     pid,
     cmdline,
-    status: { name: 'x', state: 'S', ppid, uid: [uid, uid, uid, uid], gid: [uid, uid, uid, uid], nspid: [pid], capEff: uid === 0 ? '00000000000000e3' : '0000000000000000', noNewPrivs: 1, seccomp: 2, ...extra },
+    status: { name: 'x', state: 'S', threads: 1, ppid, uid: [uid, uid, uid, uid], gid: [uid, uid, uid, uid], nspid: [pid], capEff: uid === 0 ? '00000000000000e3' : '0000000000000000', noNewPrivs: 1, seccomp: 2, ...extra },
   });
   const main = () => proc(7, 1, 0, '/usr/local/bin/bun /app/server.js');
   const tini = () => proc(1, 0, 0, '/usr/bin/tini -- /usr/local/bin/bun /app/server.js');
@@ -388,6 +388,18 @@ describe('auditProcesses（Sora のコンテナの中のプロセス。同じ PI
     expect(of(findings, 'WARN')).toEqual([]);
     expect(of(findings, 'FAIL')).toEqual([]);
     expect(of(findings, 'SKIP')).toContain('proc.chromium-uid');
+  });
+
+  test('主スレッドだけが終わり、ほかのスレッドが動いているプロセス（State は Z、スレッドが 2 以上）は、動いているので見る', () => {
+    const leaderGone = chromium(22, 0);
+    leaderGone.status.state = 'Z';
+    leaderGone.status.threads = 3;
+    expect(of(auditProcesses([tini(), main(), leaderGone], 999), 'FAIL')).toContain('proc.chromium-uid');
+  });
+
+  test('/proc/<pid>/status の Threads を読む（無ければ 1）', () => {
+    expect(parseProcStatus('Name:\tx\nState:\tZ (zombie)\nThreads:\t2\nUid:\t0\t0\t0\t0\n')?.threads).toBe(2);
+    expect(parseProcStatus('Name:\tx\nState:\tS (sleeping)\nUid:\t0\t0\t0\t0\n')?.threads).toBe(1);
   });
 
   test('--no-sandbox で動いていれば FAIL', () => {

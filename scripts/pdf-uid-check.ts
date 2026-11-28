@@ -11,6 +11,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, 
 import { join } from 'node:path';
 import { verifyStrictPdf } from '../src/browser_startup.js';
 import { DEFAULT_LAUNCHER, missingDropCapabilities } from '../src/browser_launch_plan.js';
+import { isFinishedZombie } from '../src/browser_reap.js';
 import { parsePdfToMarkdown } from '../src/pdf.js';
 import { DEFAULT_PDF_UID, PDF_CONCURRENCY } from '../src/pdf_uid.js';
 import { makePdf } from '../src/test_fixtures/pdf.js';
@@ -133,14 +134,14 @@ async function probe(options: { waitForPeer: boolean; stray: boolean }): Promise
   return JSON.parse(result.content) as Observation;
 }
 
-/** uid が uid のプロセス（ゾンビを除く）の pid */
+/** uid が uid のプロセス（本当のゾンビを除く。主スレッドだけが終わったものは数える）の pid */
 function processesOf(uids: readonly number[]): number[] {
   const found: number[] = [];
   for (const name of readdirSync('/proc')) {
     if (!/^\d+$/.test(name)) continue;
     try {
       const status = readFileSync(`/proc/${name}/status`, 'utf8');
-      if (/^State:\s*Z/m.test(status)) continue;
+      if (isFinishedZombie(status)) continue;
       const ids = /^Uid:\s+(\d+)\s+(\d+)/m.exec(status);
       if (ids && uids.some((uid) => Number(ids[1]) === uid || Number(ids[2]) === uid)) found.push(Number(name));
     } catch {}
