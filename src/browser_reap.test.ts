@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pidsOfUid, reapUid } from './browser_reap.js';
@@ -16,9 +17,9 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(proc, { recursive: true, force: true }));
 
-function addProcess(pid: number, uid: number, state = 'S (sleeping)', effective = uid): void {
+function addProcess(pid: number, uid: number, state = 'S (sleeping)', effective = uid, threads?: number): void {
   mkdirSync(join(proc, String(pid)));
-  writeFileSync(join(proc, String(pid), 'status'), `Name:\tchromium\nState:\t${state}\nUid:\t${uid}\t${effective}\t${uid}\t${effective}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\n`);
+  writeFileSync(join(proc, String(pid), 'status'), `Name:\tchromium\nState:\t${state}\nUid:\t${uid}\t${effective}\t${uid}\t${effective}\nGid:\t${uid}\t${uid}\t${uid}\t${uid}\n${threads === undefined ? '' : `Threads:\t${threads}\n`}`);
 }
 
 describe('pidsOfUid', () => {
@@ -32,6 +33,12 @@ describe('pidsOfUid', () => {
     mkdirSync(join(proc, 'net'));
     writeFileSync(join(proc, 'cpuinfo'), 'x');
     expect(pidsOfUid(65533, proc).toSorted((a, b) => a - b)).toEqual([100, 101, 103]);
+  });
+
+  test('主スレッドだけが終わり、ほかのスレッドが動いているプロセス（State は Z、Threads が 2 以上）は、動いているので返す。本当のゾンビ（Threads 1）は返さない', () => {
+    addProcess(110, 65533, 'Z (zombie)', 65533, 2);
+    addProcess(111, 65533, 'Z (zombie)', 65533, 1);
+    expect(pidsOfUid(65533, proc)).toEqual([110]);
   });
 
   test('読めないプロセス（途中で消えた）は、飛ばす。/proc が読めなければ空', () => {
@@ -122,5 +129,38 @@ describe('reapUid', () => {
       timeoutMs: 100,
     });
     expect(killedSelf).toBe(false);
+  });
+});
+
+// 本物の /proc で: 主スレッドだけを SYS_exit で終えたプロセスを、自分の uid で探す（x86_64 の Linux と python3 があるときだけ）
+const python = spawnSync('python3', ['-c', 'print(1)']).status === 0;
+describe.skipIf(process.platform !== 'linux' || process.arch !== 'x64' || !python)('pidsOfUid（本物の /proc）', () => {
+  test('主スレッドだけが終わったプロセスを見落とさない（State は Z でも、別のスレッドが動いている）', async () => {
+    const script = [
+      'import ctypes, os, threading, time',
+      'threading.Thread(target=lambda: (time.sleep(10), os._exit(0))).start()',
+      'print(os.getpid(), flush=True)',
+      'time.sleep(0.2)',
+      'ctypes.CDLL(None).syscall(60, 0)',
+    ].join('\n');
+    const child = Bun.spawn(['python3', '-I', '-c', script], { stdout: 'pipe' });
+    try {
+      // 子の pid（python が自分で書く 1 行目）。終わるまで待たないよう、最初の塊だけを読む
+      const first = await child.stdout.getReader().read();
+      const pid = Number(new TextDecoder().decode(first.value).trim());
+      const zombieLeader = () => {
+        try {
+          return /^State:\s*Z/m.test(readFileSync(`/proc/${pid}/status`, 'utf8'));
+        } catch {
+          return false;
+        }
+      };
+      for (const deadline = Date.now() + 3000; !zombieLeader() && Date.now() < deadline; ) await Bun.sleep(20);
+      expect(zombieLeader()).toBe(true);
+      expect(pidsOfUid(process.getuid!())).toContain(pid);
+    } finally {
+      child.kill('SIGKILL');
+      await child.exited;
+    }
   });
 });

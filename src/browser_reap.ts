@@ -16,7 +16,19 @@ export interface ReapOptions {
   timeoutMs?: number;
 }
 
-/** /proc/<pid>/status の Uid の行（実・実効・保存・fs の uid）のどれかが uid で、ゾンビでないプロセスの pid */
+/**
+ * /proc/<pid>/status の中身が、本当のゾンビ（もう動いていない。親が回収していないだけ）か。
+ * 主スレッドだけが終わり、ほかのスレッドが動いているプロセスも、State は Z（ゾンビ）になる（Threads が 2 以上）。それは動いているので、ゾンビとしない。
+ * Threads の行が無ければ 1 とみなす。イメージの確認の台本（pdf-uid-check・rs-uid-check）も使う
+ */
+export function isFinishedZombie(status: string): boolean {
+  return /^State:\s*Z/m.test(status) && Number(/^Threads:\s*(\d+)/m.exec(status)?.[1] ?? 1) <= 1;
+}
+
+/**
+ * /proc/<pid>/status の Uid の行（実・実効・保存・fs の uid）のどれかが uid で、本当のゾンビでないプロセスの pid
+ * （主スレッドだけが終わったプロセスも返す。SIGKILL は、スレッドの全部を止める）
+ */
 export function pidsOfUid(uid: number, procDir = '/proc'): number[] {
   let names: string[];
   try {
@@ -29,7 +41,7 @@ export function pidsOfUid(uid: number, procDir = '/proc'): number[] {
     if (!/^\d+$/.test(name)) continue;
     try {
       const status = readFileSync(`${procDir}/${name}/status`, 'utf8');
-      if (/^State:\s*Z/m.test(status)) continue; // ゾンビ（もう動いていない。親が回収していないだけ）
+      if (isFinishedZombie(status)) continue;
       const ids = /^Uid:\s+(\d+)\s+(\d+)/m.exec(status);
       if (ids && (Number(ids[1]) === uid || Number(ids[2]) === uid)) found.push(Number(name));
     } catch {

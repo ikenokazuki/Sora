@@ -229,6 +229,8 @@ export interface ProcStatus {
   name: string;
   /** State の先頭の 1 字（R・S・D・Z など） */
   state: string;
+  /** Threads（スレッドの数。無ければ 1）。主スレッドだけが終わり、ほかのスレッドが動いているプロセスは、State が Z で、これが 2 以上 */
+  threads: number;
   ppid: number;
   /** 実・実効・保存・fs の uid */
   uid: number[];
@@ -256,6 +258,7 @@ export function parseProcStatus(text: string): ProcStatus | undefined {
   return {
     name: field('Name') ?? '',
     state: (field('State') ?? '?').charAt(0),
+    threads: Number(field('Threads') ?? 1),
     ppid: Number(field('PPid') ?? 0),
     uid,
     gid: ids('Gid'),
@@ -288,7 +291,8 @@ function mainCaps(capEff: string): Finding {
 
 /** Sora のコンテナの中のプロセス（PID の名前空間を共有して読んだもの）を、手引と照らす。selfPid は、確認する側のプロセス（数えない） */
 export function auditProcesses(processes: ProcInfo[], selfPid: number): Finding[] {
-  const live = processes.filter((p) => p.pid !== selfPid && p.status.state !== 'Z');
+  // 本当のゾンビ（もう動いていない）だけを除く。主スレッドだけが終わったプロセス（Z で、スレッドが 2 以上）は、動いているので見る
+  const live = processes.filter((p) => p.pid !== selfPid && !(p.status.state === 'Z' && p.status.threads <= 1));
   const out: Finding[] = [];
 
   const main = live.find(isSoraMain);

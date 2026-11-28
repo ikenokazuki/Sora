@@ -8,6 +8,7 @@
  */
 import { chmodSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { missingDropCapabilities } from '../src/browser_launch_plan.js';
+import { isFinishedZombie } from '../src/browser_reap.js';
 import { extractMainContentWithRs } from '../src/extractor/rs_trafilatura.js';
 import { DEFAULT_RS_UID, RS_UID_COUNT } from '../src/extractor/rs_uid.js';
 
@@ -88,7 +89,7 @@ function processesInRange(): number[] {
     .filter((name) => {
       try {
         const status = readFileSync(`/proc/${name}/status`, 'utf8');
-        if (/^State:\s*Z/m.test(status)) return false;
+        if (isFinishedZombie(status)) return false; // 主スレッドだけが終わったものは数える
         return inRange(Number(/^Uid:\s+(\d+)/m.exec(status)?.[1]));
       } catch {
         return false;
