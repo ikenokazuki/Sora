@@ -42,7 +42,7 @@ const UNBOUNDED: QueuePolicy = { perTenant: Infinity, total: Infinity, waitMs: I
 const RETRY_AFTER_SEC = 5;
 
 /** 枠の待ち行列が断る理由（session_limit は、セッションの登録簿の理由。tenant_budget は、利用者ごとの予算 tenant_budget.ts の理由） */
-type QueueBusyReason = Exclude<BusyReason, 'session_limit' | 'tenant_budget' | 'process_limit' | 'connection_limit'>;
+type QueueBusyReason = Exclude<BusyReason, 'session_limit' | 'tenant_budget' | 'process_limit' | 'connection_limit' | 'memory_limit'>;
 
 /** 資源ごとの、断る文の言葉。subject は「〜を待つ要求が」、waiting は「〜を N 秒待ちましたが、空きませんでした」の前半 */
 export const RESOURCE_WORDS: Record<BusyResource, { subject: string; waiting: string }> = {
@@ -54,6 +54,7 @@ export const RESOURCE_WORDS: Record<BusyResource, { subject: string; waiting: st
   pdf: { subject: 'PDF の解析の順番', waiting: 'PDF の解析の順番が来るのを' },
   convert: { subject: 'ページの変換の順番', waiting: 'ページの変換の順番が来るのを' },
   egress: { subject: '外への接続', waiting: '外への接続が空くのを' },
+  body: { subject: '本文の読み込み', waiting: '本文の読み込みが空くのを' },
 };
 
 /** 待ち行列が断る例外を作る（カウンターを 1 回数える）。SimpleSemaphore のほか、自前の待ち行列（住所データの構築）も使う */

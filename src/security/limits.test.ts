@@ -183,10 +183,15 @@ describe('limits', () => {
     expect(STANDARD_LIMITS.mcpSessionTenantSharePercent).toBe(100);
   });
 
+  test('読み込み中の本文の量の、1 人分の上限は strict 64MB（最大の本文 30MB が 2 本読める）・standard 0（制限なし）', () => {
+    expect(STRICT_LIMITS.bodyBytesPerTenantMb).toBe(64);
+    expect(STANDARD_LIMITS.bodyBytesPerTenantMb).toBe(0);
+  });
+
   // 最小の間隔は「下限」なので、standard（緩い）が小さい（0 = 無し）。ほかの値は、大きいほど緩い上限
   const LOWER_BOUNDS = ['watchMinIntervalMs'];
   // 0 が「制限なし」の上限（予算）。standard は 0（制限なし）か、strict 以上
-  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute', 'addressBudgetPerMinute'];
+  const ZERO_IS_NONE = ['geocodeBudgetPerMinute', 'yahooBudgetPerMinute', 'countryIntelBudgetPerMinute', 'addressBudgetPerMinute', 'bodyBytesPerTenantMb'];
   // 0 が「切り替えない」（tenant ごとのブラウザのプロセス。standard は 0 = 全員で 1 つの共有プロセス）。strict は正の数
   const ZERO_IS_OFF = ['browserProcessMax', 'browserProcessWaitMs'];
 

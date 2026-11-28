@@ -149,6 +149,11 @@ export interface Limits {
    * 超える initialize は、その利用者の、最も長く使われていないセッションを閉じて受け入れる（ほかの利用者のセッションは閉じない）。100 は制限なし
    */
   mcpSessionTenantSharePercent: number;
+  /**
+   * 読み込み中の本文の量のうち、1 人の利用者の分の上限（MB。net/body_budget.ts）。超える読み込みは、その読み込みだけを止めて断る（429）。0 は制限なし。
+   * 全体の上限は、水準によらず、機械のメモリの 25%（256MB〜1GB）
+   */
+  bodyBytesPerTenantMb: number;
   /** 音声・動画のファイルの長さの上限（秒）。デコードの前に、ファイルの先頭の情報で調べて、超えるものはデコードせずに断る（デコードは全体を PCM にするので、長いとメモリを使い切る） */
   audioMaxDurationSec: number;
   /** 利用者が送る文字列の欄（検索語・名前など。下の 2 つ以外のすべて。欄の名前も）の長さの上限（字）。超えたら処理の前に断る（400）。長い入力は、全員の要求を処理するメインスレッドを、二乗の時間の処理で止められる（security/input_limits.ts） */
@@ -230,6 +235,7 @@ export const STANDARD_LIMITS: Readonly<Limits> = Object.freeze({
   convertTenantSharePercent: 100,
   egressTenantSharePercent: 100,
   mcpSessionTenantSharePercent: 100,
+  bodyBytesPerTenantMb: 0,
   audioMaxDurationSec: 3600,
   inputTextChars: 10_000,
   inputLongTextChars: 100_000, // browser_action の text・script の上限（standard）と同じ
@@ -304,6 +310,7 @@ export const STRICT_LIMITS: Readonly<Limits> = Object.freeze({
   convertTenantSharePercent: 50,
   egressTenantSharePercent: 25,
   mcpSessionTenantSharePercent: 10,
+  bodyBytesPerTenantMb: 64,
   audioMaxDurationSec: 900,
   inputTextChars: 4_000,
   inputLongTextChars: 20_000,
